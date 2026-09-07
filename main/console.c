@@ -873,6 +873,12 @@ static int cmd_clock(int argc, char **argv)
 static int cmd_walk(int argc, char **argv)
 {
     float cur, tgt;
+    if (argc >= 3 && strcmp(argv[1], "pure") == 0) {
+        whm_ui_walk_pure(strcmp(argv[2], "on") == 0);
+        printf("walk: pure mode %s (rewards + ambient rituals "
+               "stripped for bisection)\n", argv[2]);
+        return 0;
+    }
     if (argc >= 3 && strcmp(argv[1], "speed") == 0) {
         whm_ui_walk_speed(strtof(argv[2], NULL));
         whm_ui_walk_speed_get(&cur, &tgt);

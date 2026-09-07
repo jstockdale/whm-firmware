@@ -258,6 +258,9 @@ static struct { uint32_t step; float x; int8_t yq1;
                 uint8_t st; int8_t dir; uint16_t timer;
                 uint8_t valid; } s_wkf[WKF_N];
 static uint32_t s_wkf_ok, s_wkf_snap, s_wkf_stale;
+static struct { uint32_t step; uint8_t from, to; } s_wkh[8];
+static uint8_t s_wkh_w;
+static bool s_wk_pure;               /* bisection: strip influences */
 static bool wk_i_own(void)
 {
     return s_w_n <= 1 || s_wko.owner == s_w_idx;
@@ -367,6 +370,7 @@ static const wchunk_t *wk_chunk(int32_t id);   /* defined below */
 /* distance-weighted promise of fresh territory in one direction */
 static float wk_scout(float x, int8_t dir)
 {
+    if (s_wk_pure) return 0.0f;      /* bisection: no reward pull */
     float score = 0.0f;
     int32_t id = (int32_t)floorf(x / 64.0f);
     for (int d = -2; d <= 2; d++) {
@@ -614,6 +618,7 @@ static int32_t s_wk_last_chunk = INT32_MIN;
 
 static void wk_step(int64_t t, uint8_t n)
 {
+    uint8_t st_in = (uint8_t)s_wk.st;
     s_wk_draws = 0;              /* pure RNG: draw# restarts per step */
     /* STEP-TIME GENERATOR (doctrine 13): reward marks are a pure
        function of the trajectory - one mark per chunk ENTRY, inside
@@ -627,6 +632,12 @@ static void wk_step(int64_t t, uint8_t n)
             wk_mark(ch);
         }
     }
+    #define WK_ST_TRACE()                                            \
+        do { if ((uint8_t)s_wk.st != st_in) {                        \
+            s_wkh[s_wkh_w].step = s_wk_steps;                        \
+            s_wkh[s_wkh_w].from = st_in;                             \
+            s_wkh[s_wkh_w].to = (uint8_t)s_wk.st;                    \
+            s_wkh_w = (uint8_t)((s_wkh_w + 1) % 8); } } while (0)
     float center = wk_cam(t) + (float)n * 32.0f;
     switch (s_wk.st) {
     case WK_WALK: {
@@ -718,7 +729,8 @@ static void wk_step(int64_t t, uint8_t n)
                    r % 2600 == 3) {        /* the camping ritual */
             s_wk.tgt = center + 26.0f;
             s_wk.dir = s_wk.x < s_wk.tgt ? 1 : -1;
-            s_wk.st = WK_GOCHAIR;
+            if (!s_wk_pure)
+                s_wk.st = WK_GOCHAIR;
             s_wk.turn_cd = 90;
         } else if (fy >= WK_GROUND && !s_wk.turn_cd &&
                    off < -8.0f && r % 3800 == 5) {
@@ -909,6 +921,7 @@ static void wk_step(int64_t t, uint8_t n)
         }
         break;
     }
+    WK_ST_TRACE();
 }
 
 static void wk_px(int x, int y, uint8_t r, uint8_t g, uint8_t b)
@@ -1493,6 +1506,8 @@ static void wk_nye_scene(float cam, int64_t t)
                  210, 170, 60);                      /* whose midnight */
 }
 
+void whm_ui_walk_pure(bool on) { s_wk_pure = on; }
+
 void whm_ui_walk_stats(uint32_t *ok, uint32_t *snap, uint32_t *stale)
 {
     *ok = s_wkf_ok;
@@ -1839,10 +1854,22 @@ static void pat_walker(int64_t t)
                 if (dx > 0.75f || dx < -0.75f || dyv > 1 ||
                     dyv < -1 || s_wkf[i].st != (uint8_t)s_wk.st) {
                     printf("walker: at-step SNAP @%lu (dx %.2f, "
-                           "%u vs %u)\n",
+                           "%u vs %u) mine{x=%.2f y=%.2f tgt=%.1f "
+                           "vx=%.2f dir=%d tm=%u}\n",
                            (unsigned long)s_wk_steps, (double)dx,
                            (unsigned)s_wkf[i].st,
-                           (unsigned)s_wk.st);
+                           (unsigned)s_wk.st, (double)s_wk.x,
+                           (double)s_wk.y, (double)s_wk.tgt,
+                           (double)s_wk.vx, (int)s_wk.dir,
+                           (unsigned)s_wk.timer);
+                    for (int h2 = 0; h2 < 8; h2++) {
+                        int q2 = (s_wkh_w + h2) % 8;
+                        if (!s_wkh[q2].step) continue;
+                        printf("  st %u->%u @%lu\n",
+                               (unsigned)s_wkh[q2].from,
+                               (unsigned)s_wkh[q2].to,
+                               (unsigned long)s_wkh[q2].step);
+                    }
                     s_wk.x = s_wkf[i].x;      /* complete state,   */
                     s_wk.y = (float)s_wkf[i].yq1 * 0.5f;
                     s_wk.st = s_wkf[i].st;    /* exactly at the    */
@@ -2009,6 +2036,16 @@ static void pat_walker(int64_t t)
                              / (uint32_t)WK_TICK_US;
                 if (K < 6) K = 6;
                 if (K > 120) K = 120;
+                /* never promise past the window: the live world
+                   respawns at the anchor boundary, the shadow
+                   would not - clamp K inside this window */
+                uint32_t win = (uint32_t)(WK_ANCHOR_US / WK_TICK_US);
+                if (s_wk_steps + K >= win) {
+                    if (win > s_wk_steps + 2) K = win - s_wk_steps - 2;
+                    else K = 0;
+                }
+                bool emit = K > 0;
+                if (emit) {
                 __typeof__(s_wk) save = s_wk;
                 uint32_t sv_steps = s_wk_steps;
                 uint8_t sv_draws = s_wk_draws;
@@ -2041,6 +2078,7 @@ static void pat_walker(int64_t t)
                 s_wk_seen_wr = sv_wr;
                 whm_sync_wkb_send(s_wko.owner, fx, fy, fst, fdir,
                                   ftm, fstep);
+                }
             }
             if (!wk_i_own() && t - s_wko.rx_us > 1200000) {
                 int ns = (int)floorf((s_wk.x - cam) / 64.0f);
