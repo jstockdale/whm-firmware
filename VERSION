@@ -1,4 +1,4 @@
-whm-bringup 0.33.0-phase0
-built: 2026-09-07 (r88: DOCTRINE 14 - never mutate a deterministic replica. 306-step storm periodicity proved rate-divergence at walking speed: entry was never a replay point (resuming vs fresh rebuilt differently) and delta-corrections perpetuated any seed (a nudged replica meets every threshold at offset positions). Entry now forces respawn+catch-up from the shared anchor; referee is ALARM-ONLY; realignment is exclusively REPLAY-RESYNC - provably exact. Seamless by proof, not patching.)
+whm-bringup 0.34.0-phase0
+built: 2026-09-07 (r89: DOCTRINE 15 - tell the future before it happens. Owner shadow-sim (complete snapshot/run/restore incl per-step camera) emits keyframes 2x-sync-lead ahead at 4Hz on unchanged type-9 (seq = future step; freshness arbitration already treats the future as maximally fresh). Replicas verify AT-STEP with zero evidence age against a small future-ref buffer; mismatch = complete-state SNAP exactly at the described step (initial conditions, never nudging); snap-storm escalates to replay-resync. The 660ms judgment ring is retired. walk prints refs ok/snap/stale.)
 idf: v5.5.2
 board: Waveshare ESP32-S3-RGB-Matrix | panel: ADA P2.5 64x64 1/32 HUB75E

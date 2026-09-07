@@ -881,6 +881,11 @@ static int cmd_walk(int argc, char **argv)
         return 0;
     }
     whm_ui_walk_speed_get(&cur, &tgt);
+    uint32_t fok, fsn, fst;
+    whm_ui_walk_stats(&fok, &fsn, &fst);
+    printf("walk: refs ok=%lu snap=%lu stale=%lu\n",
+           (unsigned long)fok, (unsigned long)fsn,
+           (unsigned long)fst);
     printf("walk: %.2fx (target %.2fx), cam=%.2f - "
            "'walk speed <-2..2>', 0 pauses, negative reverses\n",
            cur, tgt, whm_ui_walk_cam());

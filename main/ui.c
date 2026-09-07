@@ -248,10 +248,16 @@ static struct {
  * replica against stale evidence poisoned it at every state change
  * (adopting the past = manufacturing the very lag we hunted). Ring
  * of recent own poses keyed by step; corrections apply as DELTAS. */
-#define WKR_N 40
-static struct { uint32_t step; float x; int8_t y; uint8_t st; }
-    s_wkr[WKR_N];
-static uint8_t s_wkr_w;
+/* DOCTRINE 15: tell the future before it happens. The owner's shadow
+ * sim emits KEYFRAMES ~2x sync-lead ahead; replicas verify AT-STEP
+ * (zero evidence age) and on mismatch SNAP to the complete promised
+ * state - initial-condition setting, never nudging. Trailing
+ * telemetry and its 660ms judgment ring are retired. */
+#define WKF_N 8
+static struct { uint32_t step; float x; int8_t yq1;
+                uint8_t st; int8_t dir; uint16_t timer;
+                uint8_t valid; } s_wkf[WKF_N];
+static uint32_t s_wkf_ok, s_wkf_snap, s_wkf_stale;
 static bool wk_i_own(void)
 {
     return s_w_n <= 1 || s_wko.owner == s_w_idx;
@@ -1487,6 +1493,13 @@ static void wk_nye_scene(float cam, int64_t t)
                  210, 170, 60);                      /* whose midnight */
 }
 
+void whm_ui_walk_stats(uint32_t *ok, uint32_t *snap, uint32_t *stale)
+{
+    *ok = s_wkf_ok;
+    *snap = s_wkf_snap;
+    *stale = s_wkf_stale;
+}
+
 float whm_ui_walk_cam(void) { return s_cam_acc; }
 
 
@@ -1515,52 +1528,25 @@ void whm_ui_wkb_rx(uint8_t owner, float x, int8_t y, uint8_t st,
        triplicates and reordered delivery apply exactly once. */
     if (step <= s_wko.ev_step) return;
     s_wko.ev_step = step;
-    if (nowu < s_wko.mute_until) return;   /* breaker: lockstep only */
+    if (step <= s_wk_steps) { s_wkf_stale++; return; }   /* past */
+    int slot = -1;
+    for (int i = 0; i < WKF_N; i++) {
+        if (s_wkf[i].valid && s_wkf[i].step == step) { slot = i; break; }
+        if (slot < 0 && !s_wkf[i].valid) slot = i;
+    }
+    if (slot < 0) slot = 0;              /* overwrite oldest-ish */
+    s_wkf[slot].step = step;
+    s_wkf[slot].x = x;
+    s_wkf[slot].yq1 = y;
+    s_wkf[slot].st = st;
+    s_wkf[slot].dir = dir;
+    s_wkf[slot].timer = timer;
+    s_wkf[slot].valid = 1;
+    return;
     /* EQUAL-STEP comparison: find MY pose at the beacon's step and
        judge like against like. Latency cannot false-trigger; a hit
        here is real nondeterminism, corrected as a DELTA (the offset
        persists into the present) and confessed with the step. */
-    for (int i = 0; i < WKR_N; i++) {
-        if (s_wkr[i].step != step) continue;
-        float dx = x - s_wkr[i].x;
-        int dyv = (int)y - (int)s_wkr[i].y;   /* both half-px units */
-        /* ALARM-ONLY REFEREE (doctrine 14): never mutate a
-           deterministic replica - a nudged replica meets every edge
-           and threshold at offset positions and diverges at walking
-           speed forever (the 306-step storm periodicity proved it).
-           Measure, print, count. Realignment happens ONLY by
-           replay-resync: provably exact, because pure replays of the
-           same anchor are bit-identical on every unit. */
-        bool anomaly = false;
-        if (st != s_wkr[i].st || dx > 32.0f || dx < -32.0f) {
-            printf("walker: ALARM %s at step %lu (%u vs mine %u)\n",
-                   st != s_wkr[i].st ? "state-fork" : "large-drift",
-                   (unsigned long)step, (unsigned)st,
-                   (unsigned)s_wkr[i].st);
-            anomaly = true;
-        } else if (dx > 0.75f || dx < -0.75f || dyv > 1 ||
-                   dyv < -1) {
-            printf("walker: ALARM drift %.2fpx @step %lu "
-                   "(telemetry only)\n", (double)dx,
-                   (unsigned long)step);
-            anomaly = true;
-        }
-        if (anomaly) {
-            if (nowu - s_wko.storm_t0 > 3000000) {
-                s_wko.storm_t0 = nowu;
-                s_wko.storms = 0;
-            }
-            if (++s_wko.storms > 5) {
-                s_wko.storms = 0;
-                s_wko.mute_until = nowu + 3000000;
-                s_wk_anchor = INT64_MIN;   /* REPLAY-RESYNC */
-                printf("walker: replay-resync (deterministic "
-                       "rebuild from anchor)\n");
-            }
-        }
-        return;
-    }
-    /* step not in ring (beacon older than ~660ms): no judgment */
 }
 
 void whm_ui_walk_speed(float v)
@@ -1823,8 +1809,7 @@ static void pat_walker(int64_t t)
            unit does this at the same anchor, symmetrically. */
         s_wko.ev_step = 0;
         s_wko.own_step = 0;
-        memset(s_wkr, 0, sizeof(s_wkr));
-        s_wkr_w = 0;
+        memset(s_wkf, 0, sizeof(s_wkf));
         s_wk_last_chunk = INT32_MIN;
     }
     uint32_t want = (uint32_t)((t - s_wk_anchor * WK_ANCHOR_US)
@@ -1843,11 +1828,46 @@ static void pat_walker(int64_t t)
             s_wk.tgt = wk_cam(ts) + (float)n * 64.0f;  /* right edge */
         }
         wk_step(ts, n);
-        s_wkr[s_wkr_w].step = s_wk_steps;
-        s_wkr[s_wkr_w].x = s_wk.x;
-        s_wkr[s_wkr_w].y = (int8_t)lroundf(s_wk.y * 2.0f);
-        s_wkr[s_wkr_w].st = (uint8_t)s_wk.st;
-        s_wkr_w = (uint8_t)((s_wkr_w + 1) % WKR_N);
+        if (s_w_n > 1 && !wk_i_own() && s_show.phase == 0) {
+            for (int i = 0; i < WKF_N; i++) {
+                if (!s_wkf[i].valid || s_wkf[i].step != s_wk_steps)
+                    continue;
+                s_wkf[i].valid = 0;
+                float dx = s_wkf[i].x - s_wk.x;
+                int dyv = (int)s_wkf[i].yq1 -
+                          (int)lroundf(s_wk.y * 2.0f);
+                if (dx > 0.75f || dx < -0.75f || dyv > 1 ||
+                    dyv < -1 || s_wkf[i].st != (uint8_t)s_wk.st) {
+                    printf("walker: at-step SNAP @%lu (dx %.2f, "
+                           "%u vs %u)\n",
+                           (unsigned long)s_wk_steps, (double)dx,
+                           (unsigned)s_wkf[i].st,
+                           (unsigned)s_wk.st);
+                    s_wk.x = s_wkf[i].x;      /* complete state,   */
+                    s_wk.y = (float)s_wkf[i].yq1 * 0.5f;
+                    s_wk.st = s_wkf[i].st;    /* exactly at the    */
+                    s_wk.dir = s_wkf[i].dir;  /* step it describes */
+                    s_wk.timer = s_wkf[i].timer;
+                    s_wkf_snap++;
+                    int64_t nu = esp_timer_get_time();
+                    if (nu - s_wko.storm_t0 > 3000000) {
+                        s_wko.storm_t0 = nu;
+                        s_wko.storms = 0;
+                    }
+                    if (++s_wko.storms > 5) {
+                        s_wko.storms = 0;
+                        s_wk_anchor = INT64_MIN;
+                        printf("walker: snap storm - replay-resync"
+                               "\n");
+                    }
+                } else {
+                    s_wkf_ok++;
+                }
+                break;
+                /* P1 hook: on user input, invalidate ALL s_wkf and
+                   the owner recomputes short-lead references. */
+            }
+        }
         if (s_w_n > 1 && wk_i_own()) {
             int ns = (int)floorf((s_wk.x - wk_cam(ts)) / 64.0f);
             if (ns >= 0 && ns < (int)s_w_n && ns != (int)s_w_idx) {
@@ -1977,13 +1997,50 @@ static void pat_walker(int64_t t)
         if (s_w_n > 1) {
             bool talk = wk_i_own() || t < s_wko.grace_until;
             if (talk && (s_wko.burst ||
-                         t - s_wko.last_tx > 100000)) {
+                         t - s_wko.last_tx > 250000)) {
                 s_wko.last_tx = t;
                 if (s_wko.burst) s_wko.burst--;
-                whm_sync_wkb_send(s_wko.owner, s_wk.x,
-                                  (int8_t)lroundf(s_wk.y * 2.0f),
-                                  (uint8_t)s_wk.st, (int8_t)s_wk.dir,
-                                  (uint16_t)s_wk.timer, s_wk_steps);
+                /* SHADOW SIM: snapshot the COMPLETE sim state, run K
+                   future steps through the identical pure machinery
+                   (camera advanced per-step so the prediction rides
+                   the future camera), capture the promise, restore.
+                   Determinism makes clairvoyance free. */
+                uint32_t K = (whm_sync_lead_ms() * 2 * 1000)
+                             / (uint32_t)WK_TICK_US;
+                if (K < 6) K = 6;
+                if (K > 120) K = 120;
+                __typeof__(s_wk) save = s_wk;
+                uint32_t sv_steps = s_wk_steps;
+                uint8_t sv_draws = s_wk_draws;
+                int32_t sv_chunk = s_wk_last_chunk;
+                double sv_cam = s_cam_acc;
+                uint8_t sv_seen[sizeof(s_wk_seen)];
+                memcpy(sv_seen, s_wk_seen, sizeof(s_wk_seen));
+                uint8_t sv_wr = s_wk_seen_wr;
+                for (uint32_t k2 = 0; k2 < K; k2++) {
+                    s_wk_steps++;
+                    s_cam_acc += ((double)WK_TICK_US / 1e6) *
+                                 (double)WK_CAM_SPD *
+                                 (double)s_wk_scroll;
+                    int64_t fts = s_wk_anchor * WK_ANCHOR_US +
+                                  (int64_t)s_wk_steps * WK_TICK_US;
+                    wk_step(fts, n);
+                }
+                float fx = s_wk.x;
+                int8_t fy = (int8_t)lroundf(s_wk.y * 2.0f);
+                uint8_t fst = (uint8_t)s_wk.st;
+                int8_t fdir = (int8_t)s_wk.dir;
+                uint16_t ftm = (uint16_t)s_wk.timer;
+                uint32_t fstep = s_wk_steps;
+                s_wk = save;
+                s_wk_steps = sv_steps;
+                s_wk_draws = sv_draws;
+                s_wk_last_chunk = sv_chunk;
+                s_cam_acc = sv_cam;
+                memcpy(s_wk_seen, sv_seen, sizeof(s_wk_seen));
+                s_wk_seen_wr = sv_wr;
+                whm_sync_wkb_send(s_wko.owner, fx, fy, fst, fdir,
+                                  ftm, fstep);
             }
             if (!wk_i_own() && t - s_wko.rx_us > 1200000) {
                 int ns = (int)floorf((s_wk.x - cam) / 64.0f);

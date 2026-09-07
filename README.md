@@ -204,6 +204,18 @@ Hard-won laws, recorded so they never have to be re-learned:
 12. Twin functions eat blind patches. beep and chime share a tail;
     edits target by function span, verified per-tag, never by
     replace-first.
+13. A shared generator must be shared in step-time, not wall-time.
+    Wall-clock inputs make replay != continuous.
+14. Never mutate a deterministic replica. A nudged replica meets
+    every threshold at offset positions and diverges at walking
+    speed forever. Realign only by replay, or by complete-state
+    snap at exactly the step the state describes.
+15. Tell the future before it happens. A deterministic owner can
+    emit keyframes AHEAD of need (shadow sim, 2x the delivery
+    worst case); replicas verify at-step with zero evidence age.
+    Trailing telemetry is always a chase; leading telemetry is a
+    contract. User input invalidates the future - and that IS the
+    input architecture.
 
 The original stage-by-stage validation matrix and the whm_board.h
 provenance notes live in docs/BRINGUP.md.

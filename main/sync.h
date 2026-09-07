@@ -42,6 +42,7 @@ esp_err_t whm_sync_nye_send(const char *tz, uint16_t year,
 esp_err_t whm_sync_djb_send(bool playing, uint32_t rate, uint8_t ch,
                             const char *title);
 esp_err_t whm_sync_fleet_send_to(const char *target, const char *line);
+uint32_t  whm_sync_lead_ms(void);
 void      whm_sync_set_lead_ms(uint32_t ms);
 void      whm_sync_defer_line(const char *line, int64_t at);
 bool      whm_sync_pop_due(char *out, size_t olen);

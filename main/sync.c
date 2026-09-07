@@ -969,6 +969,8 @@ static uint32_t fleet_lead_us(void)
     return s_lead_us;
 }
 
+uint32_t whm_sync_lead_ms(void) { return fleet_lead_us() / 1000; }
+
 void whm_sync_set_lead_ms(uint32_t ms)
 {
     if (ms < 100) ms = 100;

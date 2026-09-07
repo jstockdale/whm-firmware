@@ -7,6 +7,8 @@ extern "C" {
 #endif
 
 float       whm_ui_walk_cam(void);
+void        whm_ui_walk_stats(uint32_t *ok, uint32_t *snap,
+                              uint32_t *stale);
 void        whm_ui_wkb_rx(uint8_t owner, float x, int8_t y,
                           uint8_t st, int8_t dir, uint16_t timer,
                           uint32_t step);
