@@ -1,4 +1,4 @@
-whm-bringup 0.31.3-phase0
-built: 2026-09-07 (r84: REFEREE MADE STABLE - the doubling-ladder storm (his log: -3 to +-1.2Mpx) was three interacting flaws: burst triplicates applied thrice (no dedupe after seq became step), ownership flip-flop from crossed stale claims (two mutual correctors = canonical x2 oscillator), unbounded deltas on garbage. Fixes: strictly-increasing evidence watermark, step-freshness ownership arbitration, liveness on every authentic beacon, corrections bounded (>32px adopts pose), and the storm circuit-breaker: >5 corrections in 3s mutes the referee for 10s of pure lockstep - the deterministic fallback tier, delivered)
+whm-bringup 0.31.4-phase0
+built: 2026-09-07 (r85: burst taxonomy + rollover hygiene - walker ownership bursts trimmed 3->2 (streams self-heal; x3 stays with deadline-racing control: cmd/NYE/DJ); adversarial review caught anchor-rollover deafness: step-keyed watermarks and the pose ring now clear at the shared window boundary, else the referee went deaf and ownership froze for a window after every 10-min rollover)
 idf: v5.5.2
 board: Waveshare ESP32-S3-RGB-Matrix | panel: ADA P2.5 64x64 1/32 HUB75E

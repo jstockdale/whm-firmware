@@ -1459,7 +1459,7 @@ void whm_ui_wkb_rx(uint8_t owner, float x, int8_t y, uint8_t st,
         bool was_me = wk_i_own();
         s_wko.owner = owner;
         if (!was_me && wk_i_own()) {
-            s_wko.burst = 3;
+            s_wko.burst = 2;
             printf("walker: adopted - I own strip %u now\n", s_w_idx);
         }
     }
@@ -1768,6 +1768,16 @@ static void pat_walker(int64_t t)
     if (anchor != s_wk_anchor) {
         s_wk_anchor = anchor;
         wk_respawn(anchor * WK_ANCHOR_US, n);
+        /* ANCHOR ROLLOVER HYGIENE: step numbers restart each window,
+           so old-window watermarks would reject every new beacon
+           (referee deaf, ownership frozen ~10 min) and stale ring
+           entries would false-compare on colliding small steps.
+           Clear all step-keyed state at the shared boundary - every
+           unit does this at the same anchor, symmetrically. */
+        s_wko.ev_step = 0;
+        s_wko.own_step = 0;
+        memset(s_wkr, 0, sizeof(s_wkr));
+        s_wkr_w = 0;
     }
     uint32_t want = (uint32_t)((t - s_wk_anchor * WK_ANCHOR_US)
                                / WK_TICK_US);
@@ -1795,7 +1805,7 @@ static void pat_walker(int64_t t)
             if (ns >= 0 && ns < (int)s_w_n && ns != (int)s_w_idx) {
                 s_wko.owner = (uint8_t)ns;      /* HANDOFF */
                 s_wko.own_step = s_wk_steps;
-                s_wko.burst = 3;
+                s_wko.burst = 2;
                 s_wko.grace_until = ts + 600000;
                 printf("walker: handoff -> strip %d\n", ns);
             }
@@ -1932,7 +1942,7 @@ static void pat_walker(int64_t t)
                 if (ns == (int)s_w_idx) {
                     s_wko.owner = s_w_idx;      /* SEIZE: owner gone */
                     s_wko.own_step = s_wk_steps;
-                    s_wko.burst = 3;
+                    s_wko.burst = 2;
                     s_wko.resync = 1;
                     printf("walker: owner silent - seizing (strip "
                            "%u)\n", s_w_idx);
