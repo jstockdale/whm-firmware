@@ -35,6 +35,9 @@
 #include "esp_console.h"
 #include "esp_random.h"
 #include "mp3_player.h"
+#ifndef WHM_VERSION_STR
+#define WHM_VERSION_STR "dev"
+#endif
 #include "ui.h"
 
 static void fleet_exec_task(void *arg);   /* defined with the queue */
@@ -455,7 +458,7 @@ static void recv_task(void *arg)
             my_name(me6, sizeof(me6));
             if (strcmp(w.from, me6) != 0) {
                 whm_ui_wkb_rx(w.owner, w.x, w.y, w.st, w.dir,
-                              w.timer, w.seq);
+                              w.timer, w.seq, w.tsf);
             }
             continue;
         }
@@ -1176,6 +1179,7 @@ bool whm_sync_life_edge(uint8_t peer_idx, uint8_t side, uint8_t *out64,
 
 void whm_sync_status_print(void)
 {
+    printf("fw:        %s (me)\n", WHM_VERSION_STR);
     printf("mode:      %s\n", s_smode == SM_SOFTAP ? "softap"
                               : s_smode == SM_AUTO ? "auto (elections)"
                                                    : "off");

@@ -1,4 +1,4 @@
-whm-bringup 0.34.1-phase0
-built: 2026-09-07 (r90: TRIAGE KIT - shadow clamped inside the anchor window; at-step SNAP dumps full pose + last-8 state transitions; hidden walk pure on|off strips rewards + ambient rituals for bisection. Ground-spawn symptom = replay-resync respawn; walk stats convict Door 1 (stale/mixed-fw) vs Door 2 (live impurity) in five seconds)
+whm-bringup 0.34.2-phase0
+built: 2026-09-07 (r91: FRESHNESS INVERSION FIX - doctrine-15 future steps made both directions of ownership claims maximally fresh, turning the anti-flip-flop into an amplifier (his 33-round seizure machine-gun = mutual-silence oscillation). Claims now rank by beacon TSF (already on the wire, globally ordered); demotion grants the same 600ms grace as handoff so mutual silence is structurally impossible; sync status prints MY fw so mixed-firmware benches can never hide)
 idf: v5.5.2
 board: Waveshare ESP32-S3-RGB-Matrix | panel: ADA P2.5 64x64 1/32 HUB75E

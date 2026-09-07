@@ -238,7 +238,9 @@ static struct {
     uint8_t owner;
     int64_t rx_us, last_tx, grace_until;
     uint8_t burst, resync;   /* resync: skip step-debt on gain */
-    uint32_t own_step;       /* freshness of accepted owner claim */
+    int64_t own_tsf;         /* claim rank: beacon TSF (doctrine 15
+                                made every step "future" - step-rank
+                                inverted into a flip-flop amplifier) */
     uint32_t ev_step;        /* evidence watermark (dedupe/order) */
     uint8_t storms;          /* corrections in window */
     int64_t storm_t0, mute_until;
@@ -1519,7 +1521,8 @@ float whm_ui_walk_cam(void) { return s_cam_acc; }
 
 
 void whm_ui_wkb_rx(uint8_t owner, float x, int8_t y, uint8_t st,
-                   int8_t dir, uint16_t timer, uint32_t step)
+                   int8_t dir, uint16_t timer, uint32_t step,
+                   int64_t btsf)
 {
     if (s_w_n <= 1 || owner >= s_w_n) return;
     int64_t nowu = esp_timer_get_time();
@@ -1529,10 +1532,17 @@ void whm_ui_wkb_rx(uint8_t owner, float x, int8_t y, uint8_t st,
        only from a NEWER step than the last accepted claim - crossed
        stale beacons can never resurrect a dead owner (the flip-flop
        that turned two correctors loose on each other). */
-    if (step > s_wko.own_step) {
-        s_wko.own_step = step;
+    if (btsf > s_wko.own_tsf) {
+        s_wko.own_tsf = btsf;
         bool was_me = wk_i_own();
         s_wko.owner = owner;
+        if (was_me && !wk_i_own()) {
+            /* DEMOTION GRACE: keep beaconing the NEW belief so two
+               units demoting each other can never form the mutual
+               silence that machine-gunned the seizure (33 in a row).
+               Silence windows are structurally impossible now. */
+            s_wko.grace_until = esp_timer_get_time() + 600000;
+        }
         if (!was_me && wk_i_own()) {
             s_wko.burst = 2;
             printf("walker: adopted - I own strip %u now\n", s_w_idx);
@@ -1823,7 +1833,7 @@ static void pat_walker(int64_t t)
            Clear all step-keyed state at the shared boundary - every
            unit does this at the same anchor, symmetrically. */
         s_wko.ev_step = 0;
-        s_wko.own_step = 0;
+        s_wko.own_tsf = 0;
         memset(s_wkf, 0, sizeof(s_wkf));
         s_wk_last_chunk = INT32_MIN;
     }
@@ -1899,7 +1909,7 @@ static void pat_walker(int64_t t)
             int ns = (int)floorf((s_wk.x - wk_cam(ts)) / 64.0f);
             if (ns >= 0 && ns < (int)s_w_n && ns != (int)s_w_idx) {
                 s_wko.owner = (uint8_t)ns;      /* HANDOFF */
-                s_wko.own_step = s_wk_steps;
+                s_wko.own_tsf = whm_wifi_tsf_now();
                 s_wko.burst = 2;
                 s_wko.grace_until = ts + 600000;
                 printf("walker: handoff -> strip %d\n", ns);
@@ -2084,7 +2094,7 @@ static void pat_walker(int64_t t)
                 int ns = (int)floorf((s_wk.x - cam) / 64.0f);
                 if (ns == (int)s_w_idx) {
                     s_wko.owner = s_w_idx;      /* SEIZE: owner gone */
-                    s_wko.own_step = s_wk_steps;
+                    s_wko.own_tsf = whm_wifi_tsf_now();
                     s_wko.burst = 2;
                     s_wko.resync = 1;
                     printf("walker: owner silent - seizing (strip "
