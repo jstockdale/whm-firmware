@@ -455,7 +455,7 @@ static void recv_task(void *arg)
             my_name(me6, sizeof(me6));
             if (strcmp(w.from, me6) != 0) {
                 whm_ui_wkb_rx(w.owner, w.x, w.y, w.st, w.dir,
-                              w.timer);
+                              w.timer, w.seq);
             }
             continue;
         }
@@ -978,7 +978,8 @@ void whm_sync_set_lead_ms(uint32_t ms)
 }
 
 esp_err_t whm_sync_wkb_send(uint8_t owner, float x, int8_t y,
-                            uint8_t st, int8_t dir, uint16_t timer)
+                            uint8_t st, int8_t dir, uint16_t timer,
+                            uint32_t step)
 {
     if (s_sock < 0) return ESP_ERR_INVALID_STATE;
     whm_wkb_t w = { 0 };
@@ -990,8 +991,7 @@ esp_err_t whm_sync_wkb_send(uint8_t owner, float x, int8_t y,
     w.dir = dir;
     w.y = y;
     w.timer = timer;
-    if (!s_cmd_seq) s_cmd_seq = esp_random() | 1;
-    w.seq = ++s_cmd_seq;
+    w.seq = step;                 /* seq REPURPOSED: step number */
     w.x = x;
     my_name(w.from, sizeof(w.from));
     w.tsf = whm_wifi_tsf_now();

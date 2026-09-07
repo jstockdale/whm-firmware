@@ -1,4 +1,4 @@
-whm-bringup 0.31.1-phase0
-built: 2026-09-07 (r82: SEAM CONSENSUS - follow-the-leader (10Hz beacon + DTIM = 1.5-4.5px lag at walking speed) replaced by LOCKSTEP REPLICAS: every unit simulates the TSF-anchored deterministic walker; the owners beacon is now a REFEREE - 1.5px dead-band ignores delivery jitter, beyond it the replica adopts and confesses drift in pixels. Zero-latency crossings by construction; nondeterminism becomes a named log line, not an artifact)
+whm-bringup 0.31.2-phase0
+built: 2026-09-07 (r83: EQUAL-STEP REFEREE - the corrector was poisoning correct replicas: state changes compared a live replica against a 10-300ms-stale beacon and adopted the past on every transition (the manufactured pixel lag). Beacons now carry the step number (seq repurposed, zero wire change); replicas keep a 40-pose ring and judge like-against-like at equal step; drift applies as a DELTA; latency cannot false-trigger. Seam falls and climbs inherit y in the same comparison.)
 idf: v5.5.2
 board: Waveshare ESP32-S3-RGB-Matrix | panel: ADA P2.5 64x64 1/32 HUB75E

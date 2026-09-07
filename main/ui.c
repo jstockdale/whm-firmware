@@ -239,6 +239,15 @@ static struct {
     int64_t rx_us, last_tx, grace_until;
     uint8_t burst, resync;   /* resync: skip step-debt on gain */
 } s_wko;
+/* EQUAL-STEP REFEREE: compare poses at the SAME step number, not the
+ * same wall moment - a beacon is 10-300ms old, and judging a live
+ * replica against stale evidence poisoned it at every state change
+ * (adopting the past = manufacturing the very lag we hunted). Ring
+ * of recent own poses keyed by step; corrections apply as DELTAS. */
+#define WKR_N 40
+static struct { uint32_t step; float x; int8_t y; uint8_t st; }
+    s_wkr[WKR_N];
+static uint8_t s_wkr_w;
 static bool wk_i_own(void)
 {
     return s_w_n <= 1 || s_wko.owner == s_w_idx;
@@ -1431,7 +1440,7 @@ float whm_ui_walk_cam(void) { return s_cam_acc; }
 
 
 void whm_ui_wkb_rx(uint8_t owner, float x, int8_t y, uint8_t st,
-                   int8_t dir, uint16_t timer)
+                   int8_t dir, uint16_t timer, uint32_t step)
 {
     if (s_w_n <= 1 || owner >= s_w_n) return;
     bool was_me = wk_i_own();
@@ -1444,24 +1453,34 @@ void whm_ui_wkb_rx(uint8_t owner, float x, int8_t y, uint8_t st,
         }
         return;                 /* owner never corrects to itself */
     }
-    /* CONSENSUS REFEREE: both units run identical lockstep replicas
-       (TSF-anchored steps, hash-pure decisions) - the beacon only
-       CORRECTS. Dead-band 1.5px: delivery jitter must never wiggle
-       him. Beyond it: adopt and CONFESS - any print here names real
-       nondeterminism to hunt, instead of becoming a seam artifact. */
-    float dx = x - s_wk.x;
-    if (dx > 1.5f || dx < -1.5f || st != (uint8_t)s_wk.st) {
-        if (dx > 1.5f || dx < -1.5f) {
-            printf("walker: drift %.2fpx corrected (replica "
-                   "diverged)\n", (double)dx);
+    /* EQUAL-STEP comparison: find MY pose at the beacon's step and
+       judge like against like. Latency cannot false-trigger; a hit
+       here is real nondeterminism, corrected as a DELTA (the offset
+       persists into the present) and confessed with the step. */
+    for (int i = 0; i < WKR_N; i++) {
+        if (s_wkr[i].step != step) continue;
+        float dx = x - s_wkr[i].x;
+        int dyv = (int)y - (int)s_wkr[i].y;
+        if (st != s_wkr[i].st) {
+            printf("walker: state fork at step %lu (%u vs %u) - "
+                   "adopting owner\n", (unsigned long)step,
+                   (unsigned)st, (unsigned)s_wkr[i].st);
+            s_wk.x = x + (s_wk.x - s_wkr[i].x);
+            s_wk.y = (float)y;
+            s_wk.st = st;
+            s_wk.dir = dir;
+            s_wk.timer = timer;
+            s_wko.resync = 1;
+        } else if (dx > 0.75f || dx < -0.75f || dyv > 1 ||
+                   dyv < -1) {
+            printf("walker: drift %.2fpx @step %lu corrected "
+                   "(delta)\n", (double)dx, (unsigned long)step);
+            s_wk.x += dx;
+            s_wk.y += (float)dyv;
         }
-        s_wk.x = x;
-        s_wk.y = (float)y;
-        s_wk.st = st;
-        s_wk.dir = dir;
-        s_wk.timer = timer;
-        s_wko.resync = 1;       /* replay debt forgiven on snap */
+        return;
     }
+    /* step not in ring (beacon older than ~660ms): no judgment */
 }
 
 void whm_ui_walk_speed(float v)
@@ -1733,6 +1752,11 @@ static void pat_walker(int64_t t)
             s_wk.tgt = wk_cam(ts) + (float)n * 64.0f;  /* right edge */
         }
         wk_step(ts, n);
+        s_wkr[s_wkr_w].step = s_wk_steps;
+        s_wkr[s_wkr_w].x = s_wk.x;
+        s_wkr[s_wkr_w].y = (int8_t)lroundf(s_wk.y);
+        s_wkr[s_wkr_w].st = (uint8_t)s_wk.st;
+        s_wkr_w = (uint8_t)((s_wkr_w + 1) % WKR_N);
         if (s_w_n > 1 && wk_i_own()) {
             int ns = (int)floorf((s_wk.x - wk_cam(ts)) / 64.0f);
             if (ns >= 0 && ns < (int)s_w_n && ns != (int)s_w_idx) {
@@ -1867,7 +1891,7 @@ static void pat_walker(int64_t t)
                 whm_sync_wkb_send(s_wko.owner, s_wk.x,
                                   (int8_t)lroundf(s_wk.y),
                                   (uint8_t)s_wk.st, (int8_t)s_wk.dir,
-                                  (uint16_t)s_wk.timer);
+                                  (uint16_t)s_wk.timer, s_wk_steps);
             }
             if (!wk_i_own() && t - s_wko.rx_us > 1200000) {
                 int ns = (int)floorf((s_wk.x - cam) / 64.0f);
