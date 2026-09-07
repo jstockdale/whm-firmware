@@ -1524,54 +1524,38 @@ void whm_ui_wkb_rx(uint8_t owner, float x, int8_t y, uint8_t st,
         if (s_wkr[i].step != step) continue;
         float dx = x - s_wkr[i].x;
         int dyv = (int)y - (int)s_wkr[i].y;   /* both half-px units */
-        bool corrected = false;
+        /* ALARM-ONLY REFEREE (doctrine 14): never mutate a
+           deterministic replica - a nudged replica meets every edge
+           and threshold at offset positions and diverges at walking
+           speed forever (the 306-step storm periodicity proved it).
+           Measure, print, count. Realignment happens ONLY by
+           replay-resync: provably exact, because pure replays of the
+           same anchor are bit-identical on every unit. */
+        bool anomaly = false;
         if (st != s_wkr[i].st || dx > 32.0f || dx < -32.0f) {
-            uint16_t crc = 0;
-            for (int q = 0; q < WK_SEEN_N; q++) {
-                crc = (uint16_t)(crc * 31 +
-                                 (uint16_t)s_wk_seen[q].key +
-                                 s_wk_seen[q].visits);
-            }
-            printf("walker: %s at step %lu (%u vs mine %u, "
-                   "seen-crc %04x) - adopting owner pose\n",
-                   st != s_wkr[i].st ? "state fork" : "large drift",
+            printf("walker: ALARM %s at step %lu (%u vs mine %u)\n",
+                   st != s_wkr[i].st ? "state-fork" : "large-drift",
                    (unsigned long)step, (unsigned)st,
-                   (unsigned)s_wkr[i].st, (unsigned)crc);
-            s_wk.x = x;
-            s_wk.y = (float)y * 0.5f;   /* wire y is half-pixel */
-            s_wk.st = st;
-            s_wk.dir = dir;
-            s_wk.timer = timer;
-            s_wko.resync = 1;
-            /* POST-ADOPT HYGIENE: ring entries recorded before this
-               adoption describe the abandoned trajectory - the next
-               beacons would re-judge against them and re-adopt (the
-               x3 echo at 16009/12/15). Invalidate history; only
-               post-adoption evidence counts. */
-            memset(s_wkr, 0, sizeof(s_wkr));
-            s_wkr_w = 0;
-            s_wko.ev_step = s_wk_steps;
-            corrected = true;
+                   (unsigned)s_wkr[i].st);
+            anomaly = true;
         } else if (dx > 0.75f || dx < -0.75f || dyv > 1 ||
                    dyv < -1) {
-            printf("walker: drift %.2fpx @step %lu corrected "
-                   "(delta)\n", (double)dx, (unsigned long)step);
-            s_wk.x += dx;
-            s_wk.y += (float)dyv * 0.5f;
-            corrected = true;
+            printf("walker: ALARM drift %.2fpx @step %lu "
+                   "(telemetry only)\n", (double)dx,
+                   (unsigned long)step);
+            anomaly = true;
         }
-        if (corrected) {         /* STORM BREAKER: >5 in 3s means a
-                                    bug is fighting us - fall back to
-                                    pure lockstep and stay sane */
+        if (anomaly) {
             if (nowu - s_wko.storm_t0 > 3000000) {
                 s_wko.storm_t0 = nowu;
                 s_wko.storms = 0;
             }
             if (++s_wko.storms > 5) {
-                s_wko.mute_until = nowu + 10000000;
                 s_wko.storms = 0;
-                printf("walker: referee storm - pure lockstep for "
-                       "10s (corrections muted)\n");
+                s_wko.mute_until = nowu + 3000000;
+                s_wk_anchor = INT64_MIN;   /* REPLAY-RESYNC */
+                printf("walker: replay-resync (deterministic "
+                       "rebuild from anchor)\n");
             }
         }
         return;
@@ -2359,6 +2343,12 @@ bool whm_ui_pattern_set(const char *name)
             s_mode = (i == P_CYCLE) ? M_PAT_CYCLE : M_PAT_HOLD;
             s_gen++;
             ESP_LOGI(TAG, "pattern -> %s", name);
+    if (s_pattern == P_WALKER) {
+        /* ENTRY = REPLAY POINT (doctrine 14): a resuming unit and a
+           fresh one must rebuild identically. Force respawn + full
+           catch-up from the shared anchor on every entry. */
+        s_wk_anchor = INT64_MIN;
+    }
             return true;
         }
     }
