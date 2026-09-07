@@ -604,9 +604,23 @@ static void wk_respawn(int64_t t, uint8_t n)
     s_wk_seen_wr = 0;
 }
 
+static int32_t s_wk_last_chunk = INT32_MIN;
+
 static void wk_step(int64_t t, uint8_t n)
 {
     s_wk_draws = 0;              /* pure RNG: draw# restarts per step */
+    /* STEP-TIME GENERATOR (doctrine 13): reward marks are a pure
+       function of the trajectory - one mark per chunk ENTRY, inside
+       the step, so a late entrant's replay produces the identical
+       seen[] a continuous runner built. The 0.32.0 wall-clock beacon
+       marks made replay != continuous: the -21px entry drift. */
+    {
+        int32_t ch = (int32_t)floorf(s_wk.x / 64.0f);
+        if (ch != s_wk_last_chunk) {
+            s_wk_last_chunk = ch;
+            wk_mark(ch);
+        }
+    }
     float center = wk_cam(t) + (float)n * 32.0f;
     switch (s_wk.st) {
     case WK_WALK: {
@@ -1501,7 +1515,6 @@ void whm_ui_wkb_rx(uint8_t owner, float x, int8_t y, uint8_t st,
        triplicates and reordered delivery apply exactly once. */
     if (step <= s_wko.ev_step) return;
     s_wko.ev_step = step;
-    wk_mark((int32_t)floorf(x / 64.0f));   /* shared generator */
     if (nowu < s_wko.mute_until) return;   /* breaker: lockstep only */
     /* EQUAL-STEP comparison: find MY pose at the beacon's step and
        judge like against like. Latency cannot false-trigger; a hit
@@ -1530,6 +1543,14 @@ void whm_ui_wkb_rx(uint8_t owner, float x, int8_t y, uint8_t st,
             s_wk.dir = dir;
             s_wk.timer = timer;
             s_wko.resync = 1;
+            /* POST-ADOPT HYGIENE: ring entries recorded before this
+               adoption describe the abandoned trajectory - the next
+               beacons would re-judge against them and re-adopt (the
+               x3 echo at 16009/12/15). Invalidate history; only
+               post-adoption evidence counts. */
+            memset(s_wkr, 0, sizeof(s_wkr));
+            s_wkr_w = 0;
+            s_wko.ev_step = s_wk_steps;
             corrected = true;
         } else if (dx > 0.75f || dx < -0.75f || dyv > 1 ||
                    dyv < -1) {
@@ -1820,6 +1841,7 @@ static void pat_walker(int64_t t)
         s_wko.own_step = 0;
         memset(s_wkr, 0, sizeof(s_wkr));
         s_wkr_w = 0;
+        s_wk_last_chunk = INT32_MIN;
     }
     uint32_t want = (uint32_t)((t - s_wk_anchor * WK_ANCHOR_US)
                                / WK_TICK_US);
@@ -1968,25 +1990,12 @@ static void pat_walker(int64_t t)
     }
     if (wlx >= -6 && wlx <= 70) {
         wk_sprite(wlx, (int)lroundf(s_wk.y), t);
-        if (s_w_n <= 1) {
-            static int64_t solo_mark;
-            if (t - solo_mark > 100000) {
-                solo_mark = t;
-                wk_mark((int32_t)floorf(s_wk.x / 64.0f));
-            }
-        }
         if (s_w_n > 1) {
             bool talk = wk_i_own() || t < s_wko.grace_until;
             if (talk && (s_wko.burst ||
                          t - s_wko.last_tx > 100000)) {
                 s_wko.last_tx = t;
                 if (s_wko.burst) s_wko.burst--;
-                wk_mark((int32_t)floorf(s_wk.x / 64.0f));
-                /* GENERATOR-SHARED reward memory: every unit marks
-                   the SAME (step,chunk) sequence - owner at tx, the
-                   rest at rx - so seen[] is bit-identical everywhere
-                   and immune to fork-adoptions (which heal pose but
-                   never healed memory: the adoption cascade). */
                 whm_sync_wkb_send(s_wko.owner, s_wk.x,
                                   (int8_t)lroundf(s_wk.y * 2.0f),
                                   (uint8_t)s_wk.st, (int8_t)s_wk.dir,
