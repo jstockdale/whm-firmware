@@ -238,6 +238,10 @@ static struct {
     uint8_t owner;
     int64_t rx_us, last_tx, grace_until;
     uint8_t burst, resync;   /* resync: skip step-debt on gain */
+    uint32_t own_step;       /* freshness of accepted owner claim */
+    uint32_t ev_step;        /* evidence watermark (dedupe/order) */
+    uint8_t storms;          /* corrections in window */
+    int64_t storm_t0, mute_until;
 } s_wko;
 /* EQUAL-STEP REFEREE: compare poses at the SAME step number, not the
  * same wall moment - a beacon is 10-300ms old, and judging a live
@@ -1443,16 +1447,28 @@ void whm_ui_wkb_rx(uint8_t owner, float x, int8_t y, uint8_t st,
                    int8_t dir, uint16_t timer, uint32_t step)
 {
     if (s_w_n <= 1 || owner >= s_w_n) return;
-    bool was_me = wk_i_own();
-    s_wko.owner = owner;
-    s_wko.rx_us = esp_timer_get_time();
-    if (wk_i_own()) {
-        if (!was_me) {
+    int64_t nowu = esp_timer_get_time();
+    s_wko.rx_us = nowu;          /* ANY authentic beacon = owner alive
+                                    (liveness before all filtering) */
+    /* OWNERSHIP ARBITRATION by step-freshness: a claim is accepted
+       only from a NEWER step than the last accepted claim - crossed
+       stale beacons can never resurrect a dead owner (the flip-flop
+       that turned two correctors loose on each other). */
+    if (step > s_wko.own_step) {
+        s_wko.own_step = step;
+        bool was_me = wk_i_own();
+        s_wko.owner = owner;
+        if (!was_me && wk_i_own()) {
             s_wko.burst = 3;
             printf("walker: adopted - I own strip %u now\n", s_w_idx);
         }
-        return;                 /* owner never corrects to itself */
     }
+    if (wk_i_own()) return;      /* owner never corrects to itself */
+    /* EVIDENCE WATERMARK: strictly increasing step - burst
+       triplicates and reordered delivery apply exactly once. */
+    if (step <= s_wko.ev_step) return;
+    s_wko.ev_step = step;
+    if (nowu < s_wko.mute_until) return;   /* breaker: lockstep only */
     /* EQUAL-STEP comparison: find MY pose at the beacon's step and
        judge like against like. Latency cannot false-trigger; a hit
        here is real nondeterminism, corrected as a DELTA (the offset
@@ -1461,22 +1477,39 @@ void whm_ui_wkb_rx(uint8_t owner, float x, int8_t y, uint8_t st,
         if (s_wkr[i].step != step) continue;
         float dx = x - s_wkr[i].x;
         int dyv = (int)y - (int)s_wkr[i].y;
-        if (st != s_wkr[i].st) {
-            printf("walker: state fork at step %lu (%u vs %u) - "
-                   "adopting owner\n", (unsigned long)step,
-                   (unsigned)st, (unsigned)s_wkr[i].st);
-            s_wk.x = x + (s_wk.x - s_wkr[i].x);
+        bool corrected = false;
+        if (st != s_wkr[i].st || dx > 32.0f || dx < -32.0f) {
+            printf("walker: %s at step %lu - adopting owner pose\n",
+                   st != s_wkr[i].st ? "state fork" : "large drift",
+                   (unsigned long)step);
+            s_wk.x = x;
             s_wk.y = (float)y;
             s_wk.st = st;
             s_wk.dir = dir;
             s_wk.timer = timer;
             s_wko.resync = 1;
+            corrected = true;
         } else if (dx > 0.75f || dx < -0.75f || dyv > 1 ||
                    dyv < -1) {
             printf("walker: drift %.2fpx @step %lu corrected "
                    "(delta)\n", (double)dx, (unsigned long)step);
             s_wk.x += dx;
             s_wk.y += (float)dyv;
+            corrected = true;
+        }
+        if (corrected) {         /* STORM BREAKER: >5 in 3s means a
+                                    bug is fighting us - fall back to
+                                    pure lockstep and stay sane */
+            if (nowu - s_wko.storm_t0 > 3000000) {
+                s_wko.storm_t0 = nowu;
+                s_wko.storms = 0;
+            }
+            if (++s_wko.storms > 5) {
+                s_wko.mute_until = nowu + 10000000;
+                s_wko.storms = 0;
+                printf("walker: referee storm - pure lockstep for "
+                       "10s (corrections muted)\n");
+            }
         }
         return;
     }
@@ -1761,6 +1794,7 @@ static void pat_walker(int64_t t)
             int ns = (int)floorf((s_wk.x - wk_cam(ts)) / 64.0f);
             if (ns >= 0 && ns < (int)s_w_n && ns != (int)s_w_idx) {
                 s_wko.owner = (uint8_t)ns;      /* HANDOFF */
+                s_wko.own_step = s_wk_steps;
                 s_wko.burst = 3;
                 s_wko.grace_until = ts + 600000;
                 printf("walker: handoff -> strip %d\n", ns);
@@ -1897,6 +1931,7 @@ static void pat_walker(int64_t t)
                 int ns = (int)floorf((s_wk.x - cam) / 64.0f);
                 if (ns == (int)s_w_idx) {
                     s_wko.owner = s_w_idx;      /* SEIZE: owner gone */
+                    s_wko.own_step = s_wk_steps;
                     s_wko.burst = 3;
                     s_wko.resync = 1;
                     printf("walker: owner silent - seizing (strip "
