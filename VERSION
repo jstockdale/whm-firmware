@@ -1,4 +1,4 @@
-whm-bringup 0.31.4-phase0
-built: 2026-09-07 (r85: burst taxonomy + rollover hygiene - walker ownership bursts trimmed 3->2 (streams self-heal; x3 stays with deadline-racing control: cmd/NYE/DJ); adversarial review caught anchor-rollover deafness: step-keyed watermarks and the pose ring now clear at the shared window boundary, else the referee went deaf and ownership froze for a window after every 10-min rollover)
+whm-bringup 0.32.0-phase0
+built: 2026-09-07 (r86: STATE DEEP-DIVE - generator-shared reward memory (seen[] marked on the beacon stream itself: owner at tx, replicas at rx, bit-identical everywhere and adoption-immune; audit found the old marker had ZERO callers - rewards work for the first time); nightly ritual is now a fleet mini-takeover (type-7 year=0, TSF-locked 25s script) killing the local-clock st-forcing that hard-forked replicas across timezones; wire y gains half-pixel precision (the int8 rounding flattened jump arcs on every airborne adoption - the drift-0.00 vertical forker); fork confessions carry state pair + seen-crc)
 idf: v5.5.2
 board: Waveshare ESP32-S3-RGB-Matrix | panel: ADA P2.5 64x64 1/32 HUB75E

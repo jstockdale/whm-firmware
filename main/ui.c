@@ -1154,12 +1154,16 @@ static void fw_tick(int64_t t)
             whm_ui_nye_join("", lbl, s_show.year, tsf0);
             s_show.initiator = 1;
             whm_sync_nye_send(lbl, (uint16_t)s_show.year, tsf0);
-        } else if (sod >= mid - 12 && sod < mid - 2) {
-            s_show.phase = 1;
-            s_show.year = lt.tm_year + 1900 + 1;
-            s_show.seed = (uint32_t)(s_show.year * 977 + lt.tm_yday);
-            s_fw_hold = true;
-            if (s_wk.st < WK_GOCHAIR) s_wk.st = WK_GOCHAIR;
+        } else if (sod >= mid - 22 && sod < mid - 12) {
+            /* NIGHTLY = fleet mini-takeover (year 0): local-clock
+               st-forcing hard-forked replicas across timezones every
+               midnight; now ONE initiator broadcasts and every
+               replica runs the identical TSF-locked 25 s script. */
+            int64_t tsf0 = whm_wifi_tsf_now() -
+                           (int64_t)(sod - (mid - 20)) * 1000000LL;
+            whm_ui_nye_join("", "", 0, tsf0);
+            s_show.initiator = 1;
+            whm_sync_nye_send("", 0, tsf0);
         }
         break;
     case 1:
@@ -1213,6 +1217,34 @@ static void fw_tick(int64_t t)
             s_show.ms_in += dt * (s_show.fast ? 10 : 1);
         }
         int32_t ms = s_show.ms_in;
+        if (s_show.year == 0) {             /* NIGHTLY mini-script */
+            if (ms >= 2000 && s_wk.st < WK_GOCHAIR) {
+                s_fw_hold = true;
+                s_wk.st = WK_GOCHAIR;
+            }
+            uint32_t st2 = s_show.seed + (uint32_t)(ms / 1400);
+            if (ms >= 8000 && ms < 18000 &&
+                ms - s_show.last_launch_ms >
+                    (int32_t)(900 + fw_rnd(&st2) % 700)) {
+                s_show.last_launch_ms = ms;
+                uint8_t r, g, b;
+                fw_pal(&st2, &r, &g, &b);
+                fw_launch(8.0f + (float)(fw_rnd(&st2) % 48u),
+                          (int)(fw_rnd(&st2) % 3u), r, g, b,
+                          (float)(fw_rnd(&st2) % 8u));
+            }
+            if (s_show.initiator && !s_show.test &&
+                t - s_show.last_ann > 5000000LL) {
+                s_show.last_ann = t;
+                whm_sync_nye_send("", 0, s_show.start_tsf);
+            }
+            fw_step(dt);
+            if (ms > 25000) {
+                s_show.phase = 3;
+                s_show.ms_in = 0;
+            }
+            break;
+        }
         if (s_show.initiator && !s_show.test &&
             t - s_show.last_ann > 5000000LL) {
             s_show.last_ann = t;
@@ -1380,9 +1412,10 @@ void whm_ui_nye_join(const char *from, const char *tz, int year,
     s_show.nye = 1;
     s_show.test = keep_test ? 1 : 0;
     s_show.start_tsf = start_tsf;
-    s_show.year = year;
+    s_show.year = year;                 /* year 0 = the NIGHTLY */
     strlcpy(s_show.tz, tz && tz[0] ? tz : "LOCAL", sizeof(s_show.tz));
-    s_show.seed = (uint32_t)year * 2654435761u;
+    s_show.seed = year ? (uint32_t)year * 2654435761u
+                       : (uint32_t)(start_tsf / 86400000000LL) * 977u;
     int64_t el = whm_wifi_tsf_now() - start_tsf;
     float cam_t0 = wk_cam(esp_timer_get_time()) -
                    (float)((double)el / 1e6) * WK_CAM_SPD;
@@ -1468,6 +1501,7 @@ void whm_ui_wkb_rx(uint8_t owner, float x, int8_t y, uint8_t st,
        triplicates and reordered delivery apply exactly once. */
     if (step <= s_wko.ev_step) return;
     s_wko.ev_step = step;
+    wk_mark((int32_t)floorf(x / 64.0f));   /* shared generator */
     if (nowu < s_wko.mute_until) return;   /* breaker: lockstep only */
     /* EQUAL-STEP comparison: find MY pose at the beacon's step and
        judge like against like. Latency cannot false-trigger; a hit
@@ -1476,14 +1510,22 @@ void whm_ui_wkb_rx(uint8_t owner, float x, int8_t y, uint8_t st,
     for (int i = 0; i < WKR_N; i++) {
         if (s_wkr[i].step != step) continue;
         float dx = x - s_wkr[i].x;
-        int dyv = (int)y - (int)s_wkr[i].y;
+        int dyv = (int)y - (int)s_wkr[i].y;   /* both half-px units */
         bool corrected = false;
         if (st != s_wkr[i].st || dx > 32.0f || dx < -32.0f) {
-            printf("walker: %s at step %lu - adopting owner pose\n",
+            uint16_t crc = 0;
+            for (int q = 0; q < WK_SEEN_N; q++) {
+                crc = (uint16_t)(crc * 31 +
+                                 (uint16_t)s_wk_seen[q].key +
+                                 s_wk_seen[q].visits);
+            }
+            printf("walker: %s at step %lu (%u vs mine %u, "
+                   "seen-crc %04x) - adopting owner pose\n",
                    st != s_wkr[i].st ? "state fork" : "large drift",
-                   (unsigned long)step);
+                   (unsigned long)step, (unsigned)st,
+                   (unsigned)s_wkr[i].st, (unsigned)crc);
             s_wk.x = x;
-            s_wk.y = (float)y;
+            s_wk.y = (float)y * 0.5f;   /* wire y is half-pixel */
             s_wk.st = st;
             s_wk.dir = dir;
             s_wk.timer = timer;
@@ -1494,7 +1536,7 @@ void whm_ui_wkb_rx(uint8_t owner, float x, int8_t y, uint8_t st,
             printf("walker: drift %.2fpx @step %lu corrected "
                    "(delta)\n", (double)dx, (unsigned long)step);
             s_wk.x += dx;
-            s_wk.y += (float)dyv;
+            s_wk.y += (float)dyv * 0.5f;
             corrected = true;
         }
         if (corrected) {         /* STORM BREAKER: >5 in 3s means a
@@ -1544,10 +1586,10 @@ void whm_ui_fw_test(int mode, int fast)   /* hidden: 'fw' console */
     s_fwdn = 0;
     s_show.scene_x0 = -1.0f;
     if (mode == 0) { s_fw_hold = false; s_wk_tgt_scroll = 1.0f; return; }
-    struct tm lt;
-    s_show.year = wall_now(&lt, NULL) ? lt.tm_year + 1901 : 2027;
+    /* mode 1: nightly = the same fleet script (year 0), local-only */
     s_show.test = 1;
-    s_show.t0 = esp_timer_get_time();
+    whm_ui_nye_join("", "TEST", 0, whm_wifi_tsf_now());
+    s_show.test = 1;
 }
 
 /* CORRECTED PARALLAX: distant layers scroll at k*cam only - the old
@@ -1797,7 +1839,7 @@ static void pat_walker(int64_t t)
         wk_step(ts, n);
         s_wkr[s_wkr_w].step = s_wk_steps;
         s_wkr[s_wkr_w].x = s_wk.x;
-        s_wkr[s_wkr_w].y = (int8_t)lroundf(s_wk.y);
+        s_wkr[s_wkr_w].y = (int8_t)lroundf(s_wk.y * 2.0f);
         s_wkr[s_wkr_w].st = (uint8_t)s_wk.st;
         s_wkr_w = (uint8_t)((s_wkr_w + 1) % WKR_N);
         if (s_w_n > 1 && wk_i_own()) {
@@ -1926,14 +1968,27 @@ static void pat_walker(int64_t t)
     }
     if (wlx >= -6 && wlx <= 70) {
         wk_sprite(wlx, (int)lroundf(s_wk.y), t);
+        if (s_w_n <= 1) {
+            static int64_t solo_mark;
+            if (t - solo_mark > 100000) {
+                solo_mark = t;
+                wk_mark((int32_t)floorf(s_wk.x / 64.0f));
+            }
+        }
         if (s_w_n > 1) {
             bool talk = wk_i_own() || t < s_wko.grace_until;
             if (talk && (s_wko.burst ||
                          t - s_wko.last_tx > 100000)) {
                 s_wko.last_tx = t;
                 if (s_wko.burst) s_wko.burst--;
+                wk_mark((int32_t)floorf(s_wk.x / 64.0f));
+                /* GENERATOR-SHARED reward memory: every unit marks
+                   the SAME (step,chunk) sequence - owner at tx, the
+                   rest at rx - so seen[] is bit-identical everywhere
+                   and immune to fork-adoptions (which heal pose but
+                   never healed memory: the adoption cascade). */
                 whm_sync_wkb_send(s_wko.owner, s_wk.x,
-                                  (int8_t)lroundf(s_wk.y),
+                                  (int8_t)lroundf(s_wk.y * 2.0f),
                                   (uint8_t)s_wk.st, (int8_t)s_wk.dir,
                                   (uint16_t)s_wk.timer, s_wk_steps);
             }
