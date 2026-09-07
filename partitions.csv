@@ -1,0 +1,10 @@
+# WHM partition layout for 32MB flash (ESP32-S3-N32R16)
+# OTA-ready from day one: two 3MB app slots + 8MB FAT for web assets/config.
+# ~18MB left unallocated for future use (baked media cache, coredumps, etc).
+# Name,     Type, SubType,  Offset,   Size
+nvs,        data, nvs,      0x9000,   0x6000
+phy_init,   data, phy,      0xF000,   0x1000
+otadata,    data, ota,      0x10000,  0x2000
+ota_0,      app,  ota_0,    0x20000,  0x300000
+ota_1,      app,  ota_1,    0x320000, 0x300000
+storage,    data, fat,      0x620000, 0x800000

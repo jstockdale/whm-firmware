@@ -1,0 +1,47 @@
+# WHM bring-up firmware defaults for ESP32-S3-RGB-Matrix (Waveshare, ESP32-S3-N32R16)
+
+# ---- CPU / Flash ----
+# Flash mode/freq/size match Waveshare's shipped firmware image header (DOUT, 80MHz, 32MB).
+# DOUT is conservative but universally safe on this module; revisit later if flash
+# throughput ever matters (it should not: hot data lives in PSRAM).
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
+CONFIG_ESPTOOLPY_FLASHSIZE_32MB=y
+CONFIG_ESPTOOLPY_FLASHMODE_DOUT=y
+CONFIG_ESPTOOLPY_FLASHFREQ_80M=y
+
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+
+# ---- PSRAM: 16MB Octal ----
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_OCT=y
+CONFIG_SPIRAM_SPEED_80M=y
+# Keep small allocations in internal RAM (DMA descriptors, stacks, wifi buffers).
+CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=8192
+CONFIG_SPIRAM_MALLOC_RESERVE_INTERNAL=65536
+
+# ---- FATFS (SD card): long filenames on heap ----
+CONFIG_FATFS_LFN_HEAP=y
+CONFIG_FATFS_MAX_LFN=255
+
+# ---- esp-hub75 driver internals (compile-time knobs not exposed in Hub75Config) ----
+# Pins, panel geometry, shift driver etc. are set IN CODE from whm_board.h; the
+# corresponding CONFIG_HUB75_PIN_* defaults are unused. Only these matter:
+CONFIG_HUB75_BIT_DEPTH_8=y
+# Linear gamma for bring-up test patterns (predictable ramps for banding checks).
+# Production media pipeline will revisit (driver also offers CIE1931).
+CONFIG_HUB75_GAMMA_LINEAR=y
+CONFIG_HUB75_IRAM_OPTIMIZATION=y
+
+# ---- WiFi: no power save (TSF accuracy + streaming latency) is set at runtime ----
+CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM=8
+CONFIG_ESP_WIFI_DYNAMIC_RX_BUFFER_NUM=24
+
+# ---- Logging ----
+CONFIG_LOG_DEFAULT_LEVEL_INFO=y
+
+# ---- Main task runs the staged bring-up (SD bench, audio test) directly ----
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
+
+# ---- Console on native USB-Serial-JTAG (UART0 pins 43/44 are I2S/SD here!) ----
+CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y

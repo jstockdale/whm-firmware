@@ -1,0 +1,41 @@
+menu "WHM Bring-up Configuration"
+
+    config WHM_WIFI_SSID
+        string "WiFi SSID (STA mode; leave empty for SoftAP mode)"
+        default ""
+        help
+            If set, the board joins this network as a station and its TSF
+            clock disciplines to that AP's beacons. If empty, the board
+            starts its own SoftAP (see WHM_SOFTAP_SSID) and becomes the
+            beacon source - the off-grid conductor topology.
+
+    config WHM_WIFI_PASSWORD
+        string "WiFi password (STA mode)"
+        default ""
+
+    config WHM_SOFTAP_SSID
+        string "SoftAP SSID (used when WHM_WIFI_SSID is empty)"
+        default "WHM-BRINGUP"
+
+    config WHM_SOFTAP_PASSWORD
+        string "SoftAP password (>= 8 chars for WPA2, empty for open)"
+        default "whitehat-matrix"
+
+    config WHM_RUN_AUDIO_TEST
+        bool "Run speaker tone + microphone RMS test at boot"
+        default y
+        help
+            Plays a 1kHz burst through the ES8311/speaker path and captures
+            1s from the ES7210 dual mics, logging per-channel RMS and peak.
+            Disable if no speaker is connected and you want a quiet bench.
+
+    config WHM_TEST_BRIGHTNESS
+        int "Display test brightness (0-255)"
+        range 10 255
+        default 100
+        help
+            Applied at display init. The solid-white pattern at 255 can pull
+            ~4A on a 64x64 P2.5 panel; 100 keeps bring-up polite to small
+            bench supplies. Raise once your power budget is verified.
+
+endmenu

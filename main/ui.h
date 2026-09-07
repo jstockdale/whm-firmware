@@ -1,0 +1,68 @@
+#pragma once
+#include <stdbool.h>
+#include <stdint.h>
+#include "esp_err.h"
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+float       whm_ui_walk_cam(void);
+void        whm_ui_wkb_rx(uint8_t owner, float x, int8_t y,
+                          uint8_t st, int8_t dir, uint16_t timer);
+void        whm_ui_walk_speed(float v);
+void        whm_ui_walk_speed_get(float *cur, float *tgt);
+void        whm_ui_nye_join(const char *from, const char *tz,
+                            int year, int64_t start_tsf);
+void        whm_ui_fw_test(int mode, int fast);
+void        whm_ui_task(void *arg);
+
+/* "auto" resumes rotation, "next" advances, or a screen name to hold */
+bool        whm_ui_screen_set(const char *name);
+const char *whm_ui_screen_names(void);
+
+/* console `text` payload; BOOT button or screen commands exit */
+void        whm_ui_show_text(const char *msg);
+void        whm_ui_text_cfg(bool span, uint8_t size, uint8_t scroll,
+                            uint16_t speed);
+void        whm_ui_text_clear(void);          /* resume prior screen */
+void        whm_ui_overlay(const char *msg, bool span, uint8_t size,
+                           uint8_t scroll, uint16_t speed, bool band,
+                           uint8_t pos);      /* msg NULL/"" = clear */
+bool        whm_ui_overlay_active(void);
+
+/* pattern name holds it; "cycle" runs the validation tour */
+bool        whm_ui_pattern_set(const char *name);
+void        whm_ui_pattern_off(void);         /* resume prior screen+mode */
+bool        whm_ui_pattern_active(const char **name);
+const char *whm_ui_pattern_names(void);
+
+/* countdown timer (runs across screens; expiry beeps + pulls focus) */
+void     whm_timer_start(void);
+void     whm_timer_pause(void);
+void     whm_timer_stop(void);
+void     whm_timer_reset(void);
+void     whm_timer_set(uint32_t seconds);          /* one-off */
+void     whm_timer_set_default(uint32_t seconds);  /* saved to NVS */
+void     whm_timer_status(uint32_t *remain_s, uint32_t *total_s, int *state);
+uint32_t whm_timer_get_default(void);
+int         whm_ui_life_pal_count(void);
+const char *whm_ui_life_pal_name(int i);
+int         whm_ui_life_get_pal(void);
+esp_err_t   whm_ui_life_set_pal(int i);
+void        whm_ui_life_reseed(void);
+void        whm_ui_flash_ok(void);
+void        whm_ui_name_dirty(void);
+void        whm_ui_oracle_ask(void);
+void        whm_ui_music_layout(uint8_t lay, int8_t ovl);          /* re-read node name */            /* brief green success bar */
+void        whm_ui_wander_get(uint8_t *idx, uint8_t *n, uint16_t *spd);
+esp_err_t   whm_ui_wander_set(uint8_t idx, uint8_t n, uint16_t spd);
+
+/* stopwatch */
+void     whm_watch_start(void);
+void     whm_watch_stop(void);
+void     whm_watch_reset(void);
+int64_t  whm_watch_elapsed_us(bool *running);
+
+#ifdef __cplusplus
+}
+#endif

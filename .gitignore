@@ -1,0 +1,6 @@
+build/
+dist-flash/
+managed_components/
+sdkconfig.old
+.vscode/
+*.pyc
