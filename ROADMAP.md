@@ -105,16 +105,16 @@ Watch ranking received (TO-PANEL-AGENT) = the build order: 1 threat
 interrupt (0x61 reuse), 2 find ticker (0x60 reuse), 3 PANEL_STAT
 rate graph (0x6A), 4 GPS/time, 5 battery glyph, 6 LoRa.
 
-## Operator visit (designed, TO-WATCH-AGENT-3; gated on bench+soak)
+## Operator visit (INVERTED per owner - TO-WATCH-AGENT-4; panel side DONE)
 
-Watch beacons rotating operator token (K_op pushed sealed via
-proposed 0x6B at commissioning; HMAC(K_op,epoch60)[0..5], mfg
-W-O). Panels resolve via DUTY-CYCLED observer sniff - the most
-Tier-0-hostile addition yet; ships only if the walker soak holds
-snap~=0 with sniffing active. Type-12 OPRSSI reports -> lead
-ranks -> lead issues SEEK to strips*64+16. Beacon side is the
-watch's to build now; our sensing lands after standing bench
-validation.
+The owner's inversion deletes the coex problem: panels BEACON
+(the L4 pseudonyms, already ~1 Hz), the watch SCANS (its day
+job). Per-bond keys give the watch panel IDENTITY for free; the
+connected lead is ranged via session RSSI. OPKEY 0x6B withdrawn;
+canonical batch back to four; the Tier-0 sniffing flag deleted
+rather than gated. Election + policy live watch-side; actuation =
+existing CONSOLE / SEEK. Panel implementation cost: zero lines -
+everything shipped v0.41.0-v0.44.1. Type-12 reserved-optional.
 
 ## Backlog
 
