@@ -16,6 +16,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include "esp_attr.h"
 #include <strings.h>
 #include <stdlib.h>
 #include <dirent.h>
@@ -79,7 +80,7 @@ static bool s_art_valid = false;
 
 
 static FILE *s_f = NULL;
-static mp3dec_t s_dec;
+EXT_RAM_BSS_ATTR static mp3dec_t s_dec;
 static uint8_t *s_in;                 /* INBUF_SZ bytes, PSRAM */
 static int s_in_len = 0;
 static bool s_in_eof = false;

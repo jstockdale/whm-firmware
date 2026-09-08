@@ -28,6 +28,7 @@
 #include "host/util/util.h"
 #include "services/gap/ble_svc_gap.h"
 #include "services/gatt/ble_svc_gatt.h"
+#include "esp_attr.h"
 #include "whlink.h"
 #include "ui.h"
 #include "sync.h"
@@ -72,7 +73,8 @@ static const ble_uuid128_t k_tx_uuid = BLE_UUID128_INIT(
     0x01, 0x00, 0xde, 0xc0, 0x48, 0x57, 0x21, 0x9d,
     0x7e, 0x4b, 0xc4, 0xa9, 0x02, 0x48, 0x57, 0x6e);
 
-static wh_ctx   s_ctx;
+EXT_RAM_BSS_ATTR static wh_ctx s_ctx;   /* ~4.4 KB (reasm 4096) -
+                                           PSRAM; no ISR touch */
 static uint16_t s_conn = BLE_HS_CONN_HANDLE_NONE;
 static uint16_t s_tx_handle;
 static bool     s_notify_on = false;

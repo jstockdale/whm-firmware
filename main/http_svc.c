@@ -14,6 +14,7 @@
  * via whm_http_media_dirty().
  */
 #include <stdio.h>
+#include "esp_attr.h"
 #include <string.h>
 #include <ctype.h>
 #include <dirent.h>
@@ -85,7 +86,7 @@ typedef struct {
     char sha[65];
 } media_ent_t;
 
-static media_ent_t s_ents[MEDIA_MAX];
+EXT_RAM_BSS_ATTR static media_ent_t s_ents[MEDIA_MAX];
 static int s_ent_n = 0;
 static bool s_dirty = true;
 static httpd_handle_t s_srv = NULL;

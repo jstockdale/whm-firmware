@@ -33,6 +33,7 @@
 #include "freertos/task.h"
 #include "esp_log.h"
 #include "esp_timer.h"
+#include "esp_attr.h"
 #ifndef WHM_VERSION_STR
 #define WHM_VERSION_STR "dev"
 #endif
@@ -1028,9 +1029,9 @@ static float wk_daylight(void)
 #define FWD_MAX  240
 typedef struct { float x, y, vx, vy; uint8_t r, g, b;
                  uint16_t age, life; uint8_t kind; } fwp_t;
-static fwp_t s_fw[FW_MAX];   /* s_fw_hold hoisted to top (WK_SIT) */
+EXT_RAM_BSS_ATTR static fwp_t s_fw[FW_MAX];   /* s_fw_hold hoisted to top (WK_SIT) */
 static int s_fwn;
-static struct { uint8_t x, y, r, g, b; int32_t born_ms; } s_fwd[FWD_MAX];
+EXT_RAM_BSS_ATTR static struct { uint8_t x, y, r, g, b; int32_t born_ms; } s_fwd[FWD_MAX];
 static int s_fwdn;
 static struct {
     uint8_t phase;        /* 0 off 1 stage 2 show 3 linger 4 nye */
@@ -4847,8 +4848,12 @@ static void scr_life(bool entering, int64_t tf)
         s_life_wx = (uint32_t)wi * 64u;
     }
     if (!s_life_a) {
-        s_life_a = heap_caps_calloc(W * H, 1, MALLOC_CAP_INTERNAL);
-        s_life_b = heap_caps_calloc(W * H, 1, MALLOC_CAP_INTERNAL);
+        s_life_a = heap_caps_calloc(W * H, 1, MALLOC_CAP_SPIRAM);
+        s_life_b = heap_caps_calloc(W * H, 1, MALLOC_CAP_SPIRAM);
+        if (!s_life_a) s_life_a = heap_caps_calloc(W * H, 1,
+                                      MALLOC_CAP_INTERNAL);
+        if (!s_life_b) s_life_b = heap_caps_calloc(W * H, 1,
+                                      MALLOC_CAP_INTERNAL);
         if (!s_life_a || !s_life_b) return;
         uint8_t p8 = 0;
         if (whm_settings_get_u8("life_pal", &p8) == ESP_OK &&
