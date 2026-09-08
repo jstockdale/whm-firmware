@@ -17,6 +17,8 @@
 #include "esp_random.h"
 #include "esp_timer.h"
 #include "esp_mac.h"
+#include "esp_heap_caps.h"
+#include "esp_system.h"
 #include "nimble/nimble_port.h"
 #include "nimble/nimble_port_freertos.h"
 #include "host/ble_hs.h"
@@ -26,6 +28,13 @@
 #include "whlink.h"
 #include "ui.h"
 #include "sync.h"
+#include "esp_console.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/queue.h"
+#include "freertos/task.h"
+#ifndef WHM_VERSION_STR
+#define WHM_VERSION_STR "dev"
+#endif
 
 static const char *TAG = "whlink";
 
@@ -50,6 +59,42 @@ static int64_t  s_adv_until = 0;
 static uint8_t  s_addr_type;
 
 static void adv_maybe(void);
+static void wl_status_send(void);
+
+/* ---- L2: console bridge (CONSOLE 0x2F -> esp_console_run) ----
+ * One command per BLE line; the panels are stdout for a display
+ * fleet, so CONSOLE_OUT carries the disciplined ack and STATUS
+ * carries the state a wrist renders. Sealed-only: an unsealed
+ * CONSOLE is dropped with a log line. Runs in its own small task
+ * (internal stack - console commands touch flash). */
+typedef struct { char line[200]; uint16_t corr; } wl_cmd_t;
+static QueueHandle_t s_cmd_q;
+
+static void wl_exec_task(void *arg)
+{
+    (void)arg;
+    wl_cmd_t c;
+    for (;;) {
+        if (xQueueReceive(s_cmd_q, &c, portMAX_DELAY) != pdTRUE)
+            continue;
+        printf("whlink: console <- '%s'\n", c.line);
+        int ret = 0;
+        esp_err_t e = esp_console_run(c.line, &ret);
+        char ack[24];
+        if (e == ESP_ERR_NOT_FOUND)
+            strlcpy(ack, "unknown", sizeof(ack));
+        else if (e != ESP_OK)
+            snprintf(ack, sizeof(ack), "err %d", (int)e);
+        else if (ret != 0)
+            snprintf(ack, sizeof(ack), "rc %d", ret);
+        else
+            strlcpy(ack, "ok", sizeof(ack));
+        wh_send(&s_ctx, WH_MSG_CONSOLE_OUT, WH_FLAG_RESP, c.corr,
+                (const uint8_t *)ack, strlen(ack));
+        wl_status_send();          /* state likely changed - tell
+                                      the wrist right away */
+    }
+}
 
 /* ---- wh-link platform callbacks ---- */
 static void cb_rng(void *user, uint8_t *buf, size_t len)
@@ -88,6 +133,24 @@ static void cb_on_message(void *user, const wh_msg *m)
         }
         break;
     }
+    case WH_MSG_CONSOLE: {
+        if (!wh_is_established(&s_ctx)) {
+            printf("whlink: CONSOLE before pairing - dropped\n");
+            break;
+        }
+        wl_cmd_t c;
+        size_t n = m->len < sizeof(c.line) - 1 ? m->len
+                                               : sizeof(c.line) - 1;
+        memcpy(c.line, m->payload, n);
+        c.line[n] = 0;
+        c.corr = m->corr;
+        if (!s_cmd_q || xQueueSend(s_cmd_q, &c, 0) != pdTRUE) {
+            const char *b = "busy";
+            wh_send(&s_ctx, WH_MSG_CONSOLE_OUT, WH_FLAG_RESP,
+                    m->corr, (const uint8_t *)b, 4);
+        }
+        break;
+    }
     case WH_MSG_PING:
         wh_send(&s_ctx, WH_MSG_PONG, WH_FLAG_RESP, m->corr,
                 m->payload, m->len);
@@ -108,6 +171,37 @@ static void cb_on_sas(void *user, const char *digits)
     whm_ui_sas_show(digits);
 }
 
+/* ---- L3: STATUS (0x62) - small LE body, EVENT-flagged ----
+ * [0]=ver 1, [1]=flags (b0 lead, b1 conductor), [2]=ui-role,
+ * [3]=fresh, [4]=stale, [5..12]=fw (NUL-padded), [13..16]=uptime s
+ * LE, [17..18]=free internal heap KB LE. Emitted on pairing, after
+ * every bridged command, and on a 10 s heartbeat. */
+static void wl_status_send(void)
+{
+    if (!wh_is_established(&s_ctx) || !s_notify_on) return;
+    int role = 0, fresh = 0, stale = 0;
+    whm_sync_brief(&role, &fresh, &stale, NULL);
+    uint8_t b[19] = { 0 };
+    b[0] = 1;
+    b[1] = (uint8_t)((role >= 1 ? 1 : 0) | (role == 2 ? 2 : 0));
+    b[2] = (uint8_t)role;
+    b[3] = (uint8_t)(fresh > 255 ? 255 : fresh);
+    b[4] = (uint8_t)(stale > 255 ? 255 : stale);
+    strncpy((char *)&b[5], WHM_VERSION_STR, 8);
+    uint32_t up = (uint32_t)(esp_timer_get_time() / 1000000);
+    b[13] = up & 0xFF; b[14] = (up >> 8) & 0xFF;
+    b[15] = (up >> 16) & 0xFF; b[16] = (up >> 24) & 0xFF;
+    uint16_t kb = (uint16_t)(esp_get_free_heap_size() / 1024);
+    b[17] = kb & 0xFF; b[18] = (kb >> 8) & 0xFF;
+    wh_send(&s_ctx, WH_MSG_STATUS, WH_FLAG_EVENT, 0, b, sizeof(b));
+}
+
+static void wl_status_tick(void *arg)
+{
+    (void)arg;
+    wl_status_send();
+}
+
 static void cb_on_paired(void *user, int ok)
 {
     (void)user;
@@ -115,6 +209,7 @@ static void cb_on_paired(void *user, int ok)
     printf("whlink: %s\n", ok ? "PAIRED - link sealed"
                               : "pairing rejected/failed");
     whm_ui_sas_done(ok != 0);
+    if (ok) wl_status_send();      /* first brief, immediately */
 }
 
 /* ---- GATT ---- */
@@ -284,6 +379,13 @@ void whm_whlink_init(void)
     cfg.on_paired = cb_on_paired;
     wh_ctx_init(&s_ctx, &cfg);
 
+    s_cmd_q = xQueueCreate(4, sizeof(wl_cmd_t));
+    xTaskCreate(wl_exec_task, "wl_exec", 4096, NULL, 4, NULL);
+    esp_timer_create_args_t ta = { .callback = wl_status_tick,
+                                   .name = "wl_status" };
+    esp_timer_handle_t th;
+    if (esp_timer_create(&ta, &th) == ESP_OK)
+        esp_timer_start_periodic(th, 10 * 1000000);
     nimble_port_freertos_init(host_task);
     printf("whlink: up (id %04x, nick '%s') - 'ble pair' opens the "
            "window\n", cfg.local_id, cfg.nick);
