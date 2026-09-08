@@ -1705,13 +1705,17 @@ static void wk_sky(int64_t t, float cam, int idx, float f)
                         mb = (uint8_t)(150 * dim); }
                     wk_px(mxi + dx2, 12 + dy2, mr, mg, mb);
                 }
-            uint32_t gh = wk_h((uint32_t)(t / 2600000) * 41u);
-            if ((gh & 7) == 0) {           /* subtle rim glimmer */
-                float ga = 6.2832f * (float)((gh >> 4) & 31) / 32.0f;
-                wk_px(mxi + (int)(cosf(ga) * 9.0f),
-                      12 + (int)(sinf(ga) * 9.0f),
-                      (uint8_t)(230 * dim), (uint8_t)(230 * dim),
-                      (uint8_t)(200 * dim));
+            for (int ai = 0; ai < 28; ai++) {  /* living rim */
+                float ga = 6.2832f * (float)ai / 28.0f;
+                int gx = (int)(cosf(ga) * 9.0f);
+                int gy = (int)(sinf(ga) * 9.0f);
+                if ((gx - 6) * (gx - 6) + gy * gy <= 55) continue;
+                float run = 0.5f + 0.5f *
+                            cosf(ga - (float)t / 1.6e6f);
+                float lum = dim * (0.8f + 0.5f * run);
+                if (lum > 1.0f) lum = 1.0f;
+                wk_px(mxi + gx, 12 + gy, (uint8_t)(150 * lum),
+                      (uint8_t)(150 * lum), (uint8_t)(120 * lum));
             }
         }
     }
@@ -1743,23 +1747,24 @@ static void wk_sky(int64_t t, float cam, int idx, float f)
                         if (sw > 0.3f && ((py2 & 3) == 3) &&
                             dy2 > -2) continue;   /* synth lines */
                         if (q2 > (rr2 - 1) * (rr2 - 1)) {
+                            /* LIVING RIM: a soft hot-spot rotates
+                               (~8s/rev) over a breathing glow */
+                            float ang = atan2f((float)dy2,
+                                               (float)dx2);
+                            float run = 0.5f + 0.5f *
+                                cosf(ang - (float)t / 1.27e6f);
+                            float brth = 0.86f + 0.14f *
+                                sinf((float)t / 2.9e6f);
+                            float lum = brth * (0.55f +
+                                                0.45f * run);
                             wk_px(sxi + dx2, py2,
-                                  (uint8_t)(sunr / 2),
-                                  (uint8_t)(sung / 2),
-                                  (uint8_t)(sunb / 2));
+                                  (uint8_t)(sunr * lum),
+                                  (uint8_t)(sung * lum),
+                                  (uint8_t)(sunb * lum * 0.9f));
                         } else {
                             wk_px(sxi + dx2, py2, sunr, sung, sunb);
                         }
                     }
-                uint32_t gh = wk_h((uint32_t)(t / 3100000) * 67u);
-                if ((gh & 7) == 0 && sy - rr2 > 0) {
-                    float ga = 6.2832f *
-                               (float)((gh >> 4) & 31) / 32.0f;
-                    int gx = sxi + (int)(cosf(ga) * (float)rr2);
-                    int gy = sy + (int)(sinf(ga) * (float)rr2);
-                    if (gy < WK_GROUND)
-                        wk_px(gx, gy, 255, 240, 180);
-                }
             }
         }
     }
@@ -1779,11 +1784,25 @@ static void wk_sky(int64_t t, float cam, int idx, float f)
             if (sw > 0.3f) { cr = cv / 2 + 40; cg = cv / 4 + 8;
                              cb = cv / 2 + 46; }
             int kind = (int)((h2 >> 20) % 3u);
-            int shim = ((int)(t / 1500000) + i) & 1;
+            /* RUNNING EDGE-LIGHT: a warm 3px spot travels the top
+               edge (per-cloud phase); no fixed blinking pixel. */
+            int elen = kind == 0 ? 10 : (kind == 1 ? 14 : 22);
+            int epos = (int)((t / 220000 + (int64_t)i * 7) %
+                             (int64_t)elen);
+            #define CLD_EDGE(px2, py2, ex)                            \
+                do { int d2 = (ex) - epos;                            \
+                     if (d2 < 0) d2 = -d2;                            \
+                     if (d2 <= 1)                                     \
+                         wk_px((px2), (py2),                          \
+                               (uint8_t)(cr + 60 - 20 * d2),          \
+                               (uint8_t)(cg + 58 - 20 * d2),          \
+                               (uint8_t)(cb + 50 - 18 * d2));         \
+                } while (0)
             if (kind == 0) {               /* wisp */
-                for (int dx2 = 0; dx2 < 10; dx2++)
+                for (int dx2 = 0; dx2 < 10; dx2++) {
                     wk_px(sx + dx2, sy, cr, cg, cb);
-                if (shim) wk_px(sx + 3, sy - 1, cr, cg, cb);
+                    CLD_EDGE(sx + dx2, sy - 1, dx2);
+                }
             } else if (kind == 1) {        /* double puff */
                 for (int dx2 = 0; dx2 < 16; dx2++)
                     wk_px(sx + dx2, sy + 1, cr, cg, cb);
@@ -1791,7 +1810,10 @@ static void wk_sky(int64_t t, float cam, int idx, float f)
                     wk_px(sx + dx2, sy, cr + 20, cg + 20, cb + 20);
                 for (int dx2 = 9; dx2 < 15; dx2++)
                     wk_px(sx + dx2, sy, cr + 20, cg + 20, cb + 20);
-                if (shim) wk_px(sx + 4, sy - 1, cr, cg, cb);
+                for (int dx2 = 1; dx2 < 15; dx2++)
+                    CLD_EDGE(sx + dx2, dx2 < 7 || dx2 > 8 ? sy - 1
+                                                          : sy,
+                             dx2 - 1);
                 for (int dx2 = 2; dx2 < 14; dx2++)
                     wk_px(sx + dx2, sy + 2, cr - 22, cg - 22,
                           cb - 18);
@@ -1809,88 +1831,221 @@ static void wk_sky(int64_t t, float cam, int idx, float f)
                 for (int dx2 = 16; dx2 < 22; dx2++)
                     wk_px(sx + dx2, sy + 1, cr + 18, cg + 18,
                           cb + 18);
-                if (shim) wk_px(sx + 12, sy - 1, cr + 26, cg + 26,
-                                cb + 26);
+                for (int dx2 = 1; dx2 < 23; dx2++) {
+                    int ey = dx2 >= 8 && dx2 <= 16 ? sy - 1 :
+                             (dx2 >= 2 && dx2 <= 21 ? sy : sy + 1);
+                    CLD_EDGE(sx + dx2, ey, dx2 - 1);
+                }
                 for (int dx2 = 1; dx2 < 23; dx2++)
                     wk_px(sx + dx2, sy + 3, cr - 26, cg - 26,
                           cb - 20);
             }
+            #undef CLD_EDGE
         }
     }
 }
 
-/* hash-gated flora: 1-2 pieces on ~55%% of chunks, never the same
- * mix; night-dimmed, synthwave-silhouetted; render-only. */
+/* FLORA v2: the walker walks THROUGH trees now. Large oak/pine
+ * (24-40px) on ~30%% of chunks, mediums on ~25%%, the old tiny kinds
+ * demoted to dimmed distant accents. Chunk window widened c0-1..c0+2
+ * so nothing pops at the right edge; drawn BEFORE platforms so
+ * canopies tuck behind structures. Render-only, as ever. */
+static void wk_tree_oak(int sx, int gy, float li, float sw,
+                        uint32_t h)
+{
+    uint8_t tr = (uint8_t)(96 * li), tg = (uint8_t)(62 * li),
+            tb = (uint8_t)(28 * li);
+    uint8_t l0r = (uint8_t)(22 * li), l0g = (uint8_t)(92 * li),
+            l0b = (uint8_t)(26 * li);
+    uint8_t l1r = (uint8_t)(34 * li), l1g = (uint8_t)(126 * li),
+            l1b = (uint8_t)(38 * li);
+    uint8_t l2r = (uint8_t)(58 * li), l2g = (uint8_t)(160 * li),
+            l2b = (uint8_t)(60 * li);
+    if (sw > 0.3f) { l0r = (uint8_t)(14*li); l0g = (uint8_t)(8*li);
+        l0b = (uint8_t)(30*li); l1r = (uint8_t)(24*li);
+        l1g = (uint8_t)(12*li); l1b = (uint8_t)(44*li);
+        l2r = (uint8_t)(40*li); l2g = (uint8_t)(120*li);
+        l2b = (uint8_t)(140*li); }
+    int th = 10 + (int)(h % 4u);            /* trunk 10-13 */
+    for (int y2 = 0; y2 < th; y2++) {
+        wk_px(sx, gy - y2, tr, tg, tb);
+        wk_px(sx + 1, gy - y2, tr, tg, tb);
+        if (y2 < 3) wk_px(sx + 2, gy - y2,
+                          (uint8_t)(tr * 0.8f),
+                          (uint8_t)(tg * 0.8f),
+                          (uint8_t)(tb * 0.8f));
+    }
+    int cw = 15 + (int)((h >> 4) % 3u);     /* canopy 15-17 wide */
+    int ch = 15 + (int)((h >> 6) % 5u);     /* 15-19 tall */
+    int cy0 = gy - th - ch + 3;
+    for (int y2 = 0; y2 < ch; y2++) {
+        float yr = (float)y2 / (float)(ch - 1);
+        float half = (float)cw * 0.5f *
+                     sinf(yr * 3.1416f);
+        int hw = (int)(half + 0.5f);
+        uint32_t jr = wk_h(h ^ (uint32_t)y2 * 131u);
+        hw += (int)(jr % 3u) - 1;           /* ragged edge */
+        if (hw < 1) hw = 1;
+        for (int dx2 = -hw; dx2 <= hw; dx2++) {
+            int py2 = cy0 + y2;
+            uint8_t rr = l1r, gg = l1g, bb = l1b;
+            if (y2 < ch / 3 && dx2 < 0) { rr = l2r; gg = l2g;
+                bb = l2b; }
+            else if (y2 > (2 * ch) / 3) { rr = l0r; gg = l0g;
+                bb = l0b; }
+            if (((jr >> (dx2 & 15)) & 7u) == 0) { rr = l0r;
+                gg = l0g; bb = l0b; }       /* inner speck */
+            wk_px(sx + 1 + dx2, py2, rr, gg, bb);
+        }
+    }
+}
+
+static void wk_tree_pine(int sx, int gy, float li, float sw,
+                         uint32_t h)
+{
+    uint8_t tr = (uint8_t)(88 * li), tg = (uint8_t)(58 * li),
+            tb = (uint8_t)(26 * li);
+    uint8_t d0r = (uint8_t)(12 * li), d0g = (uint8_t)(70 * li),
+            d0b = (uint8_t)(34 * li);
+    uint8_t d1r = (uint8_t)(20 * li), d1g = (uint8_t)(104 * li),
+            d1b = (uint8_t)(48 * li);
+    if (sw > 0.3f) { d0r = (uint8_t)(10*li); d0g = (uint8_t)(6*li);
+        d0b = (uint8_t)(26*li); d1r = (uint8_t)(20*li);
+        d1g = (uint8_t)(10*li); d1b = (uint8_t)(40*li); }
+    int tiers = 4 + (int)(h % 2u);
+    int tierh = 6 + (int)((h >> 3) % 2u);
+    int total = tiers * tierh - (tiers - 1) * 2;
+    for (int y2 = 0; y2 < 3; y2++) {
+        wk_px(sx, gy - y2, tr, tg, tb);
+        wk_px(sx + 1, gy - y2, tr, tg, tb);
+    }
+    int base = gy - 3;
+    for (int ti = 0; ti < tiers; ti++) {
+        int ty0 = base - ti * (tierh - 2);
+        int maxw = 3 + (tiers - ti) * 2;
+        for (int y2 = 0; y2 < tierh; y2++) {
+            int hw = maxw - (y2 * maxw) / tierh;
+            if (hw < 1) hw = 1;
+            for (int dx2 = -hw; dx2 <= hw; dx2++)
+                wk_px(sx + dx2, ty0 - y2,
+                      (ti + y2) & 1 ? d1r : d0r,
+                      (ti + y2) & 1 ? d1g : d0g,
+                      (ti + y2) & 1 ? d1b : d0b);
+        }
+    }
+    (void)total;
+}
+
 static void wk_flora(float cam, int idx, float f, int64_t t)
 {
     (void)t;
     float sw = wk_synth();
     float li = 0.35f + 0.65f * f;
     int32_t c0 = (int32_t)floorf((cam + 64.0f * (float)idx) / 64.0f);
-    for (int ci = c0 - 1; ci <= c0 + 1; ci++) {
+    for (int ci = c0 - 1; ci <= c0 + 2; ci++) {
         if (wk_nye_window(ci)) continue;
         uint32_t h = wk_h((uint32_t)ci * 2246822519u ^ 0xF10FAu);
-        if ((h % 100u) >= 55u) continue;
-        int npc = 1 + (int)((h >> 8) & 1u);
-        for (int k = 0; k < npc; k++) {
-            uint32_t hk = wk_h(h ^ (uint32_t)(k + 1) * 40503u);
-            int wx = ci * 64 + 6 + (int)(hk % 52u);
-            int sx = wx - (int)(cam + 64.0f * (float)idx);
-            if (sx < -8 || sx > 71) continue;
-            int kind = (int)((hk >> 16) % 5u);
-            int gy = WK_GROUND - 1;
-            uint8_t tr = (uint8_t)(96 * li), tg = (uint8_t)(66 * li),
-                    tb = (uint8_t)(30 * li);
-            uint8_t lr = (uint8_t)(30 * li), lg = (uint8_t)(120 * li),
-                    lb = (uint8_t)(34 * li);
-            if (sw > 0.3f) { lr = (uint8_t)(20 * li);
-                lg = (uint8_t)(10 * li); lb = (uint8_t)(36 * li); }
-            if (kind == 0) {               /* oak */
-                wk_px(sx, gy, tr, tg, tb);
-                wk_px(sx, gy - 1, tr, tg, tb);
-                for (int dy2 = 0; dy2 < 4; dy2++)
-                    for (int dx2 = -3; dx2 <= 3; dx2++) {
-                        if ((dy2 == 0 || dy2 == 3) &&
-                            (dx2 < -2 || dx2 > 2)) continue;
-                        wk_px(sx + dx2, gy - 2 - dy2, lr, lg, lb);
+        uint32_t roll = h % 100u;
+        int sxbase = ci * 64 - (int)(cam + 64.0f * (float)idx);
+        int gy = WK_GROUND - 1;
+        if (roll < 30u) {                   /* LARGE tree */
+            int wx = 10 + (int)((h >> 8) % 40u);
+            int sx = sxbase + wx;
+            if (sx > -20 && sx < 84) {
+                if ((h >> 16) & 1)
+                    wk_tree_oak(sx, gy, li, sw, h);
+                else
+                    wk_tree_pine(sx, gy, li, sw, h);
+            }
+        } else if (roll < 55u) {            /* MEDIUM tree */
+            int wx = 8 + (int)((h >> 8) % 46u);
+            int sx = sxbase + wx;
+            if (sx > -14 && sx < 78) {
+                uint32_t h2 = wk_h(h ^ 0xBEEFu);
+                if ((h >> 16) & 1) {
+                    for (int y2 = 0; y2 < 6; y2++)
+                        wk_px(sx, gy - y2, (uint8_t)(90 * li),
+                              (uint8_t)(60 * li),
+                              (uint8_t)(28 * li));
+                    for (int y2 = 0; y2 < 10; y2++) {
+                        float yr = (float)y2 / 9.0f;
+                        int hw = (int)(4.5f * sinf(yr * 3.1416f)
+                                       + 0.5f);
+                        if (hw < 1) hw = 1;
+                        for (int dx2 = -hw; dx2 <= hw; dx2++)
+                            wk_px(sx + dx2, gy - 5 - y2,
+                                  (uint8_t)((30 + ((h2 >> (dx2 &
+                                   7)) & 1) * 26) * li),
+                                  (uint8_t)((116 + ((h2 >> (dx2 &
+                                   7)) & 1) * 30) * li),
+                                  (uint8_t)(36 * li));
                     }
-                if (sw > 0.3f) wk_px(sx + 3, gy - 4,
-                                     (uint8_t)(40 * li),
-                                     (uint8_t)(180 * li),
-                                     (uint8_t)(200 * li));
-            } else if (kind == 1) {        /* pine */
-                wk_px(sx, gy, tr, tg, tb);
-                for (int dy2 = 0; dy2 < 7; dy2++) {
-                    int hw = (7 - dy2) / 2;
-                    for (int dx2 = -hw; dx2 <= hw; dx2++)
-                        wk_px(sx + dx2, gy - 1 - dy2,
-                              (uint8_t)(lr * 0.8f),
-                              (uint8_t)(lg * 0.85f),
-                              (uint8_t)(lb * 0.9f));
+                } else {
+                    wk_px(sx, gy, (uint8_t)(88 * li),
+                          (uint8_t)(58 * li), (uint8_t)(26 * li));
+                    for (int ti = 0; ti < 3; ti++)
+                        for (int y2 = 0; y2 < 6; y2++) {
+                            int hw = (3 + (3 - ti) * 2) * (6 - y2)
+                                     / 6;
+                            if (hw < 1) hw = 1;
+                            for (int dx2 = -hw; dx2 <= hw; dx2++)
+                                wk_px(sx + dx2,
+                                      gy - 1 - ti * 4 - y2,
+                                      (uint8_t)(16 * li),
+                                      (uint8_t)((84 + (ti & 1) *
+                                                 24) * li),
+                                      (uint8_t)(40 * li));
+                        }
                 }
-            } else if (kind == 2) {        /* bush */
-                for (int dx2 = -2; dx2 <= 2; dx2++)
-                    wk_px(sx + dx2, gy, lr, lg, lb);
-                for (int dx2 = -1; dx2 <= 1; dx2++)
-                    wk_px(sx + dx2, gy - 1, lr, (uint8_t)(lg + 16),
-                          lb);
-            } else if (kind == 3) {        /* rocks */
-                wk_px(sx, gy, (uint8_t)(92 * li), (uint8_t)(92 * li),
-                      (uint8_t)(98 * li));
-                wk_px(sx + 1, gy, (uint8_t)(74 * li),
-                      (uint8_t)(74 * li), (uint8_t)(80 * li));
-                wk_px(sx, gy - 1, (uint8_t)(110 * li),
-                      (uint8_t)(110 * li), (uint8_t)(116 * li));
-            } else {                       /* flowers */
-                for (int fx2 = 0; fx2 < 3; fx2++) {
-                    uint32_t fh = wk_h(hk ^ (uint32_t)fx2 * 77u);
-                    uint8_t fr = (uint8_t)(180 * li),
-                            fg2 = (uint8_t)(60 * li),
-                            fb = (uint8_t)(120 * li);
-                    if (fh & 1) { fr = (uint8_t)(220 * li);
-                        fg2 = (uint8_t)(190 * li);
-                        fb = (uint8_t)(40 * li); }
-                    wk_px(sx + (int)(fh % 5u) - 2, gy, fr, fg2, fb);
+            }
+        } else if (roll < 78u) {            /* distant accents */
+            int npc = 1 + (int)((h >> 8) & 1u);
+            for (int k = 0; k < npc; k++) {
+                uint32_t hk = wk_h(h ^ (uint32_t)(k + 1) * 40503u);
+                int sx = sxbase + 6 + (int)(hk % 52u);
+                if (sx < -8 || sx > 72) continue;
+                int kind = (int)((hk >> 16) % 4u);
+                float dl = li * 0.55f;      /* dimmed = distance */
+                if (kind == 0) {            /* far pine */
+                    for (int y2 = 0; y2 < 5; y2++) {
+                        int hw = (5 - y2) / 2;
+                        for (int dx2 = -hw; dx2 <= hw; dx2++)
+                            wk_px(sx + dx2, gy - y2,
+                                  (uint8_t)(18 * dl),
+                                  (uint8_t)(88 * dl),
+                                  (uint8_t)(36 * dl));
+                    }
+                } else if (kind == 1) {     /* bush */
+                    for (int dx2 = -2; dx2 <= 2; dx2++)
+                        wk_px(sx + dx2, gy, (uint8_t)(28 * li),
+                              (uint8_t)(112 * li),
+                              (uint8_t)(34 * li));
+                    for (int dx2 = -1; dx2 <= 1; dx2++)
+                        wk_px(sx + dx2, gy - 1,
+                              (uint8_t)(30 * li),
+                              (uint8_t)(130 * li),
+                              (uint8_t)(36 * li));
+                } else if (kind == 2) {     /* rocks */
+                    wk_px(sx, gy, (uint8_t)(92 * li),
+                          (uint8_t)(92 * li), (uint8_t)(98 * li));
+                    wk_px(sx + 1, gy, (uint8_t)(74 * li),
+                          (uint8_t)(74 * li), (uint8_t)(80 * li));
+                    wk_px(sx, gy - 1, (uint8_t)(110 * li),
+                          (uint8_t)(110 * li),
+                          (uint8_t)(116 * li));
+                } else {                    /* flowers */
+                    for (int fx2 = 0; fx2 < 3; fx2++) {
+                        uint32_t fh = wk_h(hk ^ (uint32_t)fx2 *
+                                           77u);
+                        uint8_t fr = (uint8_t)(180 * li),
+                                fg2 = (uint8_t)(60 * li),
+                                fb = (uint8_t)(120 * li);
+                        if (fh & 1) { fr = (uint8_t)(220 * li);
+                            fg2 = (uint8_t)(190 * li);
+                            fb = (uint8_t)(40 * li); }
+                        wk_px(sx + (int)(fh % 5u) - 2, gy, fr,
+                              fg2, fb);
+                    }
                 }
             }
         }
@@ -2102,6 +2257,7 @@ static void pat_walker(int64_t t)
     int ox = (int)lroundf(cam) + (int)s_w_idx * 64;
     float f = wk_daylight();
     wk_sky(t, cam, (int)s_w_idx, f);
+    wk_flora(cam, (int)s_w_idx, f, t);   /* behind platforms */
 
     /* ground - carved by gaps, planked by bridges */
     int32_t id0 = (int32_t)floorf((float)ox / 64.0f);
@@ -2210,7 +2366,6 @@ static void pat_walker(int64_t t)
         wk_px(chx + 1, (int)s_wk.y - 1, 60, 13, 8);
     }
     if (wlx >= -6 && wlx <= 70) {
-        wk_flora(cam, (int)s_w_idx, f, t);
         wk_sprite(wlx, (int)lroundf(s_wk.y), t);
         if (s_w_n > 1) {
             bool talk = wk_i_own() || t < s_wko.grace_until;

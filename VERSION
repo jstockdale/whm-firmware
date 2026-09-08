@@ -1,4 +1,4 @@
-whm-bringup 0.34.3-phase0
-built: 2026-09-07 (r93: FORENSIC HYGIENE - his trace dumps convicted the shadow of leaking (triplicated st-transitions @321/321/320 = future steps writing into the history ring, the one hole in the snapshot list, found by its own fingerprints). Shadow steps are now trace-gated; the ring clears at anchor/entry. Sim was never at risk - write-only pollution - but the instrument is clean now. The session verdict: machine-gun gone, snaps small and self-healing, jump-state seam forks (0v8/0v4, y=35-47) captured = his observed glitch; Two firmware UNVERIFIED in capture - sync self-fw line exists for exactly this)
+whm-bringup 0.35.1-phase0
+built: 2026-09-07 (r94: PIXEL-ART POLISH - the blinking top-center pixel convicted (fixed-spot toggle = dead-pixel look) and replaced by a warm 3px light that RUNS the top edge of every cloud, per-cloud phase; sun and moon get LIVING RIMS - a hot-spot rotating ~8s/rev over breathing luminosity; tree pop-in fixed (chunk window widened c0-1..c0+2); FLORA v2: large oaks (28-34px, ragged 3-shade canopies, inner specks) and layered pines (26-38px) on ~30% of chunks, mediums on 25%, old tiny kinds demoted to dimmed distant accents; flora drawn BEFORE platforms so the walker walks THROUGH trees)
 idf: v5.5.2
 board: Waveshare ESP32-S3-RGB-Matrix | panel: ADA P2.5 64x64 1/32 HUB75E
