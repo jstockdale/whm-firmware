@@ -53,6 +53,7 @@
 #include "mp3_player.h"
 #include "tz_table.h"
 #include "sync.h"
+#include "whlink.h"
 #include "http_svc.h"
 #include "wifi_tsf.h"
 #include "nvs_flash.h"
@@ -1003,6 +1004,26 @@ static int cmd_wander(int argc, char **argv)
 
 /* ----------------------------------------------------------------- sync */
 
+static int cmd_ble(int argc, char **argv)
+{
+    if (argc >= 2 && strcmp(argv[1], "pair") == 0) {
+        uint32_t secs = 120;
+        if (argc >= 3) secs = (uint32_t)atoi(argv[2]);
+        if (!secs) secs = 120;
+        whm_whlink_pair_window(secs);
+        return 0;
+    }
+    if (argc >= 2 && strcmp(argv[1], "off") == 0) {
+        whm_whlink_off();
+        return 0;
+    }
+    whm_whlink_status_print();
+    printf("usage: ble                 link status\n");
+    printf("       ble pair [secs]    open pairing window (adv)\n");
+    printf("       ble off            close window / drop link\n");
+    return 0;
+}
+
 static int cmd_sync(int argc, char **argv)
 {
     if (argc < 2 || strcmp(argv[1], "status") == 0) {
@@ -1302,6 +1323,7 @@ static const cmd_ent_t k_cmds[] = {
     { "tone",       "tone <hz> [ms]",                 "play one note",                 cmd_tone },
     { "wander",     "wander <idx> <n> [spd] | go",    "cross-panel sprite (P2b)",      cmd_wander },
     { "sync",       "sync [auto|anchor|follow|prio|lead|media|conduct|join|off]", "fleet link (WHM-LINK.md)",      cmd_sync },
+    { "ble",        "ble [pair [secs]|off]",          "wh-link BLE (pair window/status)", cmd_ble },
     { "life",       "life [pal|next|reset]",          "game-of-life colors",           cmd_life },
     { "mp3",        "mp3 list|play|fleet|dj [n|stop]|layout|overlay|vol",
                                                       "music from /sdcard/media",      cmd_mp3 },

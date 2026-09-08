@@ -49,6 +49,7 @@
 #include "audio_test.h"
 #include "mp3_player.h"
 #include "sync.h"
+#include "whlink.h"
 #include "esp_rom_sys.h"
 #include "settings.h"
 #include "timesync.h"
@@ -1050,6 +1051,8 @@ void whm_ui_ota_target(const char *inc)
     if (inc && inc[0])
         strlcpy(s_otui.to, inc, sizeof(s_otui.to));
 }
+
+bool whm_ui_ota_active(void) { return s_otui.active; }
 
 void whm_ui_ota_progress(uint32_t kb) { s_otui.got_kb = kb; }
 
@@ -3691,6 +3694,50 @@ static void health_dot(uint16_t x, const char *lbl, bool ok)
                           ok ? 40 : 220, ok ? 220 : 50, 40);
 }
 
+/* BLE SAS pairing overlay (wh-link): six digits on the panel, the
+ * BOOT button decides - the display is the trusted screen. */
+static struct {
+    volatile bool active;
+    char digits[8];
+    volatile int done;        /* -1 pending, 0 rejected, 1 paired */
+    int64_t done_at;
+} s_sas;
+
+void whm_ui_sas_show(const char *digits)
+{
+    strlcpy(s_sas.digits, digits, sizeof(s_sas.digits));
+    s_sas.done = -1;
+    s_sas.done_at = 0;
+    s_sas.active = true;
+}
+
+void whm_ui_sas_done(bool ok)
+{
+    s_sas.done = ok ? 1 : 0;
+    s_sas.done_at = esp_timer_get_time();
+}
+
+static bool sas_screen(int64_t t)
+{
+    if (!s_sas.active) return false;
+    if (s_sas.done >= 0 && t - s_sas.done_at > 1400000) {
+        s_sas.active = false;
+        return false;
+    }
+    whm_display_fill(3, 2, 10);
+    ota_text("BLE PAIR", 16, 4, 240, 200, 90);
+    gfx_text_center(W / 2, 22, s_sas.digits, 2, 255, 255, 255);
+    if (s_sas.done < 0) {
+        ota_text("TAP YES", 18, 46, 60, 220, 130);
+        ota_text("HOLD NO", 18, 54, 240, 120, 90);
+    } else if (s_sas.done == 1) {
+        ota_text("PAIRED", 20, 50, 60, 220, 130);
+    } else {
+        ota_text("REJECTED", 14, 50, 240, 80, 80);
+    }
+    return true;
+}
+
 /* FLEET INDICATOR (owner's design): role glyph + follower-count
  * digit for anchor/conductor; a state circle for followers. A digit
  * reads across the room and scales to unit Three. */
@@ -4942,6 +4989,11 @@ void whm_ui_task(void *arg)
         timer_service();
         bool in_scr = (s_mode == M_SCR_AUTO || s_mode == M_SCR_HOLD);
         btn_ev_t be = button_service(in_scr && k_tap2[s_screen] != NULL);
+        if (s_sas.active && s_sas.done < 0 && be != BE_NONE) {
+            if (be == BE_SINGLE) whm_whlink_sas_result(true);
+            else if (be == BE_LONG) whm_whlink_sas_result(false);
+            be = BE_NONE;              /* the pairing owns the tap */
+        }
         if (s_mode == M_BOOT) {
             if (be != BE_NONE) {
                 s_boot0 = esp_timer_get_time() - 2100000;
@@ -4972,6 +5024,14 @@ void whm_ui_task(void *arg)
         }
 
         ui_mode_t mode = s_mode;
+        if (s_sas.active) {            /* SAS pairing takes the
+                                          stage (and the button) */
+            int64_t tf = ui_frame_wait_div(2);
+            if (sas_screen(tf)) {
+                ui_present(tf);
+                continue;
+            }
+        }
         if (s_otui.active) {           /* OTA takeover at the TRUE
                                           loop head - two prior
                                           placements sat below

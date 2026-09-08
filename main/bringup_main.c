@@ -37,6 +37,7 @@
 #include "console.h"
 #include "mp3_player.h"
 #include "sync.h"
+#include "whlink.h"
 #include "http_svc.h"
 #include "esp_heap_caps.h"
 #include "settings.h"
@@ -137,6 +138,7 @@ void app_main(void)
                                       of boot here) */
     whm_storage_start_watcher();   /* hot-swap: mounts on insert, no reboot */
     whm_sync_init();
+    whm_whlink_init();
     whm_http_start();                   /* fleet link resumes its role */
     /* chime now fires from Ignition (ui task) for A/V phase lock */
     whm_mp3_init();

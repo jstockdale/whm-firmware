@@ -13,6 +13,9 @@ void        whm_ui_ota_target(const char *inc);
 void        whm_ui_ota_progress(uint32_t kb);
 void        whm_ui_ota_phase(uint8_t ph, const char *why);
 void        whm_ui_ota_count(uint8_t n);
+bool        whm_ui_ota_active(void);
+void        whm_ui_sas_show(const char *digits);
+void        whm_ui_sas_done(bool ok);
 void        whm_ui_walk_pure(bool on);
 void        whm_ui_walk_stats(uint32_t *ok, uint32_t *snap,
                               uint32_t *stale);
