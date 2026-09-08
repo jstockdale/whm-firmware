@@ -54,6 +54,8 @@
 #include "tz_table.h"
 #include "sync.h"
 #include "whlink.h"
+#include "nvs_flash.h"
+#include "nvs.h"
 #include "http_svc.h"
 #include "wifi_tsf.h"
 #include "nvs_flash.h"
@@ -1034,6 +1036,16 @@ static int cmd_ble(int argc, char **argv)
         if (argc >= 3) secs = (uint32_t)atoi(argv[2]);
         if (!secs) secs = 120;
         whm_whlink_pair_window(secs);
+        return 0;
+    }
+    if (argc >= 2 && strcmp(argv[1], "enable") == 0) {
+        nvs_handle_t h2;
+        if (nvs_open("whlink", NVS_READWRITE, &h2) == ESP_OK) {
+            nvs_set_u8(h2, "fuse", 0);
+            nvs_commit(h2);
+            nvs_close(h2);
+        }
+        printf("ble: boot-fuse cleared - reboot to init\n");
         return 0;
     }
     if (argc >= 2 && strcmp(argv[1], "feed") == 0) {

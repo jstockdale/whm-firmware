@@ -319,6 +319,17 @@ static void wl_status_send(void)
             0, b, sizeof(b));
 }
 
+static void wl_fuse_clear(void *arg)
+{
+    (void)arg;
+    nvs_handle_t h;
+    if (nvs_open("whlink", NVS_READWRITE, &h) == ESP_OK) {
+        nvs_set_u8(h, "fuse", 0);
+        nvs_commit(h);
+        nvs_close(h);
+    }
+}
+
 static void wl_status_tick(void *arg)
 {
     (void)arg;
@@ -538,6 +549,34 @@ static void host_task(void *param)
 /* ---- public ---- */
 void whm_whlink_init(void)
 {
+    /* BOOT-LOOP FUSE + PRE-FLIGHT (bench conviction: the BT
+       controller does not RETURN on malloc failure - it asserts
+       (emi.c 164) into an IWDT panic loop. Prevention only.) */
+    {
+        nvs_handle_t h;
+        uint8_t fuse = 0;
+        if (nvs_open("whlink", NVS_READWRITE, &h) == ESP_OK) {
+            nvs_get_u8(h, "fuse", &fuse);
+            if (fuse >= 3) {
+                nvs_close(h);
+                printf("whlink: DISABLED by boot-fuse (%u rapid "
+                       "boots) - fix memory, then 'ble enable'\n",
+                       fuse);
+                return;
+            }
+            nvs_set_u8(h, "fuse", (uint8_t)(fuse + 1));
+            nvs_commit(h);
+            nvs_close(h);
+        }
+        size_t big = heap_caps_get_largest_free_block(
+            MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+        if (big < 50 * 1024) {
+            printf("whlink: SKIPPED - largest internal block %u KB "
+                   "< 50 KB (controller would assert, not "
+                   "return)\n", (unsigned)(big / 1024));
+            return;
+        }
+    }
     if (nimble_port_init() != ESP_OK) {
         printf("whlink: nimble init FAILED - BLE unavailable\n");
         return;
@@ -580,6 +619,13 @@ void whm_whlink_init(void)
     nimble_port_freertos_init(host_task);
     printf("whlink: up (id %04x, nick '%s') - 'ble pair' opens the "
            "window\n", cfg.local_id, cfg.nick);
+    {   /* healthy for 30 s clears the boot fuse */
+        esp_timer_create_args_t fa = { .callback = wl_fuse_clear,
+                                       .name = "wl_fuse" };
+        esp_timer_handle_t fh;
+        if (esp_timer_create(&fa, &fh) == ESP_OK)
+            esp_timer_start_once(fh, 30 * 1000000);
+    }
 }
 
 void whm_whlink_pair_window(uint32_t secs)

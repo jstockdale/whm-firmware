@@ -125,6 +125,12 @@ void app_main(void)
     }
 
     STAGE("2: wifi + TSF");
+    whm_whlink_init();   /* BEFORE wifi: the BT controller
+                            takes its internal RAM from a
+                            clean pool - display first (a
+                            panel must show something),
+                            radio order matters after */
+
     whm_wifi_start();
 
     STAGE("3: i2c + sensors");
@@ -138,7 +144,6 @@ void app_main(void)
                                       of boot here) */
     whm_storage_start_watcher();   /* hot-swap: mounts on insert, no reboot */
     whm_sync_init();
-    whm_whlink_init();
     whm_http_start();                   /* fleet link resumes its role */
     /* chime now fires from Ignition (ui task) for A/V phase lock */
     whm_mp3_init();
