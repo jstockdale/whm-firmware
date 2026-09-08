@@ -1089,12 +1089,27 @@ static int cmd_ble(int argc, char **argv)
         nvs_handle_t h2;
         if (nvs_open("whlink", NVS_READWRITE, &h2) == ESP_OK) {
             nvs_set_u8(h2, "fuse", 0);
+            nvs_set_u8(h2, "disable", 0);
             nvs_commit(h2);
             nvs_close(h2);
         }
-        printf("ble: boot-fuse cleared - reboot to init\n");
+        printf("ble: enabled (fuse + disable cleared) - reboot to "
+               "init\n");
         return 0;
     }
+    if (argc >= 2 && strcmp(argv[1], "disable") == 0) {
+        nvs_handle_t h3;
+        if (nvs_open("whlink", NVS_READWRITE, &h3) == ESP_OK) {
+            nvs_set_u8(h3, "disable", 1);
+            nvs_commit(h3);
+            nvs_close(h3);
+        }
+        printf("ble: DISABLED persistently - takes effect next "
+               "boot; 'ble enable' reverses\n");
+        return 0;
+    }
+    if (argc >= 2 && strcmp(argv[1], "status") == 0)
+        argc = 1;                        /* alias: fall to status */
     if (argc >= 2 && strcmp(argv[1], "feed") == 0) {
         whm_whlink_feed(argc >= 3 && strcmp(argv[2], "on") == 0);
         return 0;
@@ -1111,7 +1126,8 @@ static int cmd_ble(int argc, char **argv)
     printf("usage: ble                 link status\n");
     printf("       ble pair [secs]    open pairing window (adv)\n");
     printf("       ble off            close window / drop link\n");
-    printf("       ble forget         erase the bond\n");
+    printf("       ble forget         erase the bond\n"
+           "       ble enable|disable persistent on/off (next boot)\n");
     printf("       ble feed on|off    tunnel fleet 2/7/9 to peer\n");
     return 0;
 }
@@ -1764,7 +1780,7 @@ esp_err_t whm_console_start(void)
 #endif
 
     BaseType_t trc = xTaskCreatePinnedToCore(whm_repl_task, "whm_repl",
-                                             8192, NULL, 4, NULL, 0);
+                                             4096, NULL, 4, NULL, 0);
     if (trc != pdPASS) {
         ESP_LOGE(TAG, "REPL task creation FAILED (rc=%d) - no console",
                  (int)trc);

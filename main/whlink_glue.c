@@ -559,8 +559,15 @@ void whm_whlink_init(void)
        (emi.c 164) into an IWDT panic loop. Prevention only.) */
     {
         nvs_handle_t h;
-        uint8_t fuse = 0;
+        uint8_t fuse = 0, dis = 0;
         if (nvs_open("whlink", NVS_READWRITE, &h) == ESP_OK) {
+            nvs_get_u8(h, "disable", &dis);
+            if (dis) {
+                nvs_close(h);
+                printf("whlink: DISABLED ('ble enable' to turn "
+                       "back on)\n");
+                return;
+            }
             nvs_get_u8(h, "fuse", &fuse);
             if (fuse >= 3) {
                 nvs_close(h);

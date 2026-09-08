@@ -328,7 +328,7 @@ esp_err_t whm_http_start(void)
     httpd_config_t cfg = HTTPD_DEFAULT_CONFIG();
     cfg.server_port = 80;
     cfg.uri_match_fn = httpd_uri_match_wildcard;
-    cfg.stack_size = 6144;
+    cfg.stack_size = 4096;
     ESP_RETURN_ON_ERROR(httpd_start(&s_srv, &cfg), TAG, "httpd");
     httpd_uri_t u1 = { .uri = "/", .method = HTTP_GET, .handler = h_root };
     httpd_uri_t u2 = { .uri = "/manifest", .method = HTTP_GET,

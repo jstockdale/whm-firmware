@@ -768,7 +768,7 @@ esp_err_t whm_sync_init(void)
        tasks that never touch spi_flash/NVS - flash ops disable cache,
        making PSRAM unreachable mid-call. mp3 qualifies (SD+I2S only).
        rx and exec run console commands and name/NVS lookups: INTERNAL. */
-    if (xTaskCreate(fleet_exec_task, "fleet_exec", 6144, NULL, 4, NULL)
+    if (xTaskCreate(fleet_exec_task, "fleet_exec", 4608, NULL, 4, NULL)
         != pdPASS) {
         printf("fleet: exec task FAILED to start (internal=%u free) - "
                "commands would queue forever\n",
