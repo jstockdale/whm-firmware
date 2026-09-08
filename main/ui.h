@@ -32,6 +32,7 @@ void        whm_ui_walk_speed_get(float *cur, float *tgt);
 void        whm_ui_nye_join(const char *from, const char *tz,
                             int year, int64_t start_tsf);
 void        whm_ui_fw_test(int mode, int fast);
+void        whm_ui_fw_sparkle(int secs);
 void        whm_ui_task(void *arg);
 
 /* "auto" resumes rotation, "next" advances, or a screen name to hold */

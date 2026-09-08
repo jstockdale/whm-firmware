@@ -952,6 +952,13 @@ static int cmd_walk(int argc, char **argv)
 static int cmd_fw(int argc, char **argv)   /* hidden: fireworks test */
 {
     if (argc < 2) { whm_ui_fw_test(0, 0); printf("fw: off\n"); return 0; }
+    if (strcmp(argv[1], "sparkle") == 0) {
+        int sec = argc >= 3 ? atoi(argv[2]) : 10;
+        whm_ui_fw_sparkle(sec);
+        printf("fw: sparkle %ds - background bursts over the live "
+               "scene (render-layer only)\n", sec);
+        return 0;
+    }
     if (strcmp(argv[1], "test") == 0) {
         whm_ui_fw_test(1, 0);
         printf("fw: nightly show armed (walker stages in ~4s, "

@@ -235,6 +235,8 @@ static void pat_wander(int64_t t)
 
 static bool wall_now(struct tm *lt, suseconds_t *usec);
 static bool s_fw_hold;                    /* fireworks: chair hold */
+static int64_t s_fw_sparkle_until;        /* 'fw sparkle': bg-only test */
+static int64_t s_fw_sparkle_last;
 /* WALKER OWNERSHIP: exactly one unit simulates; everyone renders the
  * beacon pose. Transfer is edge-triggered by containment in the
  * MOVING strip windows (scroll itself hands him off); a 1.2s
@@ -1494,6 +1496,15 @@ static void fw_tick(int64_t t)
                    start-derived camera now (TSF-shared in fleet
                    mode, per-unit in test: identical replicas either
                    way). */
+                /* THIRD CONVICTION (owner, twice-burned): phase-3
+                   RESTORES tgt_scroll=1.0 - a freeze NOTHING in
+                   the nightly ever applied (only NYE freezes, at
+                   175 s). The 0.44.2 fix anchored chair+bursts to
+                   the trigger camera... which then sailed on: he
+                   marched to a fixed point drifting out of view,
+                   and the bursts fired 1-2 screens behind. The
+                   world now holds still for its own show. */
+                s_wk_tgt_scroll = 0.0f;
                 if (s_show.scene_x0 < 0.0f)
                     s_show.scene_x0 =
                         wk_cam(whm_wifi_tsf_now()) + 8.0f;
@@ -1844,6 +1855,17 @@ void whm_ui_walk_speed_get(float *cur, float *tgt)
 {
     *cur = s_wk_scroll;
     *tgt = s_wk_tgt_scroll;
+}
+
+void whm_ui_fw_sparkle(int secs)
+{
+    /* render-layer ONLY: bursts ride the LIVE camera over the
+       undisturbed scene - no chair, no hold, no scroll change,
+       no state force. The isolation instrument that would have
+       caught the drifting-camera bug in seconds. */
+    s_fw_sparkle_until = esp_timer_get_time() +
+                         (int64_t)(secs > 0 ? secs : 10) * 1000000;
+    s_fw_sparkle_last = 0;
 }
 
 void whm_ui_fw_test(int mode, int fast)   /* hidden: 'fw' console */
@@ -2735,6 +2757,28 @@ static void pat_walker(int64_t t)
     wk_sky(t, cam, (int)s_w_idx, f);
     wk_flora(cam, (int)s_w_idx, f, t);   /* behind platforms */
     wk_birds(t, cam, (int)s_w_idx, f, wk_synth());
+    {   /* fw sparkle: background-only fireworks test */
+        int64_t nw = esp_timer_get_time();
+        static int64_t sp_t;
+        int spdt = sp_t ? (int)((nw - sp_t) / 1000) : 33;
+        sp_t = nw;
+        if (nw < s_fw_sparkle_until) {
+            if (nw - s_fw_sparkle_last > 750000) {
+                s_fw_sparkle_last = nw;
+                uint32_t sr = (uint32_t)nw;
+                uint8_t r2, g2, b2;
+                fw_pal(&sr, &r2, &g2, &b2);
+                fw_launch(cam + 4.0f +
+                              (float)(fw_rnd(&sr) %
+                                  (uint32_t)(64u * s_w_n - 8u)),
+                          (int)(fw_rnd(&sr) % 3u), r2, g2, b2,
+                          (float)(fw_rnd(&sr) % 8u));
+            }
+            if (s_show.phase != 4) fw_step(spdt);
+        } else if (s_fwn && s_show.phase != 4) {
+            fw_step(spdt);           /* let strays finish */
+        }
+    }
 
     /* ground - carved by gaps, planked by bridges */
     int32_t id0 = (int32_t)floorf((float)ox / 64.0f);
