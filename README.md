@@ -11,7 +11,7 @@ party that takes over every screen.
 Phase 0 (bring-up) - imported at v0.31.1 after 83 numbered pre-git
 release tarballs; living history since, one commit per change. The
 VERSION file tradition (one paragraph of release notes per build)
-continues in-repo. This README describes the tree as of v0.37.x.
+continues in-repo. This README describes the tree as of v0.44.x - the piconet era.
 
 ## Hardware
 
@@ -71,6 +71,11 @@ match the build.
 | 7 | 44 B   | NYE fleet takeover (tz label, year, start_tsf) |
 | 8 | 44 B   | Mode A master beacon (tsf, content idx) |
 | 9 | 52 B   | walker keyframe / ownership (seq = FUTURE step; pose + tgt + vx; claims ranked by tsf) |
+| 10 | 24 B  | walker WK_PARAMS (anchor i64 + cam_speed + wver + strips) - the world seed for Tier-1 viewers; owner emits ~5 s + on-subscriber poke |
+| 11 | 36 B  | walker INPUT (act: auto/left/right/stop/jump/SEEK(world-x); exec_step; from+seq; x3 burst) - applies at the STAMPED step; the log is replay-consumed |
+
+Type 12 is reserved (OPRSSI). Terrain is anchor-FREE (pure
+f(chunk_id)); only step-domain randomness seeds on the anchor.
 
 All structs are packed with _Static_assert on wire size.
 
@@ -131,6 +136,17 @@ A deterministic, endless side-scroller shared by every panel:
   events inside the step - doctrine 13), the camping-chair break,
   bezel shimmy at cluster edges, and fireworks (below).
 
+- P1 CONTROL (the input spine): type-11 events apply at their
+  stamped step on every replica; the 32-deep input log is consumed
+  by wk_step itself, so live stepping and replay are ONE consumer -
+  late or missed events self-heal through snap-storm -> replay.
+  USER mode suspends autonomy (instant heel-turn, stop, jump = the
+  CHARGED long-jump, SEEK to any world-x), shaking off after 300
+  silent steps. `walk left|right|stop|jump|to <x>|auto`; `fleet
+  walk jump` is a synchronized fleet leap; the WRIST drives all of
+  it through the wh-link console bridge. Timing: boundary-bound,
+  0-33 ms, mean 16.5.
+
 ### Sky, art, and visitors
 
 - Sun r11 (r15 at dusk) with a LIVING RIM - a hot-spot rotating
@@ -183,6 +199,34 @@ A deterministic, endless side-scroller shared by every panel:
 - Hidden test command: `fw test` (nightly arc now), `fw nye [fast]`
   (full program, or 10x for review), bare `fw` disarms.
 
+### wh-link (BLE piconet citizenship)
+
+The panels are citizens of the Whitehat piconet. components/whlink
+vendors the wh-link v1 authoritative bundle VERBATIM; its
+conformance suite runs in the release gate. A NimBLE peripheral
+wears the ring's GATT contract exactly (service 6e574800-a9c4-
+4b7e-9d21-5748c0de0001; UUID in the ADV for passive scan; MTU
+517). Pairing is X25519 + commitment SAS with the SIX DIGITS ON
+THE PANEL and the BOOT button deciding; pairing SAVES (the shared
+header's 95-byte session blob in NVS), so reconnects are SILENT
+resumes - and outside pairing windows a bonded panel advertises
+only a ROTATING PSEUDONYM (HMAC over the 60 s epoch, key
+side-invariant tx^rx): the bonded watch resolves it; everyone
+else hears BLE noise. Those pseudonyms double as RANGING beacons -
+the watch (always scanning) ranks per-panel RSSI with identity
+free from the per-bond keys, plus session RSSI on the connected
+lead. CONSOLE 0x2F tunnels one console line (sealed-only) into
+the same grammar as serial and whmcast; PANEL_STATUS 0x69 is the
+19-byte fleet brief with the LEAD flag; WH_MSG_WHMCAST 0x68
+tunnels verbatim whml datagrams both ways - `ble feed on`
+forwards fleet types 2/7/9/10/11 to the sealed peer (the watch
+walker-viewer feed), and inbound sealed frames inject through the
+rx FRONT DOOR (loopback) and rebroadcast: the receiving panel IS
+the hybrid bridge. Console: `ble | ble pair [s] | ble feed on|off
+| ble forget | ble off`. The integration record lives in docs/
+(WH-LINK-ADAPT, SPEC-panel-link, SPEC-walker-port,
+SPEC-walker-world, TO-WATCH-AGENT 1-4).
+
 ### Screens and patterns
 
 Clock (labels, tz), sensors, Life (fleet-continuous rainbow strip),
@@ -190,6 +234,18 @@ music (art / info layouts, drift line), Oracle (Ignition-language
 eight ball), timer/stopwatch, text overlays (text --over), span text,
 wanderer sprite, and the Ignition boot flourish (chime-locked rings,
 name dissolve, scarf underline).
+
+- Home screen: the FLEET INDICATOR left of the name - elected
+  anchor wears the 5x5 anchor glyph, a conductor the rising baton,
+  each with the KNOWN-peer digit stacked beneath (green all-fresh /
+  amber any-stale / gray solo, 8 s / 20 s windows); followers wear
+  a circle keyed to the lead's announce age (filled green / amber
+  outline / red hollow). Both fleet dialects (elections and
+  softap conduct/join) render truthfully.
+- The Oracle (shake a unit on its screen): a self-baselining,
+  unit-agnostic detector (3 hits / 600 ms, quiet-rearm) - it
+  required an act of will after briefly reading gravity as
+  prophecy. "73" answers beside "42".
 
 ### Infrastructure
 
@@ -209,7 +265,12 @@ name dissolve, scarf underline).
   the previous screen after 6 s. Every unit serves its running
   image at /fw (X-WHM-FW version header; server aborts logged with
   offset and cause). `ota` against your own name abstains ("I'm the
-  source"), so `fleet ota <source>` is safe fleet-wide.
+  source"), so `fleet ota <source>` is safe fleet-wide. Success
+  counts REBOOT IN 5..1 on the panel and restarts itself; the
+  percent glyph is real (the P stand-in once read as OF / FULL on
+  camera). The takeover gate lives at the TRUE frame-loop head -
+  two prior placements were buried below branches that continue,
+  the second convicted by a photograph.
 - HTTP :80 - file service, /manifest (sha64), /media/<f>, /fw.
 - Console: in-house line editor (history, ctrl-c), armored help
   (NULL-safe, empty-syntax rows are hidden), hidden commands `fw` and
@@ -222,6 +283,8 @@ Run `help` on-device for the full list. Notables:
     sync lead <ms>        fleet deadline budget (default 333)
     fleet [@node] <line>  run fleet-wide, or on one node (@Two)
     ota <host> | status   pull an update / show slots
+    ble [pair|feed|forget|off]   wh-link (pair window, tunnel, bond)
+    walk left|right|stop|jump|to <x>|auto   drive the walker (P1)
     mp3 fleet <n>         Mode A synchronized playback (master = you)
     mp3 dj [n|stop]       Mode B DJ stream from this unit
     walk [speed <-2..2>]  world scroll: 0 pause, negative reverse
@@ -284,6 +347,18 @@ Hard-won laws, recorded so they never have to be re-learned:
     had [@node] addressing all along - wire field, rx filter, help
     entry - and it was nearly duplicated from stale memory. Grep
     for the feature before building the feature.
+18. Implicit defaults die the moment you name one explicitly. A
+    component with no REQUIRES inherits everything; declaring one
+    claims ownership of the whole list (four build cycles of
+    tuition: esp_flash, cJSON, mbedtls...). Enumerate or abstain -
+    never half-declare.
+19. Invert the antenna (the owner's doctrine). Sense from the side
+    already listening: panels beaconing to an always-scanning
+    watch deleted a soak-gated receive window, an extra key
+    message, and the entire panel-side implementation - the
+    per-bond derivation wrong in one direction was perfect in the
+    other. The cheapest radio work is the work a radio is already
+    doing.
 
 The original stage-by-stage validation matrix and the whm_board.h
 provenance notes live in docs/BRINGUP.md.
@@ -298,7 +373,15 @@ delivered: the walker-sync campaign (doctrines 13-15), the art
 suite, the comet registry, and - after the zero-window deadlock
 fell - the first successful unit-to-unit OTA in the project's
 history, followed shortly by the first one ever watched on the
-panel it was updating.
+panel it was updating. Then the piconet era: wh-link L0-L5 in a
+day - the panels learned to introduce themselves by SAS digits,
+take orders over a sealed console, keep bonds in NVS, whisper in
+rotating pseudonyms, and carry their own wire over Bluetooth -
+reconciliation with the watch agent ran four letters and three
+specs with one collision caught and one inversion gifted, and P1
+finally flew: a walker who takes orders from a keyboard, a fleet
+deadline, or a wrist, and stays bit-identical everywhere while
+obeying.
 
 ## License
 
