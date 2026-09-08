@@ -1,4 +1,4 @@
-whm-bringup 0.35.0-phase0
-built: 2026-09-07 (r92: THE ART RELEASE - sun r11->15 dusk (1.67x) + rim glimmer on a hash timer; moon r9 scaled crescent + dimmer glimmer; three cloud species (wisp, double puff, big cumulus w/ shaded base) with bob, edge shimmer, per-cloud wind variance; hash-gated flora on ~55% of chunks (oak, pine, bush, rocks, flowers - 1-2 pieces, never the same mix, NYE-plaza suppressed); THE SYNTHWAVE HOUR 3-5am local w/ 15-min fades: purple-to-pink sky, cyan/magenta stars, skip-lined sun, silhouetted flora w/ one cyan rim pixel. All render-only: chunk hashes + wall clock, sim untouched - the doctrines make art safe.)
+whm-bringup 0.34.3-phase0
+built: 2026-09-07 (r93: FORENSIC HYGIENE - his trace dumps convicted the shadow of leaking (triplicated st-transitions @321/321/320 = future steps writing into the history ring, the one hole in the snapshot list, found by its own fingerprints). Shadow steps are now trace-gated; the ring clears at anchor/entry. Sim was never at risk - write-only pollution - but the instrument is clean now. The session verdict: machine-gun gone, snaps small and self-healing, jump-state seam forks (0v8/0v4, y=35-47) captured = his observed glitch; Two firmware UNVERIFIED in capture - sync self-fw line exists for exactly this)
 idf: v5.5.2
 board: Waveshare ESP32-S3-RGB-Matrix | panel: ADA P2.5 64x64 1/32 HUB75E

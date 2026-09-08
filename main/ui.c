@@ -262,6 +262,7 @@ static struct { uint32_t step; float x; int8_t yq1;
 static uint32_t s_wkf_ok, s_wkf_snap, s_wkf_stale;
 static struct { uint32_t step; uint8_t from, to; } s_wkh[8];
 static uint8_t s_wkh_w;
+static bool s_wk_shadowing;      /* shadow steps: no trace writes */
 static bool s_wk_pure;               /* bisection: strip influences */
 static bool wk_i_own(void)
 {
@@ -635,7 +636,7 @@ static void wk_step(int64_t t, uint8_t n)
         }
     }
     #define WK_ST_TRACE()                                            \
-        do { if ((uint8_t)s_wk.st != st_in) {                        \
+        do { if (!s_wk_shadowing && (uint8_t)s_wk.st != st_in) {                        \
             s_wkh[s_wkh_w].step = s_wk_steps;                        \
             s_wkh[s_wkh_w].from = st_in;                             \
             s_wkh[s_wkh_w].to = (uint8_t)s_wk.st;                    \
@@ -2013,6 +2014,8 @@ static void pat_walker(int64_t t)
         s_wko.own_tsf = 0;
         memset(s_wkf, 0, sizeof(s_wkf));
         s_wk_last_chunk = INT32_MIN;
+        memset(s_wkh, 0, sizeof(s_wkh));
+        s_wkh_w = 0;
     }
     uint32_t want = (uint32_t)((t - s_wk_anchor * WK_ANCHOR_US)
                                / WK_TICK_US);
@@ -2242,6 +2245,9 @@ static void pat_walker(int64_t t)
                 uint8_t sv_seen[sizeof(s_wk_seen)];
                 memcpy(sv_seen, s_wk_seen, sizeof(s_wk_seen));
                 uint8_t sv_wr = s_wk_seen_wr;
+                s_wk_shadowing = true;   /* the trace ring proved
+                    shadow leakage (triplicated @321/321/320 entries
+                    in his log): futures must not write history */
                 for (uint32_t k2 = 0; k2 < K; k2++) {
                     s_wk_steps++;
                     s_cam_acc += ((double)WK_TICK_US / 1e6) *
@@ -2257,6 +2263,7 @@ static void pat_walker(int64_t t)
                 int8_t fdir = (int8_t)s_wk.dir;
                 uint16_t ftm = (uint16_t)s_wk.timer;
                 uint32_t fstep = s_wk_steps;
+                s_wk_shadowing = false;
                 s_wk = save;
                 s_wk_steps = sv_steps;
                 s_wk_draws = sv_draws;
