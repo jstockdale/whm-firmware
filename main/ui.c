@@ -1017,6 +1017,121 @@ static int fw_glyph(char c)
     return 26;
 }
 
+/* OTA STATUS SCREEN: the receiving unit takes over its own panel -
+ * which also QUIESCES the pattern loop (walker/shadow/storms), the
+ * exact load suspect in the 11KB truncation. Failure restores the
+ * previous screen; success reboots, so nothing needs saving. */
+static struct {
+    volatile bool active;
+    volatile uint32_t got_kb, total_kb;
+    volatile uint8_t phase;      /* 0 pull, 1 verify, 2 boot, 3 fail */
+    char from[8], to[8], why[20];
+    int64_t fail_at;
+} s_otui;
+
+void whm_ui_ota_begin(const char *cur, const char *inc, uint32_t kb)
+{
+    strlcpy(s_otui.from, cur ? cur : "?", sizeof(s_otui.from));
+    strlcpy(s_otui.to, inc && inc[0] ? inc : "?", sizeof(s_otui.to));
+    s_otui.total_kb = kb;
+    s_otui.got_kb = 0;
+    s_otui.phase = 0;
+    s_otui.why[0] = 0;
+    s_otui.active = true;
+}
+
+void whm_ui_ota_progress(uint32_t kb) { s_otui.got_kb = kb; }
+
+void whm_ui_ota_phase(uint8_t ph, const char *why)
+{
+    s_otui.phase = ph;
+    if (why) strlcpy(s_otui.why, why, sizeof(s_otui.why));
+    if (ph == 3) s_otui.fail_at = esp_timer_get_time();
+}
+
+static void ota_text(const char *s, int x0, int y0, uint8_t r,
+                     uint8_t g, uint8_t b)
+{
+    for (int k = 0; s[k]; k++) {
+        char ch = s[k];
+        if (ch == ' ') continue;
+        if (ch == '.') { wk_px(x0 + k * 4 + 1, y0 + 4, r, g, b);
+            continue; }
+        if (ch == '%') { ch = 'P'; }
+        if (ch == '>') {
+            wk_px(x0 + k * 4, y0 + 1, r, g, b);
+            wk_px(x0 + k * 4 + 1, y0 + 2, r, g, b);
+            wk_px(x0 + k * 4, y0 + 3, r, g, b);
+            continue;
+        }
+        if (ch == '/') {
+            wk_px(x0 + k * 4 + 2, y0, r, g, b);
+            wk_px(x0 + k * 4 + 1, y0 + 2, r, g, b);
+            wk_px(x0 + k * 4, y0 + 4, r, g, b);
+            continue;
+        }
+        const uint8_t *gl = fw_font[fw_glyph(ch)];
+        for (int ry = 0; ry < 5; ry++)
+            for (int rx = 0; rx < 3; rx++)
+                if (gl[ry] & (4 >> rx))
+                    wk_px(x0 + k * 4 + rx, y0 + ry, r, g, b);
+    }
+}
+
+static bool ota_screen(int64_t t)
+{
+    if (!s_otui.active) return false;
+    if (s_otui.phase == 3 && t - s_otui.fail_at > 6000000) {
+        s_otui.active = false;           /* restore previous screen */
+        return false;
+    }
+    whm_display_fill(2, 3, 8);
+    ota_text("OTA", 26, 3, 240, 200, 90);
+    char ln[20];
+    snprintf(ln, sizeof(ln), "%s > %s", s_otui.from, s_otui.to);
+    ota_text(ln, (int)(32 - (int)strlen(ln) * 2), 13, 150, 170, 220);
+    uint32_t tot = s_otui.total_kb ? s_otui.total_kb : 1;
+    uint32_t pc = s_otui.got_kb * 100u / tot;
+    if (pc > 100) pc = 100;
+    int bx = 5, by = 27, bw = 54, bh = 7;
+    for (int x2 = bx - 1; x2 <= bx + bw; x2++) {
+        wk_px(x2, by - 1, 70, 80, 110);
+        wk_px(x2, by + bh, 70, 80, 110);
+    }
+    for (int y2 = by - 1; y2 <= by + bh; y2++) {
+        wk_px(bx - 1, y2, 70, 80, 110);
+        wk_px(bx + bw, y2, 70, 80, 110);
+    }
+    int fill = (int)(pc * (uint32_t)bw / 100u);
+    for (int x2 = 0; x2 < fill; x2++)
+        for (int y2 = 0; y2 < bh; y2++)
+            wk_px(bx + x2, by + y2, 60, 190, 120);
+    int sweep = (int)((t / 60000) % (int64_t)(bw + 12)) - 6;
+    for (int d2 = -2; d2 <= 2; d2++) {   /* running light, house */
+        int x2 = sweep + d2;
+        if (x2 >= 0 && x2 < fill)
+            for (int y2 = 1; y2 < bh - 1; y2++)
+                wk_px(bx + x2, by + y2, 120, 235, 170);
+    }
+    snprintf(ln, sizeof(ln), "%luP", (unsigned long)pc);
+    ota_text(ln, 27, 37, 220, 220, 230);
+    snprintf(ln, sizeof(ln), "%lu/%luKB",
+             (unsigned long)s_otui.got_kb, (unsigned long)tot);
+    ota_text(ln, (int)(32 - (int)strlen(ln) * 2), 45, 120, 130,
+             160);
+    if (s_otui.phase == 0)
+        ota_text("PULL", 24, 55, 150, 170, 220);
+    else if (s_otui.phase == 1)
+        ota_text("VERIFYING", 14, 55, 240, 200, 90);
+    else if (s_otui.phase == 2)
+        ota_text("REBOOTING", 14, 55, 60, 220, 130);
+    else {
+        ota_text("FAILED", 20, 55, 240, 70, 70);
+        ota_text(s_otui.why, 2, 21, 240, 100, 100);
+    }
+    return true;
+}
+
 static void fw_pal(uint32_t *st, uint8_t *r, uint8_t *g, uint8_t *b)
 {
     static const uint8_t pals[6][3] = {
@@ -4803,6 +4918,10 @@ void whm_ui_task(void *arg)
             drawn_mode = M_TEXT;
             drawn_pattern = P_COUNT;
             int64_t tf = ui_frame_wait_div(1);
+        if (ota_screen(tf)) {          /* OTA takeover: all modes */
+            ui_present(tf);
+            continue;
+        }
             whm_display_clear();
             scr_text(tf);
             whm_display_flip();

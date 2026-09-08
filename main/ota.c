@@ -22,6 +22,7 @@
 #include "esp_heap_caps.h"
 #include "esp_ota_ops.h"
 #include "esp_app_desc.h"
+#include "ui.h"
 #include "esp_http_client.h"
 #include "ota.h"
 
@@ -76,6 +77,13 @@ esp_err_t whm_ota_from_url(const char *arg)
         err = ESP_OK;
         printf("ota: pulling %u KB (full partition image)\n",
                (unsigned)(dst->size / 1024));
+        {
+            char *inc = NULL;
+            esp_http_client_get_header(h, "X-WHM-FW", &inc);
+            const esp_app_desc_t *me2 = esp_app_get_description();
+            whm_ui_ota_begin(me2 ? me2->version : "?", inc,
+                             (uint32_t)(dst->size / 1024));
+        }
         while ((n = esp_http_client_read(h, buf, 4096)) > 0) {
             err = esp_ota_write(oh, buf, (size_t)n);
             if (err != ESP_OK) {
@@ -84,6 +92,7 @@ esp_err_t whm_ota_from_url(const char *arg)
                 break;
             }
             got += n;
+            whm_ui_ota_progress((uint32_t)(got / 1024));
             if (got - mark >= 262144) {
                 if (cl > 0) {
                     printf("ota: %ld/%lld KB\n", got / 1024, cl / 1024);
@@ -95,6 +104,7 @@ esp_err_t whm_ota_from_url(const char *arg)
         }
         if (err != ESP_OK) break;
         if (n < 0) {
+            whm_ui_ota_phase(3, "NET ERROR");
             printf("ota: network read ERROR at %ld KB (%d) - "
                    "aborting\n", got / 1024, n);
             esp_ota_abort(oh);
@@ -106,6 +116,7 @@ esp_err_t whm_ota_from_url(const char *arg)
             /* both units share the partition table, so the expected
                size is known locally - no header trusted. A chunked
                stream that dies looks like EOF; this names it. */
+            whm_ui_ota_phase(3, "TRUNCATED");
             printf("ota: TRUNCATED - %ld of %u KB (server aborted "
                    "or link died; check the source's console) - "
                    "not validating\n", got / 1024,
@@ -116,9 +127,11 @@ esp_err_t whm_ota_from_url(const char *arg)
             break;
         }
         printf("ota: %ld KB received, validating...\n", got / 1024);
+        whm_ui_ota_phase(1, NULL);
         err = esp_ota_end(oh);
         oh = 0;                          /* consumed either way */
         if (err != ESP_OK) {
+            whm_ui_ota_phase(3, "INVALID");
             printf("ota: image INVALID: %s (boot unchanged)\n",
                    esp_err_to_name(err));
             break;
@@ -128,6 +141,7 @@ esp_err_t whm_ota_from_url(const char *arg)
             printf("ota: validated %s v%s (built %s %s)\n",
                    d.project_name, d.version, d.date, d.time);
         }
+        whm_ui_ota_phase(2, NULL);
         err = esp_ota_set_boot_partition(dst);
         if (err != ESP_OK) {
             printf("ota: set_boot failed: %s\n", esp_err_to_name(err));
