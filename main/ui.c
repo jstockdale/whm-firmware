@@ -3736,15 +3736,18 @@ static void fleet_indicator(int x, int y)
             fleet_glyph_baton(x, y, r, g, b);
         else
             fleet_glyph_anchor(x, y, r, g, b);
-        char d[2] = { (char)('0' + (fresh > 9 ? 9 : fresh)), 0 };
+        int known = fresh + stale;          /* digit = peers known;
+                                               color carries health -
+                                               amber 0 was a lie */
+        char d[2] = { (char)('0' + (known > 9 ? 9 : known)), 0 };
         ota_text(d, x + 1, y + 7, r, g, b);   /* stacked: 5-char
                                                  size-2 names reach
                                                  x~7; the column
                                                  below stays free */
     } else {
-        if (aage < 5000)
+        if (aage < 8000)
             fleet_glyph_circle(x, y, true, 60, 220, 120);
-        else if (aage < 15000)
+        else if (aage < 20000)
             fleet_glyph_circle(x, y, false, 240, 190, 70);
         else {
             fleet_glyph_circle(x, y, false, 240, 80, 80);

@@ -1,4 +1,4 @@
-whm-bringup 0.38.1-phase0
-built: 2026-09-08 (r106: AUTO-REBOOT COUNTDOWN + REAL PERCENT - the premiere photos (four frames: ERASING empty bar, 6% early PULL, the running-light sweep caught mid-bar at 70%, 100% REBOOTING) delivered a request and a confession: the unit sat at REBOOTING awaiting a hand (old contract: reboot-when-ready), and the %-as-P stand-in read as OF / FULL in the frames. Now: success path counts REBOOT IN 5..1 on panel + serial then esp_restart (post-validation only; failures unchanged); ota_text gains a true % glyph - corner dots astride the slash.)
+whm-bringup 0.38.2-phase0
+built: 2026-09-08 (r107: FLEET INDICATOR TRUTH - his photo convicted two lies: (1) softap conduct/join stores the lead in s_peer_name, not s_anchor_name - the follower circle matched nothing and wore red-hollow while sync said heard 0s ago; brief() now matches either name. (2) amber 0 on the lead: 5s fresh window vs real announce cadence + DTIM flapped a live peer to stale, and the digit counted FRESH only - a late peer displayed as zero. Digit now counts KNOWN peers (fresh+stale), color carries health; thresholds widen to 8s/20s on both glyphs.)
 idf: v5.5.2
 board: Waveshare ESP32-S3-RGB-Matrix | panel: ADA P2.5 64x64 1/32 HUB75E

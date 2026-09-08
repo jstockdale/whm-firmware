@@ -1102,14 +1102,19 @@ void whm_sync_brief(int *role, int *fresh, int *stale,
     int64_t now = esp_timer_get_time();
     int fr = 0, st = 0;
     uint32_t aage = 0xFFFFFFFFu;
+    /* the lead's name lives in s_anchor_name under ELECTIONS and in
+       s_peer_name under SOFTAP conduct/join - match either (the
+       photo: 'member of One, heard 0s ago' wearing the red hollow) */
+    const char *lead = s_anchor_name[0] ? s_anchor_name
+                                        : s_peer_name;
     for (int i = 0; i < PEER_MAX; i++) {
         if (!s_peers[i].name[0]) continue;
         int64_t age = now - s_peers[i].last_us;
-        if (age < 5000000) fr++;
-        else if (age < 15000000) st++;
-        if (s_anchor_name[0] &&
-            strncmp(s_peers[i].name, s_anchor_name,
-                    sizeof(s_anchor_name)) == 0) {
+        if (age < 8000000) fr++;            /* 8s/20s: 2-3 missed
+        else if (age < 20000000) st++;         announces before
+                                               judgment */
+        if (lead[0] &&
+            strncmp(s_peers[i].name, lead, 16) == 0) {
             aage = (uint32_t)(age / 1000);
         }
     }
