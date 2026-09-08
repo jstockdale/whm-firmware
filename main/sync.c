@@ -1096,6 +1096,36 @@ esp_err_t whm_sync_djb_send(bool playing, uint32_t rate, uint8_t ch,
     return ESP_OK;
 }
 
+void whm_sync_brief(int *role, int *fresh, int *stale,
+                    uint32_t *anchor_age_ms)
+{
+    int64_t now = esp_timer_get_time();
+    int fr = 0, st = 0;
+    uint32_t aage = 0xFFFFFFFFu;
+    for (int i = 0; i < PEER_MAX; i++) {
+        if (!s_peers[i].name[0]) continue;
+        int64_t age = now - s_peers[i].last_us;
+        if (age < 5000000) fr++;
+        else if (age < 15000000) st++;
+        if (s_anchor_name[0] &&
+            strncmp(s_peers[i].name, s_anchor_name,
+                    sizeof(s_anchor_name)) == 0) {
+            aage = (uint32_t)(age / 1000);
+        }
+    }
+    if (role) {
+        char me[16];
+        my_name(me, sizeof(me));
+        bool cond = (whm_sync_role() == WHM_SYNC_CONDUCTOR);
+        bool anch = s_anchor_name[0] &&
+                    strncmp(s_anchor_name, me, sizeof(me)) == 0;
+        *role = cond ? 2 : (anch ? 1 : 0);   /* UI-role */
+    }
+    if (fresh) *fresh = fr;
+    if (stale) *stale = st;
+    if (anchor_age_ms) *anchor_age_ms = aage;
+}
+
 const char *whm_sync_node_name(void)
 {
     static char n[16];

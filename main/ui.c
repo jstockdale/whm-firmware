@@ -3672,6 +3672,68 @@ static void health_dot(uint16_t x, const char *lbl, bool ok)
                           ok ? 40 : 220, ok ? 220 : 50, 40);
 }
 
+/* FLEET INDICATOR (owner's design): role glyph + follower-count
+ * digit for anchor/conductor; a state circle for followers. A digit
+ * reads across the room and scales to unit Three. */
+static void fleet_glyph_anchor(int x, int y, uint8_t r, uint8_t g,
+                               uint8_t b)
+{
+    static const uint8_t A[5] = { 0x04, 0x0E, 0x04, 0x15, 0x0E };
+    for (int ry = 0; ry < 5; ry++)
+        for (int rx = 0; rx < 5; rx++)
+            if (A[ry] & (0x10 >> rx)) wk_px(x + rx, y + ry, r, g, b);
+}
+
+static void fleet_glyph_baton(int x, int y, uint8_t r, uint8_t g,
+                              uint8_t b)
+{
+    for (int i = 0; i < 5; i++)
+        wk_px(x + 4 - i, y + i, r, g, b);
+    wk_px(x + 4, y, 255, 240, 200);      /* tip */
+}
+
+static void fleet_glyph_circle(int x, int y, bool fill, uint8_t r,
+                               uint8_t g, uint8_t b)
+{
+    static const uint8_t O[5] = { 0x0E, 0x11, 0x11, 0x11, 0x0E };
+    static const uint8_t F[5] = { 0x0E, 0x1F, 0x1F, 0x1F, 0x0E };
+    const uint8_t *G = fill ? F : O;
+    for (int ry = 0; ry < 5; ry++)
+        for (int rx = 0; rx < 5; rx++)
+            if (G[ry] & (0x10 >> rx)) wk_px(x + rx, y + ry, r, g, b);
+}
+
+static void fleet_indicator(int x, int y)
+{
+    int role = 0, fresh = 0, stale = 0;
+    uint32_t aage = 0xFFFFFFFFu;
+    whm_sync_brief(&role, &fresh, &stale, &aage);
+    bool lead = (role >= 1);   /* 1 = elected anchor, 2 = conductor */
+    if (lead) {
+        uint8_t r = 120, g = 130, b = 150;      /* solo: neutral */
+        if (fresh > 0 && stale == 0) { r = 60; g = 220; b = 120; }
+        else if (stale > 0) { r = 240; g = 190; b = 70; }
+        if (role == 2)
+            fleet_glyph_baton(x, y, r, g, b);
+        else
+            fleet_glyph_anchor(x, y, r, g, b);
+        char d[2] = { (char)('0' + (fresh > 9 ? 9 : fresh)), 0 };
+        ota_text(d, x + 1, y + 7, r, g, b);   /* stacked: 5-char
+                                                 size-2 names reach
+                                                 x~7; the column
+                                                 below stays free */
+    } else {
+        if (aage < 5000)
+            fleet_glyph_circle(x, y, true, 60, 220, 120);
+        else if (aage < 15000)
+            fleet_glyph_circle(x, y, false, 240, 190, 70);
+        else {
+            fleet_glyph_circle(x, y, false, 240, 80, 80);
+            wk_px(x + 2, y + 2, 240, 80, 80);
+        }
+    }
+}
+
 static void scr_home(bool entering)
 {
     static char name[17] = "WHM";
@@ -3683,6 +3745,7 @@ static void scr_home(bool entering)
     }
     chrome("", SCR_HOME);
     gfx_text_center(W / 2, 2, name, strlen(name) <= 5 ? 2 : 1, 255, 255, 255);
+    fleet_indicator(1, 2);
 
     char buf[48], ip[20];
     bool trusted;
@@ -3718,10 +3781,10 @@ static void scr_home(bool entering)
 
     bool imu, env, rtc;
     whm_sensors_status(&imu, &env, &rtc);
-    health_dot(2, "SD", whm_storage_mounted());
-    health_dot(19, "RTC", rtc);
-    health_dot(40, "IMU", imu);
-    health_dot(59, "T", env);
+    health_dot(3, "SD", whm_storage_mounted());
+    health_dot(22, "RTC", rtc);
+    health_dot(43, "IMU", imu);
+    health_dot(60, "T", env);
 }
 
 /* Colon blink phase from the DISCIPLINED system clock (SNTP now, the TSF
