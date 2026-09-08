@@ -75,3 +75,21 @@ zero extra hops - but any panel works.
   TIMESYNC.
 - Reconciliation asks, per wh-link §6: WH_ROLE_PANEL=4;
   WH_MSG_WHMCAST. Nothing else needed - CONSOLE + STATUS cover us.
+
+## 7. L4 as shipped (v0.41.0) — bond + pseudonym
+
+- Bond = the shared header's session blob (WH_SESSION_BLOB_LEN),
+  saved to NVS on pairing, re-saved every WH_PERSIST_STRIDE sends
+  and immediately after every import (the header's own contract).
+  Reconnect: central connects, panel imports (tx_ctr jumps by
+  WH_PERSIST_MARGIN), session is sealed with NO SAS. Symmetric by
+  construction - both ends run the header's byte-identical logic.
+  `ble forget` erases the bond.
+- Rotating pseudonym (RECONCILIATION PROPOSAL - concrete, adopt or
+  counter): outside a pairing window, a bonded panel advertises
+  connectable with NO service UUID and NO name; manufacturer data
+  = FF FF 'W' 'P' + token[6]. token = HMAC-SHA256(K_pseud,
+  LE64(unix_seconds/60))[0..5]. K_pseud = HKDF-SHA256(
+  salt="wh-pseud-v1", ikm = tx_key XOR rx_key, 32 out) - the XOR
+  makes the ikm side-invariant (my tx is your rx). Accept the
+  current and adjacent epoch when resolving. Interval 800-1100 ms.

@@ -1013,6 +1013,10 @@ static int cmd_ble(int argc, char **argv)
         whm_whlink_pair_window(secs);
         return 0;
     }
+    if (argc >= 2 && strcmp(argv[1], "forget") == 0) {
+        whm_whlink_forget();
+        return 0;
+    }
     if (argc >= 2 && strcmp(argv[1], "off") == 0) {
         whm_whlink_off();
         return 0;
@@ -1021,6 +1025,7 @@ static int cmd_ble(int argc, char **argv)
     printf("usage: ble                 link status\n");
     printf("       ble pair [secs]    open pairing window (adv)\n");
     printf("       ble off            close window / drop link\n");
+    printf("       ble forget         erase the bond\n");
     return 0;
 }
 

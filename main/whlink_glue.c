@@ -19,6 +19,9 @@
 #include "esp_mac.h"
 #include "esp_heap_caps.h"
 #include "esp_system.h"
+#include "nvs_flash.h"
+#include "nvs.h"
+#include <sys/time.h>
 #include "nimble/nimble_port.h"
 #include "nimble/nimble_port_freertos.h"
 #include "host/ble_hs.h"
@@ -57,6 +60,87 @@ static bool     s_paired = false;
 static bool     s_synced = false;
 static int64_t  s_adv_until = 0;
 static uint8_t  s_addr_type;
+
+/* ---- L4: the bond (NVS) + rotating pseudonym ----
+ * The bond IS the exported session blob (keys, prefixes, counter);
+ * the shared header's persistence layer does the hard parts: import
+ * bumps tx_ctr by WH_PERSIST_MARGIN so a pre-restart nonce can
+ * never be reused, and we re-save immediately after restore plus
+ * every WH_PERSIST_STRIDE sends, exactly as its contract demands.
+ * Both ends run byte-identical logic - resume symmetry with the
+ * watch is a property of the header, not a negotiation. */
+typedef struct {
+    uint8_t  ver;                    /* 1 */
+    uint8_t  present;
+    uint16_t peer_id;
+    char     nick[16];
+    uint8_t  blob[WH_SESSION_BLOB_LEN];
+} wl_bond_t;
+static wl_bond_t s_bond;
+static uint32_t  s_since_save;
+static int64_t   s_pseud_epoch = -1;
+static bool      s_pseud_adv = false;
+
+static void bond_save_from_ctx(void)
+{
+    if (!wh_is_established(&s_ctx)) return;
+    if (wh_session_export(&s_ctx, s_bond.blob,
+                          sizeof(s_bond.blob)) <= 0) return;
+    s_bond.ver = 1;
+    s_bond.present = 1;
+    s_bond.peer_id = s_ctx.cfg.peer_id;
+    nvs_handle_t h;
+    if (nvs_open("whlink", NVS_READWRITE, &h) == ESP_OK) {
+        nvs_set_blob(h, "bond0", &s_bond, sizeof(s_bond));
+        nvs_commit(h);
+        nvs_close(h);
+        s_since_save = 0;
+    }
+}
+
+static void bond_load(void)
+{
+    nvs_handle_t h;
+    size_t n = sizeof(s_bond);
+    if (nvs_open("whlink", NVS_READONLY, &h) == ESP_OK) {
+        if (nvs_get_blob(h, "bond0", &s_bond, &n) != ESP_OK ||
+            s_bond.ver != 1)
+            memset(&s_bond, 0, sizeof(s_bond));
+        nvs_close(h);
+    }
+    if (s_bond.present)
+        printf("whlink: bond loaded (peer %04x '%s') - silent "
+               "reconnect armed\n", s_bond.peer_id, s_bond.nick);
+}
+
+static void bond_forget(void)
+{
+    nvs_handle_t h;
+    if (nvs_open("whlink", NVS_READWRITE, &h) == ESP_OK) {
+        nvs_erase_key(h, "bond0");
+        nvs_commit(h);
+        nvs_close(h);
+    }
+    memset(&s_bond, 0, sizeof(s_bond));
+    printf("whlink: bond forgotten\n");
+}
+
+/* pseudonym token: HMAC(K_pseud, LE64(unix/60))[0..5].
+ * K_pseud = HKDF(salt="wh-pseud-v1", ikm = tx_key XOR rx_key) -
+ * the XOR makes the ikm identical on both sides (my tx is their
+ * rx). Proposed for reconciliation in SPEC-panel-link. */
+static void pseud_token(uint8_t out[6], int64_t epoch)
+{
+    uint8_t ikm[WH_KEY_LEN], kp[32], mac[32], msg[8];
+    for (int i = 0; i < WH_KEY_LEN; i++)
+        ikm[i] = s_ctx.sess.tx_key[i] ^ s_ctx.sess.rx_key[i];
+    whc_hkdf((const uint8_t *)"wh-pseud-v1", 11, ikm, sizeof(ikm),
+             NULL, 0, kp, sizeof(kp));
+    for (int i = 0; i < 8; i++)
+        msg[i] = (uint8_t)((uint64_t)epoch >> (8 * i));
+    whc_hmac_sha256(kp, sizeof(kp), msg, sizeof(msg), mac);
+    memcpy(out, mac, 6);
+}
 
 static void adv_maybe(void);
 static void wl_status_send(void);
@@ -113,6 +197,9 @@ static int cb_send(void *user, const uint8_t *frame, size_t len)
 {
     (void)user;
     if (s_conn == BLE_HS_CONN_HANDLE_NONE || !s_notify_on) return -1;
+    if (wh_is_established(&s_ctx) &&
+        ++s_since_save >= WH_PERSIST_STRIDE)
+        bond_save_from_ctx();      /* stride re-save < margin */
     struct os_mbuf *om = ble_hs_mbuf_from_flat(frame, len);
     if (!om) return -1;
     return ble_gatts_notify_custom(s_conn, s_tx_handle, om) == 0
@@ -209,7 +296,13 @@ static void cb_on_paired(void *user, int ok)
     printf("whlink: %s\n", ok ? "PAIRED - link sealed"
                               : "pairing rejected/failed");
     whm_ui_sas_done(ok != 0);
-    if (ok) wl_status_send();      /* first brief, immediately */
+    if (ok) {
+        strlcpy(s_bond.nick, "watch", sizeof(s_bond.nick));
+        bond_save_from_ctx();      /* the pairing IS the bond */
+        printf("whlink: bond saved - future reconnects are "
+               "silent\n");
+        wl_status_send();          /* first brief, immediately */
+    }
 }
 
 /* ---- GATT ---- */
@@ -269,7 +362,28 @@ static int gap_event(struct ble_gap_event *ev, void *arg)
     case BLE_GAP_EVENT_CONNECT:
         if (ev->connect.status == 0) {
             s_conn = ev->connect.conn_handle;
-            printf("whlink: central connected\n");
+            if (s_bond.present) {
+                /* silent reconnect: restore the sealed session and
+                   RE-SAVE IMMEDIATELY (the header's contract - the
+                   on-flash counter must advance every restore). A
+                   fresh PAIR_REQ instead simply replaces the bond
+                   on success; a stranger's sealed frames fail AEAD
+                   and drop. */
+                if (wh_session_import(&s_ctx, s_bond.blob,
+                                      WH_SESSION_BLOB_LEN)
+                        == WH_OK) {
+                    wh_ctx_set_peer(&s_ctx, s_bond.peer_id);
+                    s_paired = true;
+                    bond_save_from_ctx();
+                    printf("whlink: central connected - sealed "
+                           "session RESUMED (bond)\n");
+                } else {
+                    printf("whlink: central connected (bond "
+                           "restore failed - pair again)\n");
+                }
+            } else {
+                printf("whlink: central connected\n");
+            }
         } else {
             adv_maybe();
         }
@@ -305,9 +419,47 @@ static void adv_maybe(void)
 {
     if (!s_synced) return;
     if (s_conn != BLE_HS_CONN_HANDLE_NONE) return;
-    if (esp_timer_get_time() >= s_adv_until) return;
     if (whm_ui_ota_active()) return;       /* OTA owns the radio */
-    if (ble_gap_adv_active()) return;
+    bool window = esp_timer_get_time() < s_adv_until;
+    if (!window && s_bond.present) {
+        /* bonded, outside the window: ROTATING PSEUDONYM - no
+           service UUID, no name, just a resolvable 6-byte token in
+           manufacturer data. Only the bonded watch can recognize
+           us; to everyone else we are BLE noise. */
+        struct timeval tv;
+        gettimeofday(&tv, NULL);
+        int64_t epoch = tv.tv_sec / 60;
+        if (ble_gap_adv_active()) {
+            if (epoch == s_pseud_epoch && s_pseud_adv) return;
+            ble_gap_adv_stop();
+        }
+        uint8_t mfg[10] = { 0xFF, 0xFF, 'W', 'P' };
+        /* restore keys into a scratch session if not live */
+        if (!wh_is_established(&s_ctx))
+            wh_session_import(&s_ctx, s_bond.blob,
+                                      WH_SESSION_BLOB_LEN);
+        pseud_token(&mfg[4], epoch);
+        struct ble_hs_adv_fields adv = { 0 };
+        adv.flags = BLE_HS_ADV_F_DISC_GEN | BLE_HS_ADV_F_BREDR_UNSUP;
+        adv.mfg_data = mfg;
+        adv.mfg_data_len = sizeof(mfg);
+        ble_gap_adv_set_fields(&adv);
+        struct ble_gap_adv_params p = { 0 };
+        p.conn_mode = BLE_GAP_CONN_MODE_UND;
+        p.disc_mode = BLE_GAP_DISC_MODE_GEN;
+        p.itvl_min = 1280; p.itvl_max = 1760;   /* 800-1100 ms */
+        ble_gap_adv_start(s_addr_type, NULL, BLE_HS_FOREVER, &p,
+                          gap_event, NULL);
+        s_pseud_epoch = epoch;
+        s_pseud_adv = true;
+        return;
+    }
+    if (!window) return;
+    if (ble_gap_adv_active()) {
+        if (!s_pseud_adv) return;
+        ble_gap_adv_stop();        /* window opens: full identity */
+    }
+    s_pseud_adv = false;
 
     struct ble_hs_adv_fields adv = { 0 };
     adv.flags = BLE_HS_ADV_F_DISC_GEN | BLE_HS_ADV_F_BREDR_UNSUP;
@@ -379,6 +531,7 @@ void whm_whlink_init(void)
     cfg.on_paired = cb_on_paired;
     wh_ctx_init(&s_ctx, &cfg);
 
+    bond_load();
     s_cmd_q = xQueueCreate(4, sizeof(wl_cmd_t));
     xTaskCreate(wl_exec_task, "wl_exec", 4096, NULL, 4, NULL);
     esp_timer_create_args_t ta = { .callback = wl_status_tick,
@@ -399,6 +552,12 @@ void whm_whlink_pair_window(uint32_t secs)
            (unsigned long)secs);
 }
 
+void whm_whlink_forget(void)
+{
+    bond_forget();
+    whm_whlink_off();
+}
+
 void whm_whlink_off(void)
 {
     s_adv_until = 0;
@@ -416,6 +575,10 @@ void whm_whlink_status_print(void)
            s_notify_on ? " +subscribed" : "",
            s_paired ? " +SEALED" : "",
            esp_timer_get_time() < s_adv_until ? "OPEN" : "closed");
+    if (s_bond.present)
+        printf("whlink: bonded to %04x '%s' (pseudonym adv %s)\n",
+               s_bond.peer_id, s_bond.nick,
+               s_pseud_adv ? "on" : "off");
 }
 
 void whm_whlink_sas_result(bool match)
