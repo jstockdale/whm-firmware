@@ -1,4 +1,4 @@
-whm-bringup 0.35.2-phase0
-built: 2026-09-07 (r95: CONVERGENCE + ART ROUND - telemetry lead 2x->3x sync lead (~1s promises); audit: verify checks dir+timer, expired promises swept, true-oldest eviction. Cloud bottom counter-glow 5-6px right-to-left. Tree parallax k=0.7 on the shared layer form with lroundf - one beat. Sun rim v2 + 2px ORBITING RAY. Seagulls by day, synthwave pigeons 3-5am)
+whm-bringup 0.35.3-phase0
+built: 2026-09-07 (r96: THE COMET REGISTRY - real sky, real dates: 2P/Encke Dec 2026-Feb 2027 (peak Jan 25), C/2026 C1 Tsuchinshan Oct-Dec 2028 (peak Nov 15), 46P/Wirtanen Sep-Dec 2029 (peak Oct 27), 103P/Hartley 2 Mar-May 2030 (peak Apr 5). Pixel comet: 2x2 coma + halo, shimmering dust tail sweeping up-right (length ramps with the triangular date-window intensity), thin flickering cyan ion tail; dusk/night only, behind clouds, synthwave-recolored; NAME NOD in dim gold 3x5 glyphs for the first 12s of every 10th minute. Dates are astronomy, brightness is weather - the registry updates by commit + OTA when the sky changes. First light: December 2026.)
 idf: v5.5.2
 board: Waveshare ESP32-S3-RGB-Matrix | panel: ADA P2.5 64x64 1/32 HUB75E

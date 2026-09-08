@@ -1621,6 +1621,110 @@ void whm_ui_fw_test(int mode, int fast)   /* hidden: 'fw' console */
  * Sun r11->15 dusk (1.67x), moon r9, rim glimmer on a hash timer;
  * three cloud species with bob + edge shimmer; hash-gated flora;
  * and the SYNTHWAVE HOUR, 3-5am local, 15-min fades. */
+/* COMET REGISTRY - real sky, real dates (researched 2026-09-07):
+ *   2P/Encke        2026-12-15 .. 2027-02-20  peak 2027-01-25
+ *   C/2026 C1 Tsuchinshan 2028-10-01 .. 2028-12-20  peak 2028-11-15
+ *   46P/Wirtanen    2029-09-15 .. 2029-12-10  peak 2029-10-27
+ *   103P/Hartley 2  2030-03-01 .. 2030-05-15  peak 2030-04-05
+ * Dates are astronomy (reliable); brightness is weather (comets
+ * fizzle, and the great ones are often found months out) - the
+ * registry updates by commit + OTA when the sky changes. */
+static const struct { int32_t d0, dp, d1; const char *name; }
+    s_comets[] = {
+    { 20261215, 20270125, 20270220, "ENCKE" },
+    { 20281001, 20281115, 20281220, "TSUCHINSHAN" },
+    { 20290915, 20291027, 20291210, "WIRTANEN" },
+    { 20300301, 20300405, 20300515, "HARTLEY 2" },
+};
+
+static void wk_comet(int64_t t, float cam, int idx, float f,
+                     float sw)
+{
+    if (f >= 0.45f || s_show.phase) return;
+    struct tm lt;
+    if (!wall_now(&lt, NULL)) return;
+    int32_t d = (lt.tm_year + 1900) * 10000 +
+                (lt.tm_mon + 1) * 100 + lt.tm_mday;
+    int ci = -1;
+    for (int i = 0; i < (int)(sizeof(s_comets) /
+                              sizeof(s_comets[0])); i++)
+        if (d >= s_comets[i].d0 && d <= s_comets[i].d1) { ci = i;
+            break; }
+    if (ci < 0) return;
+    float ramp = d <= s_comets[ci].dp
+        ? (float)(d - s_comets[ci].d0) /
+          (float)(s_comets[ci].dp - s_comets[ci].d0 + 1)
+        : (float)(s_comets[ci].d1 - d) /
+          (float)(s_comets[ci].d1 - s_comets[ci].dp + 1);
+    float inten = (0.35f + 0.65f * ramp) * (1.0f - f / 0.45f);
+    uint32_t nh = wk_h((uint32_t)ci * 40503u ^ 0xC03E7u);
+    float base = cam * 0.06f + 64.0f * (float)idx;
+    float wx = (float)(140u + nh % 360u) -
+               (float)((double)t / 6.0e7);   /* slow proper motion */
+    int cx = (((int)(wx - base)) % 560 + 560) % 560 - 30;
+    int cy = 5 + (int)((nh >> 9) % 8u);
+    if (cx < -18 || cx > 80) return;
+    uint8_t kr = 255, kg = 250, kb = 225;
+    uint8_t dr = 235, dg = 215, db = 170;   /* dust tail */
+    uint8_t ir = 110, ig = 205, ib = 255;   /* ion tail */
+    if (sw > 0.3f) { dr = 230; dg = 80; db = 200; }
+    int dl = 6 + (int)(inten * 8.0f);       /* dust length */
+    for (int s2 = 1; s2 <= dl; s2++) {      /* tail sweeps up-right */
+        float fade = inten * (1.0f - (float)s2 / (float)(dl + 2));
+        uint32_t sh = wk_h((uint32_t)(t / 400000) * 31u +
+                           (uint32_t)s2 * 7u + nh);
+        if ((sh & 7) == 0) continue;        /* shimmer gaps */
+        int px2 = cx + s2;
+        int py2 = cy - s2 / 3;
+        wk_px(px2, py2, (uint8_t)(dr * fade), (uint8_t)(dg * fade),
+              (uint8_t)(db * fade));
+        if (s2 > 3 && s2 < dl - 1)
+            wk_px(px2, py2 + 1, (uint8_t)(dr * fade * 0.55f),
+                  (uint8_t)(dg * fade * 0.55f),
+                  (uint8_t)(db * fade * 0.5f));
+    }
+    int il = 4 + (int)(inten * 5.0f);       /* ion: thin, straighter */
+    for (int s2 = 2; s2 <= il; s2++) {
+        float fade = inten * (1.0f - (float)s2 / (float)(il + 1));
+        uint32_t sh = wk_h((uint32_t)(t / 180000) * 53u +
+                           (uint32_t)s2 * 13u + nh);
+        if ((sh & 3) == 0) continue;        /* faster flicker */
+        wk_px(cx + s2, cy - 1 - s2 / 5, (uint8_t)(ir * fade),
+              (uint8_t)(ig * fade), (uint8_t)(ib * fade));
+    }
+    wk_px(cx, cy, kr, kg, kb);              /* coma core 2x2 */
+    wk_px(cx + 1, cy, kr, kg, kb);
+    wk_px(cx, cy + 1, (uint8_t)(kr * 0.9f), (uint8_t)(kg * 0.9f),
+          (uint8_t)(kb * 0.85f));
+    wk_px(cx + 1, cy + 1, (uint8_t)(kr * 0.9f),
+          (uint8_t)(kg * 0.9f), (uint8_t)(kb * 0.85f));
+    wk_px(cx - 1, cy, (uint8_t)(150 * inten), (uint8_t)(150 * inten),
+          (uint8_t)(140 * inten));          /* halo hint */
+    wk_px(cx, cy - 1, (uint8_t)(150 * inten),
+          (uint8_t)(150 * inten), (uint8_t)(140 * inten));
+    /* NAME NOD: first 12s of every 10th minute, dim gold */
+    if ((lt.tm_min % 10) == 0 && lt.tm_sec < 12) {
+        const char *nm = s_comets[ci].name;
+        int len = 0;
+        while (nm[len]) len++;
+        int x0 = cx - len * 2;
+        if (x0 < 1) x0 = 1;
+        if (x0 + len * 4 > 63) x0 = 63 - len * 4;
+        uint8_t gr = (uint8_t)(120 * inten),
+                gg = (uint8_t)(96 * inten),
+                gb = (uint8_t)(30 * inten);
+        for (int k2 = 0; k2 < len; k2++) {
+            if (nm[k2] == ' ') continue;
+            const uint8_t *gl = fw_font[fw_glyph(nm[k2])];
+            for (int ry = 0; ry < 5; ry++)
+                for (int rx = 0; rx < 3; rx++)
+                    if (gl[ry] & (4 >> rx))
+                        wk_px(x0 + k2 * 4 + rx, cy + 4 + ry,
+                              gr, gg, gb);
+        }
+    }
+}
+
 static float wk_synth(void)
 {
     static int64_t ck;
@@ -1791,6 +1895,7 @@ static void wk_sky(int64_t t, float cam, int idx, float f)
             }
         }
     }
+    wk_comet(t, cam, idx, f, sw);          /* real-sky visitor */
     if (f > 0.35f || sw > 0.3f) {          /* CLOUD SPECIES x3 */
         float cf = f > 0.35f ? (f - 0.35f) / 0.65f : sw * 0.5f;
         for (int i = 0; i < 4; i++) {
