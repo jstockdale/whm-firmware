@@ -622,6 +622,14 @@ static float wk_cam(int64_t t)
 
 void whm_ui_cam_set(float c)
 {
+    if (s_wko.owner) return;                 /* the owner's cam IS
+                                              the truth; never let
+                                              an ownership flap
+                                              cross-clobber it */
+    double dx2 = (double)c - s_cam_acc;
+    if (dx2 > 2.0 || dx2 < -2.0)
+        printf("walker: CAM SNAP dx=%.2f (divergence alarm - "
+               "should be ~0 forever)\n", dx2);
     s_cam_acc = (double)c;                 /* type-10 snap */
 }
 
@@ -645,11 +653,22 @@ static void wk_respawn(int64_t t, uint8_t n)
 
 static int32_t s_wk_last_chunk = INT32_MIN;
 
+static uint32_t s_cam_last_step;
 static void wk_cam_step(void)
 {
-    if (s_wk_shadowing) return;        /* replay re-runs steps;
-                                          the camera advances on
-                                          the LIVE pass only */
+    /* FIFTH CONVICTION (0.49.0 regression, mine): the shadow-gate
+       was right for bisection and fatally wrong for RESYNC REPLAY
+       - replayed steps advanced the step counter while the camera
+       stood still, so every snap-storm starved the camera further
+       behind (-906 px on the bench), which forced more snaps: a
+       death spiral my own gate ignited. The law that survives
+       every path: EACH STEP NUMBER ADVANCES THE CAMERA EXACTLY
+       ONCE, EVER - idempotent by step index, no execution-path
+       reasoning required. Bisection of past steps: already
+       counted. Replay: already counted. Live: counts once. */
+    if (s_wk_steps <= s_cam_last_step && s_cam_last_step != 0)
+        return;
+    s_cam_last_step = s_wk_steps;
     float d = s_wk_tgt_scroll - s_wk_scroll;
     float mx = 0.0333f;                    /* 1.0x per second */
     s_wk_scroll += d > mx ? mx : d < -mx ? -mx : d;
