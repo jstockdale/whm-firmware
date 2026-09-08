@@ -9,8 +9,9 @@ walker lives, keeps a nightly midnight ritual, and throws a New Year's
 party that takes over every screen.
 
 Phase 0 (bring-up) - imported at v0.31.1 after 83 numbered pre-git
-release tarballs. The VERSION file tradition (one paragraph of release
-notes per build) continues in-repo.
+release tarballs; living history since, one commit per change. The
+VERSION file tradition (one paragraph of release notes per build)
+continues in-repo. This README describes the tree as of v0.37.x.
 
 ## Hardware
 
@@ -62,14 +63,14 @@ match the build.
 | type | size | purpose |
 |-----:|-----:|---------|
 | 1 | ann    | anchor announce / election |
-| 2 | 212 B  | deadline command (exec_at, burst x3) |
+| 2 | 212 B  | deadline command (exec_at, target[16] addressing, burst x3) |
 | 3 |        | Life strip world sync |
 | 4 |        | Mode A play (name + sha + start_tsf) |
 | 5 |        | (reserved) |
 | 6 | 96 B   | Mode B DJ announce (rate, title, from) |
 | 7 | 44 B   | NYE fleet takeover (tz label, year, start_tsf) |
 | 8 | 44 B   | Mode A master beacon (tsf, content idx) |
-| 9 | 44 B   | walker pose / ownership beacon |
+| 9 | 52 B   | walker keyframe / ownership (seq = FUTURE step; pose + tgt + vx; claims ranked by tsf) |
 
 All structs are packed with _Static_assert on wire size.
 
@@ -105,26 +106,71 @@ A deterministic, endless side-scroller shared by every panel:
   shared origin (seams match regardless of boot order) and 1e-10
   quantum (no float freeze). wk_cam() is a pure reader. `walk speed
   <-2..2>` slews at 1x/s; `fleet walk speed` keeps panels lock-step.
-- Cross-panel walker: lockstep replicas - every unit simulates the
-  same TSF-anchored fixed-timestep machine with a pure
-  f(anchor, step, draw#) RNG, so positions are bit-identical with no
-  communication. The type-9 ownership beacon acts as referee: 1.5 px
-  dead-band, beyond it adopt-and-confess (walker: drift Npx
-  corrected). Ownership follows containment in the moving strip
-  windows; handoff prints on both sides; a silent owner is seized
-  after 1.2 s.
+- Cross-panel walker (doctrines 13-15): every unit runs the same
+  TSF-anchored fixed-timestep replica with pure f(anchor, step,
+  draw#) randomness - motion needs no packet at all. Entering the
+  pattern is a forced REPLAY POINT (respawn + catch-up from the
+  shared anchor), so resuming and fresh units rebuild identically.
+  The owner's SHADOW SIM runs 3x sync-lead into the future and emits
+  KEYFRAMES on type-9 (seq carries the future step; complete state
+  including tgt and vx). Replicas verify AT-STEP with zero evidence
+  age: match consumes silently, mismatch is a complete-state SNAP at
+  exactly the described step - never a nudge (a nudged deterministic
+  replica diverges at walking speed forever). A snap storm escalates
+  to REPLAY-RESYNC, the provably-exact rebuild. Ownership follows
+  containment; claims rank by beacon TSF; demotion grants the same
+  600 ms beacon grace as handoff, so mutual silence cannot form; a
+  silent owner is seized after 1.2 s. `walk` prints refs
+  ok/snap/stale; hidden `walk pure on|off` strips reward influence
+  for bisection.
 - Parallax sky: screen = wx - (k*cam + 64*idx); k on camera only so
   seams stay continuous. Sun/moon k=0.04 (time-true solar arc, dusk
   swell), stars 0.10 (twinkle), clouds 0.15 plus a gentle 0.25 px/s
   leftward wind.
-- Rituals: reward-table exploration, the camping-chair break, bezel
-  shimmy at cluster edges, and fireworks (below).
+- Rituals: reward-table exploration (marks are pure chunk-entry
+  events inside the step - doctrine 13), the camping-chair break,
+  bezel shimmy at cluster edges, and fireworks (below).
+
+### Sky, art, and visitors
+
+- Sun r11 (r15 at dusk) with a LIVING RIM - a hot-spot rotating
+  ~8 s/rev over a breathing glow - plus a two-pixel ORBITING RAY.
+  Moon r9, same treatment dimmer, traced around the crescent.
+- Three cloud species (wisp, double puff, big cumulus with shaded
+  base), each bobbing on its own phase, wearing TWO running lights:
+  a bright 3 px spot along the top edge and a dimmer 5-6 px
+  counter-current along the bottom.
+- Flora at parallax k=0.7 on the shared k*cam + 64*idx form, drawn
+  BEFORE platforms so the walker walks through trees: large oaks
+  (28-34 px, ragged three-shade canopies) and layered pines
+  (26-38 px) on ~30%% of chunks, mediums on 25%%, the old tiny kinds
+  as dimmed distant accents. Night-dimmed; silhouetted in synthwave.
+- Fauna: seagulls by day - a two-frame V-BEAT (shallow-V glide,
+  deep-V flap; one vertex is a bird) at star parallax - and a rare
+  magenta-underlit synthwave pigeon in the small hours.
+- THE SYNTHWAVE HOUR: 3-5 am local with 15-minute fades - purple to
+  hot pink, cyan/magenta stars, the big sun in horizontal
+  skip-lines. Keys to each panel's local clock, like the day/night
+  sky: across a multi-timezone fleet the seam is a timezone
+  boundary, which is a feature.
+- THE COMET REGISTRY: when a notable comet is genuinely in Earth's
+  sky, one appears here - two-tail pixel anatomy (shimmering dust,
+  flickering cyan ion), intensity ramping across the real
+  visibility window, name nod in gold 3x5 glyphs for the first 12 s
+  of every 10th minute. Registry as researched 2026-09-07: 2P/Encke
+  (Dec 2026 - Feb 2027), C/2026 C1 Tsuchinshan (Oct-Dec 2028),
+  46P/Wirtanen (Sep-Dec 2029), 103P/Hartley 2 (Mar-May 2030). Dates
+  are astronomy; brightness is weather - the registry updates by
+  commit + fleet OTA when the sky changes.
 
 ### Fireworks and New Year
 
-- Nightly: at 23:59:48 local the walker stages his chair; ten seconds
-  of seeded fireworks at midnight; he lingers, packs, and moves on.
-  Each unit honors its own timezone.
+- Nightly: a fleet mini-takeover (type-7 with year 0) - one
+  initiator at its local 23:59:40 broadcasts a TSF-locked 25 s
+  script every replica runs identically: chair, ten seconds of
+  seeded fireworks, linger, release. The whole cluster celebrates
+  together (local-clock st-forcing hard-forked replicas across
+  timezones; the fleet script is its own determinism).
 - Dec 31: a 20-minute fleet program. The unit whose local clock hits
   23:55 becomes initiator and takes every panel via type-7 (TSF-locked
   lockstep; gold tz label names whose midnight). A plaza scene scrolls
@@ -151,8 +197,19 @@ name dissolve, scarf underline).
   values stage through internal temporaries both directions, GETs
   write outputs only on success (caller defaults survive missing
   keys). PSRAM-stacked tasks are flash-safe by construction.
-- OTA: `ota <host|url>` stages and validates; every unit serves its
-  running firmware at /fw.
+- OTA: `ota <host|url>` pulls the source's full partition image
+  (both units share the partition table, so the expected size is
+  known locally - no header trusted; short reads are named
+  TRUNCATED, never validated). The slot ERASE runs BEFORE the
+  connection opens (a 10-20 s erase after open() starved the server
+  into its 5 s send timeout - the zero-window deadlock). The
+  receiving panel becomes an OTA STATUS SCREEN: version arrow,
+  progress bar with the running-light sweep, phases ERASING ->
+  PULL -> VERIFYING -> REBOOTING, or red FAILED + reason, restoring
+  the previous screen after 6 s. Every unit serves its running
+  image at /fw (X-WHM-FW version header; server aborts logged with
+  offset and cause). `ota` against your own name abstains ("I'm the
+  source"), so `fleet ota <source>` is safe fleet-wide.
 - HTTP :80 - file service, /manifest (sha64), /media/<f>, /fw.
 - Console: in-house line editor (history, ctrl-c), armored help
   (NULL-safe, empty-syntax rows are hidden), hidden commands `fw` and
@@ -163,7 +220,8 @@ name dissolve, scarf underline).
 Run `help` on-device for the full list. Notables:
 
     sync lead <ms>        fleet deadline budget (default 333)
-    fleet <line>          run a line fleet-wide at one deadline
+    fleet [@node] <line>  run fleet-wide, or on one node (@Two)
+    ota <host> | status   pull an update / show slots
     mp3 fleet <n>         Mode A synchronized playback (master = you)
     mp3 dj [n|stop]       Mode B DJ stream from this unit
     walk [speed <-2..2>]  world scroll: 0 pause, negative reverse
@@ -211,11 +269,21 @@ Hard-won laws, recorded so they never have to be re-learned:
     speed forever. Realign only by replay, or by complete-state
     snap at exactly the step the state describes.
 15. Tell the future before it happens. A deterministic owner can
-    emit keyframes AHEAD of need (shadow sim, 2x the delivery
+    emit keyframes AHEAD of need (shadow sim, 3x the delivery
     worst case); replicas verify at-step with zero evidence age.
     Trailing telemetry is always a chase; leading telemetry is a
     contract. User input invalidates the future - and that IS the
-    input architecture.
+    input architecture. Complete state means COMPLETE: a snap that
+    omits any sim field (tgt, vx) leaves the replica chasing its
+    own target.
+16. The linker eats suffixes. A release gate that greps -x for a
+    short literal will false-negative when it tail-merges into a
+    longer one (FAILED into ESP_ERR_*_FAILED). Gate on strings that
+    cannot be suffixes.
+17. Read-before-write applies to designs, not just files. The fleet
+    had [@node] addressing all along - wire field, rx filter, help
+    entry - and it was nearly duplicated from stale memory. Grep
+    for the feature before building the feature.
 
 The original stage-by-stage validation matrix and the whm_board.h
 provenance notes live in docs/BRINGUP.md.
@@ -225,7 +293,12 @@ provenance notes live in docs/BRINGUP.md.
 Everything before the first commit lived as 83 numbered release
 tarballs, a growing doctrine list, and one memorable lost hour that
 had to be recovered by diffing the project against its own delivered
-artifacts. This repository exists so that never happens again.
+artifacts. This repository exists so that never happens again. The git era
+delivered: the walker-sync campaign (doctrines 13-15), the art
+suite, the comet registry, and - after the zero-window deadlock
+fell - the first successful unit-to-unit OTA in the project's
+history, followed shortly by the first one ever watched on the
+panel it was updating.
 
 ## License
 

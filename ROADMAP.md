@@ -1,136 +1,79 @@
 # WHM roadmap
 
-Status: Phase 0 COMPLETE at v0.31.2 (84 pre-git revisions + 2 commits).
-The original phase-0 planning document is preserved at
-docs/ROADMAP-p0-original.md.
+Status: v0.37.x - phase 0 long complete; the git era's first arcs
+(walker sync doctrines 13-17, the art suite, the OTA suite) are
+landed. Originals preserved in docs/.
 
-## Done (phase 0 ledger, by subsystem)
+## Done since the import (by arc)
 
-Display and world
-- HUB75 via LCD_CAM+GDMA, 150 Hz, double-buffered; 60 fps master grid
-- Walker world: deterministic chunks, reward-table exploration, chair
-  ritual, jump vocabulary, houses/ladders/cloud platforms
-- Corrected parallax sky (sun/moon 0.04, stars 0.10, clouds 0.15 with
-  leftward wind), time-true solar arc, dawn/dusk glow
-- Shared-origin double-precision camera; walk speed dial (-2..2, 1x/s
-  slew); cross-panel lockstep replicas with equal-step referee beacon
-  (type-9), ownership handoff, dead-owner seizure
-- Nightly midnight fireworks ritual; Dec 31 fleet-takeover NYE program
-  (type-7): plaza scene, world freeze, ten-count, glyph constellations,
-  friend walker + banner, generative per-year choreography
-- Screens: clock, sensors, Life strip, music, Oracle, timer/stopwatch,
-  overlays, Ignition boot flourish
+Walker synchronization (doctrines 13-15)
+- Entry as forced replay point; step-time reward generator
+- Shadow-sim keyframes at 3x sync-lead on unchanged-then-extended
+  type-9 (52 B: future step, pose, tgt, vx)
+- At-step verification (zero evidence age), complete-state snap,
+  replay-resync as the sole realignment; snap-storm breaker
+- TSF-ranked ownership claims; demotion grace; equal treatment of
+  handoff and seizure; forensic snap dumps + transition trace;
+  hidden walk pure bisection switch
 
-Fleet
-- WHM-LINK: election, TSF timebase, mDNS identity
-- Deadline execution (type-2): one-timestamp rule, triple-send burst,
-  lead dial (default 333 ms), late-runs execute
-- Media sync by sha manifest; anchor self-target guard
-- Wire types 1-9, all size-asserted
+Art suite
+- Sun r11-15 living rim + orbiting ray; moon r9; three cloud
+  species with dual running lights; flora 24-40 px at k=0.7 behind
+  structures; V-beat gulls; synthwave pigeons; the synthwave hour;
+  the comet registry (Encke first light Dec 2026)
 
-Audio
-- Chime resurrected (close-before-open) with write-verdict forensics;
-  vol/tone
-- Mode A: master free-run + type-8 real-audio beacons; follower engine
-  v3 rate-servo; name+sha track resolution; sorted scans; downbeat
-  prints
-- Mode B: DJ PCM streaming on :7778, WHMT framing, auto-tune, 2 s
-  re-announce
+Fleet & OTA
+- Nightly ritual as fleet mini-takeover (type-7 year 0)
+- fleet [@node] addressing hardened (case + .local forgiven);
+  whm_sync_node_name(); sync prints own fw
+- OTA: truncation law (partition-size truth), erase-before-connect
+  (zero-window deadlock), status-screen takeover (quiesces load by
+  construction), self-source guard, server abort logging
+- First successful unit-to-unit OTA; first watched update
 
-Infrastructure
-- NVS broker (internal-staged, success-only GET writes)
-- Staged OTA + /fw self-serve; HTTP file service + manifest
-- Console: in-house editor, armored help, hidden-command convention
-- Git: repository live, doctrines in README, VERSION tradition
-  continues
+## Bench queue
 
-## Bench queue (built, awaiting hardware verdicts)
-
-- 0.31.2 seam: sustained offset gone; jump/fall exactly at bezel;
-  reverse crossings; serial-silence test (any drift line now carries
-  step + delta)
-- Mode A listen: master pristine full-song; follower ppm settle; walk
-  the room for phase-hold; AP-burp immunity (master sails, follower
-  confesses)
-- Mode B premiere: dj from One, delete-a-track party trick, mid-song
-  follower reboot re-tune, dj stop release
-- Lead A/B at 500 (should now be zero added skew) then back to 333
-- Broadcast media sync courteous form (anchor abstains)
-- fw test (nightly arc) and fw nye fast (choreo review); real-rtc NYE
-  takeover rehearsal (set one unit to Dec 31 23:54, watch it seize the
-  fleet, tz label correct)
-- Corrected night sky by eye; cloud direction; sorted mp3 list
-  numbering match
+- Matched-fw walker soak: walk stats verdict (ok climbing, snap ~0);
+  seam jumps; reverse crossings; 10-min anchor rollover as non-event
+- First full-theater OTA watch (ERASING -> ... -> REBOOTING)
+- Mode A pristine-master listen + ppm settle + AP-burp immunity;
+  Mode B premiere (delete-a-track, mid-song reboot re-tune)
+- lead 500 zero-skew A/B; broadcast media sync courteous form
+- fw test fleet-nightly premiere; fw nye fast review; real-rtc NYE
+  takeover rehearsal
+- Art tour by rtc: day / dusk / night / 03:30 synthwave; comet
+  preview at 2027-01-25 evening; tree-parallax 0.7 verdict
 
 ## Next up - P1: controllable walker (deferred by choice)
 
-Goal: pair a game controller and drive the walker around the levels,
-pixel-perfect across panels under all reasonable network states, with
-lockstep as the always-on fallback.
+Latency law: <=25 ms scheduled input-to-motion; 10 ms target.
+Down-payments already landed: the future-ref buffer IS the
+input-invalidation substrate (flush s_wkf on input, owner re-emits
+short-lead); authority-mode escape hatch = the ownership machinery.
 
-Controller reality check (captured 2026-09-07):
-- ESP32-S3 is BLE-only - NO Bluetooth Classic. The DualSense (PS5)
-  pairs over Classic, so it CANNOT connect to the S3 by radio.
-- Compatible paths, pick at build time:
-  a) BLE-native pads: Xbox Series X|S (BLE), Stadia (BLE, cheap,
-     excellent), 8BitDo in BLE mode
-  b) USB-host HID: S3 has OTG - a DualSense on a USB-C cable works,
-     and wired input is the honest route to the 10 ms dream
-  c) A classic-BT bridge (plain ESP32 forwarding HID over UDP) if the
-     DualSense must be wireless
-
-Latency law (John, 2026-09-07): scheduled input-to-motion must be
-<= 25 ms; 10 ms is the target. Design consequences:
-- Input replication (type-10): press/release events broadcast with
-  execute-at-step; every replica applies at that step; sim stays
-  deterministic INCLUDING the player. Horizon 1-2 steps (~16-33 ms)
-  fits the 25 ms law on SoftAP or low-lead infra; UDP burst primary,
-  TCP fanout mirror for reliability (sanctioned event channel - never
-  the 60 Hz pose channel; TCP head-of-line stalls are why).
-- Authority mode (the 10 ms path): while input is active, the unit
-  holding the controller becomes temporary pose-authority streaming
-  UDP-unicast pose; reverts to lockstep on idle. A mode inside the
-  architecture, not a second architecture.
-- Referee hardening: beacon gains rolling input-history CRC; a replica
-  that missed an input detects and requests TCP replay - input loss
-  self-heals instead of drifting.
-- Input sources besides the pad: console (walker left|right|jump),
-  BOOT button, HTTP endpoint (phone as controller).
+Controller reality: ESP32-S3 is BLE-only; DualSense pairs Classic.
+Paths: (a) BLE pads (Xbox Series, Stadia, 8BitDo BLE), (b) USB-host
+HID - wired DualSense, the honest 10 ms path, (c) classic-ESP32
+bridge. Type-10 input events, exec-at-step, UDP burst + TCP mirror
+(events only - never the pose channel). Sources: pad, console
+(walker left|right|jump), BOOT button, phone-over-HTTP.
 
 ## Backlog
 
-Delights
-- Walker easter eggs: summit flag, Meow the cat cameo, balloon,
-  a "73" slab for the radio faithful
-- Self-playing fleet Pong demo (fireworks demo shipped as the NYE
-  program)
-- Synthwave walker theme (sky/palette are parameterized enough now)
-- Music easter egg hook at NYE midnight (scheduler hook exists)
-- mp3 trim <ppm>: glacial master accuracy-trim (explicitly not
-  convergence-chasing)
-
-P3 - external control
-- DDP and/or ArtNet ingest for the panels
-
-P4 - hardening
-- whmcast HMAC (types 1-9 are unauthenticated LAN-only by design
-  today); signed OTA; /fw auth
-
-P5 - audio expansion
-- WAV support; ducking; visualizer; mic/line-in DJ input
-- Mode B: variable sample rates (packet already carries rate);
-  manual mp3 tune <host> command
-
-Cosmetics and open investigations
-- One uncomposed overlay blink at stage transitions (33 ms per 10 s)
-- ES7210 mic-side i2s disable-E log noise (benign)
-- sd ls errno instrumentation in place; LFN_HEAP suspicion unconfirmed
-- v1 Mode B assumes 48 k stereo library
+Delights: walker easter eggs (summit flag, Meow cameo, balloon, 73
+slab); self-playing fleet Pong; NYE music-egg hook; mp3 trim <ppm>
+P3: DDP / ArtNet ingest
+P4: whmcast HMAC; signed OTA; /fw auth
+P5: WAV; ducking; visualizer; mic/line-in DJ; Mode B variable
+rates; manual mp3 tune
+Sync: unicast referee/keyframe transport (300 ms -> 5 ms detection)
+Cosmetics & open: overlay blink 33 ms/10 s; ES7210 disable-E noise
+(benign); sd ls LFN_HEAP suspicion unconfirmed; v1 Mode B assumes
+48 k stereo
 
 ## Standing workflow
 
-- Every change is a commit; releases are tagged; tarballs remain the
-  flash artifacts; VERSION carries the release paragraph
-- Release gate: zero diagnostics, version string, feature strings +
-  symbols verified, artifact hashes match
-- The twelve doctrines live in README.md
+Every change is a commit; releases are tagged; tarballs remain the
+flash artifacts; the release gate holds (zero diags, version string,
+suffix-safe feature strings, symbol + hash verification). The
+seventeen doctrines live in README.md.

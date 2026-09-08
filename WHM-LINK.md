@@ -148,3 +148,15 @@ also opens future line-in/mic streaming.
 Member wall clocks, colons, and seconds-bar flashes lock to the
 conductor within one announce (≤1s). Roles persist across reboots; the
 flock self-assembles on power-up.
+
+## Wire registry (as of v0.37.x)
+
+Later than this document's original scope; README.md carries the
+authoritative table. Types and sizes: 1 announce; 2 = 212 B command
+(exec_at deadline, target[16] node addressing, x3 burst); 3 Life;
+4 Mode-A play; 6 = 96 B DJ announce; 7 = 44 B NYE/nightly takeover;
+8 = 44 B Mode-A master beacon; 9 = 52 B walker keyframe (seq =
+FUTURE step; pose + tgt + vx; ownership claims ranked by beacon
+tsf). Laws: one timestamp two consumers (2); leading keyframes,
+never trailing pose (9); TCP is for events, never the 60 Hz pose
+channel.
