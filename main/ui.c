@@ -2148,8 +2148,17 @@ static void wk_sky(int64_t t, float cam, int idx, float f)
             if (hm >= 6.0f && hm < 20.0f) {
                 float p = (hm - 6.0f) / 14.0f;
                 float sunw = 30.0f + p * 80.0f;
-                int sxi = (((int)(sunw - base_slow)) % 900 + 900)
-                          % 900 - 100;
+                /* THE SUN IS NOT A CLOUD (owner): it used to ride
+                   full slow-parallax, so world scroll dragged it
+                   across the sky like scenery. Parked near
+                   infinity now (15% parallax) - it crosses the
+                   sky because the DAY passes, not because the
+                   walker walks. */
+                int sxi = (((int)(sunw -
+                           (cam * 0.006f + 64.0f * (float)idx)))
+                           % 900 + 900) % 900 - 100;
+                /* strip offset stays FULL (seam continuity);
+                   only the camera coupling shrinks to 15%. */
                 float dusk = hm > 17.0f ? (hm - 17.0f) / 3.0f : 0.0f;
                 float dawn = hm < 8.0f ? (8.0f - hm) / 2.0f : 0.0f;
                 float lowr = dusk > dawn ? dusk : dawn;
@@ -2173,14 +2182,20 @@ static void wk_sky(int64_t t, float cam, int idx, float f)
                                (~8s/rev) over a breathing glow */
                             float ang = atan2f((float)dy2,
                                                (float)dx2);
-                            float run = 0.5f + 0.5f *
+                            /* TWO-SIDED GLOW (owner): the single
+                               sharpened hot-spot becomes two
+                               SMOOTH counter-traveling lobes -
+                               brighter, wide, running around both
+                               sides and crossing like breath. */
+                            float g1 = 0.5f + 0.5f *
                                 cosf(ang - (float)t / 8.0e6f);
-                            run = run * run;   /* sharpen the spot */
-                            float brth = 0.84f + 0.16f *
+                            float g2 = 0.5f + 0.5f *
+                                cosf(ang + (float)t / 8.0e6f);
+                            float brth = 0.86f + 0.14f *
                                 sinf((float)t / 9.0e6f);
-                            float lum = brth * (0.45f +
-                                                0.75f * run);
-                            if (lum > 1.15f) lum = 1.15f;
+                            float lum = brth * (0.52f +
+                                0.42f * g1 + 0.42f * g2);
+                            if (lum > 1.30f) lum = 1.30f;
                             wk_px(sxi + dx2, py2,
                                   (uint8_t)(sunr * lum > 255 ? 255
                                    : sunr * lum),
@@ -2191,30 +2206,42 @@ static void wk_sky(int64_t t, float cam, int idx, float f)
                             wk_px(sxi + dx2, py2, sunr, sung, sunb);
                         }
                     }
-                {   /* THE CROWN (owner, from photos: "you can only
-                       really see the one ray"): eight rays all
-                       around, rotating SLOWLY (~100 s/rev vs the
-                       old 8 s), alternating long/short, each
-                       twinkling on its own gentle phase. */
-                    float rot = (float)t / 6.4e7f;
-                    for (int k9 = 0; k9 < 8; k9++) {
-                        float ang9 = rot + (float)k9 * 0.7854f;
+                {   /* THE CROWN v3 (owner's brief): SIXTEEN rays,
+                       UNIFORM length (symmetry restored), fixed
+                       angular homes - they SWAY +-6deg on their
+                       own gentle phases and GLIMMER brighter, but
+                       never rotate. And the length is a CLOCK:
+                       short punchy crown at noon, long golden
+                       rays at dawn and dusk - the sun's character
+                       tells the hour, because golden-hour light
+                       IS long light. */
+                    float Lf = 2.6f + 3.4f * lowr + 0.7f *
+                        (0.5f + 0.5f * sinf((float)t / 7.0e6f));
+                    int L9 = (int)Lf;
+                    if (L9 < 2) L9 = 2;
+                    for (int k9 = 0; k9 < 16; k9++) {
+                        float sway = 0.10f *
+                            sinf((float)t / 4.5e6f +
+                                 (float)k9 * 2.4f);
+                        float ang9 = (float)k9 * 0.3927f + sway;
                         float cs = cosf(ang9), sn = sinf(ang9);
-                        int L9 = (k9 & 1) ? 3 : 5;
-                        float tw = 0.80f + 0.20f *
-                            sinf((float)t / 3.0e6f +
-                                 (float)k9 * 1.9f);
+                        float tw = 0.78f + 0.34f *
+                            sinf((float)t / 2.2e6f +
+                                 (float)k9 * 1.7f);
                         for (int e2 = 1; e2 <= L9; e2++) {
                             int rx2 = sxi + (int)(cs *
                                        (float)(rr2 + e2));
                             int ry2 = sy + (int)(sn *
                                        (float)(rr2 + e2));
+                            float m9 = tw * sunr > 255.0f
+                                       ? 255.0f : tw * sunr;
+                            float n9 = tw * sung > 255.0f
+                                       ? 255.0f : tw * sung;
                             if (ry2 < WK_GROUND && ry2 >= 0)
-                                wk_px(rx2, ry2,
-                                      (uint8_t)(sunr * tw),
-                                      (uint8_t)(sung * tw),
-                                      (uint8_t)(sunb * tw > 40 ?
-                                       40 : sunb * tw));
+                                wk_px(rx2, ry2, (uint8_t)m9,
+                                      (uint8_t)n9,
+                                      (uint8_t)(tw * sunb > 40 ?
+                                       40 : tw * sunb));
                         }
                     }
                 }
