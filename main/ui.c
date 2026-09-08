@@ -1027,7 +1027,9 @@ static int fw_glyph(char c)
 static struct {
     volatile bool active;
     volatile uint32_t got_kb, total_kb;
-    volatile uint8_t phase;      /* 0 pull, 1 verify, 2 boot, 3 fail */
+    volatile uint8_t phase;      /* 0 pull, 1 verify, 2 boot, 3 fail,
+                                    4 erase */
+    volatile uint8_t count;      /* reboot countdown seconds */
     char from[8], to[8], why[20];
     int64_t fail_at;
 } s_otui;
@@ -1051,6 +1053,8 @@ void whm_ui_ota_target(const char *inc)
 
 void whm_ui_ota_progress(uint32_t kb) { s_otui.got_kb = kb; }
 
+void whm_ui_ota_count(uint8_t n) { s_otui.count = n; }
+
 void whm_ui_ota_phase(uint8_t ph, const char *why)
 {
     s_otui.phase = ph;
@@ -1066,7 +1070,14 @@ static void ota_text(const char *s, int x0, int y0, uint8_t r,
         if (ch == ' ') continue;
         if (ch == '.') { wk_px(x0 + k * 4 + 1, y0 + 4, r, g, b);
             continue; }
-        if (ch == '%') { ch = 'P'; }
+        if (ch == '%') {                 /* corner dots + slash */
+            wk_px(x0 + k * 4, y0, r, g, b);
+            wk_px(x0 + k * 4 + 2, y0, r, g, b);
+            wk_px(x0 + k * 4 + 1, y0 + 2, r, g, b);
+            wk_px(x0 + k * 4, y0 + 4, r, g, b);
+            wk_px(x0 + k * 4 + 2, y0 + 4, r, g, b);
+            continue;
+        }
         if (ch == '>') {
             wk_px(x0 + k * 4, y0 + 1, r, g, b);
             wk_px(x0 + k * 4 + 1, y0 + 2, r, g, b);
@@ -1122,7 +1133,7 @@ static bool ota_screen(int64_t t)
             for (int y2 = 1; y2 < bh - 1; y2++)
                 wk_px(bx + x2, by + y2, 120, 235, 170);
     }
-    snprintf(ln, sizeof(ln), "%luP", (unsigned long)pc);
+    snprintf(ln, sizeof(ln), "%lu%%", (unsigned long)pc);
     ota_text(ln, 27, 37, 220, 220, 230);
     snprintf(ln, sizeof(ln), "%lu/%luKB",
              (unsigned long)s_otui.got_kb, (unsigned long)tot);
@@ -1134,8 +1145,16 @@ static bool ota_screen(int64_t t)
         ota_text("PULL", 24, 55, 150, 170, 220);
     else if (s_otui.phase == 1)
         ota_text("VERIFYING", 14, 55, 240, 200, 90);
-    else if (s_otui.phase == 2)
-        ota_text("REBOOTING", 14, 55, 60, 220, 130);
+    else if (s_otui.phase == 2) {
+        if (s_otui.count) {
+            char rb[16];
+            snprintf(rb, sizeof(rb), "REBOOT IN %u",
+                     (unsigned)s_otui.count);
+            ota_text(rb, 10, 55, 60, 220, 130);
+        } else {
+            ota_text("REBOOTING", 14, 55, 60, 220, 130);
+        }
+    }
     else {
         ota_text("FAILED", 20, 55, 240, 70, 70);
         ota_text(s_otui.why, 2, 21, 240, 100, 100);

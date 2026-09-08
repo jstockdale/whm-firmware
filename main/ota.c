@@ -23,6 +23,9 @@
 #include "esp_ota_ops.h"
 #include "esp_app_desc.h"
 #include "ui.h"
+#include "esp_system.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "esp_http_client.h"
 #include "ota.h"
 
@@ -168,9 +171,17 @@ esp_err_t whm_ota_from_url(const char *arg)
             printf("ota: set_boot failed: %s\n", esp_err_to_name(err));
             break;
         }
-        printf("ota: staged on %s - 'reboot' when ready\n", dst->label);
+        printf("ota: staged %s on %s - validated\n", d.version,
+               dst->label);
         ESP_LOGI(TAG, "staged %s on %s", d.version, dst->label);
-        err = ESP_OK;
+        for (int cd = 5; cd >= 1; cd--) {   /* the panel says
+               REBOOTING; make it true (owner's premiere photos) */
+            whm_ui_ota_count((uint8_t)cd);
+            printf("ota: rebooting in %d\n", cd);
+            vTaskDelay(pdMS_TO_TICKS(1000));
+        }
+        printf("ota: restarting now\n");
+        esp_restart();
     } while (0);
 
     if (oh) esp_ota_abort(oh);

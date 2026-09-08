@@ -1,4 +1,4 @@
-whm-bringup 0.38.0-phase0
-built: 2026-09-08 (r105: FLEET INDICATOR + ROW RESPACE - T identified (SHTC3 env sensor, health_dot 59); status row nudged per owner spec: SD 2->3, RTC 19->22, IMU 40->43, T 59->60. Fleet status left of the name (owner design, digit-below variant): anchor glyph or conductor baton with fresh-peer count stacked beneath, green all-fresh / amber any-stale / neutral gray solo; followers a 5x5 circle keyed to anchor announce age - filled green <5s, amber outline <15s, red hollow lost. whm_sync_brief() maps identity to UI-role (enum predates elections: anchor = s_anchor_name == me).)
+whm-bringup 0.38.1-phase0
+built: 2026-09-08 (r106: AUTO-REBOOT COUNTDOWN + REAL PERCENT - the premiere photos (four frames: ERASING empty bar, 6% early PULL, the running-light sweep caught mid-bar at 70%, 100% REBOOTING) delivered a request and a confession: the unit sat at REBOOTING awaiting a hand (old contract: reboot-when-ready), and the %-as-P stand-in read as OF / FULL in the frames. Now: success path counts REBOOT IN 5..1 on panel + serial then esp_restart (post-validation only; failures unchanged); ota_text gains a true % glyph - corner dots astride the slash.)
 idf: v5.5.2
 board: Waveshare ESP32-S3-RGB-Matrix | panel: ADA P2.5 64x64 1/32 HUB75E
