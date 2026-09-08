@@ -46,9 +46,12 @@ static const char *TAG = "whlink";
  * datagram per message. Filed with the watch agent per wh-link §6;
  * 0x68 is next-free after NETSCAN_RESULT. Old peers NAK unknown
  * types - graceful by spec design. */
-#define WHM_MSG_WHMCAST_PROPOSED       0x68  /* CONCURRED (watch,
-    TO-PANEL-AGENT §3) - local defines retire when the canonical
-    header redistributes with the four additive symbols */
+#define WHM_MSG_WHMCAST_PROPOSED       0x68  /* CANONICAL r1 -
+    applied upstream (RECONCILE-r1-panel), values confirmed
+    byte-identical incl golden vectors; these local defines retire
+    for header symbols the moment the redistributed wh_link.h file
+    arrives (verbatim doctrine: we do not edit the vendored copy
+    ourselves) */
 #define WHM_MSG_PANEL_STATUS_PROPOSED  0x69  /* the 19-B brief,
     MOVED OFF 0x62: that type is the shared wh_device_status (34 B)
     and our brief misparses under wh_dec_status. The watch caught
@@ -594,8 +597,11 @@ void whm_whlink_init(void)
     esp_read_mac(mac, ESP_MAC_BT);
     cfg.local_id = (uint16_t)((mac[4] << 8) | mac[5]);
     cfg.peer_id = WH_ID_BROADCAST;
-    cfg.role = WH_ROLE_GENERIC;            /* WH_ROLE_PANEL pending
-                                              reconciliation */
+    cfg.role = 4;                          /* WH_ROLE_PANEL -
+                                              canonical r1 (value
+                                              confirmed; symbol
+                                              lands with the header
+                                              redistribution) */
     cfg.caps = WH_CAP_WIFI | WH_CAP_BLE | WH_CAP_SD | WH_CAP_RTC |
                WH_CAP_AUDIO | WH_CAP_DISPLAY | WH_CAP_IMU;
     strlcpy(cfg.nick, whm_sync_node_name(), sizeof(cfg.nick));

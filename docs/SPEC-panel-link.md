@@ -18,8 +18,7 @@ RENDEZVOUS privacy doctrine. Advertising yields to an active OTA.
 
 ## 2. Identity
 
-role = WH_ROLE_GENERIC (interim; WH_ROLE_PANEL=4 proposed, spec §6
-process). caps = WIFI|BLE|SD|RTC|AUDIO|DISPLAY|IMU. nick = the
+role = WH_ROLE_PANEL (4) - canonical as of reconciliation r1. caps = WIFI|BLE|SD|RTC|AUDIO|DISPLAY|IMU. nick = the
 panel's fleet node name ("One", "Two"...). local_id = BT MAC low16.
 ANNOUNCE fires when the central subscribes to TX.
 
