@@ -33,6 +33,8 @@ void whm_sync_discover_print(void);
 esp_err_t whm_sync_fleet_send(const char *line);
 esp_err_t whm_sync_play_send(const char *name, const char *sha,
                              int64_t start_tsf, bool stop);
+esp_err_t whm_sync_wkparams_send(int64_t anchor, float cam_speed,
+                                 uint8_t strips);
 esp_err_t whm_sync_wkb_send(uint8_t owner, float x, int8_t y,
                             uint8_t st, int8_t dir, uint16_t timer,
                             uint32_t step, float tgt, float vx);

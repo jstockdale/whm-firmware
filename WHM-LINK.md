@@ -160,3 +160,6 @@ FUTURE step; pose + tgt + vx; ownership claims ranked by beacon
 tsf). Laws: one timestamp two consumers (2); leading keyframes,
 never trailing pose (9); TCP is for events, never the 60 Hz pose
 channel.
+10 = 24 B walker WK_PARAMS (anchor i64 + cam_speed f32 + wver +
+strips) - the world seed for Tier-1 viewers; owner emits ~5 s +
+on-subscriber poke. P1 input events take type 11.

@@ -325,6 +325,7 @@ static struct {
 } s_wk;
 static uint32_t wk_h(uint32_t s);          /* defined just below */
 static uint32_t s_wk_steps;
+static volatile bool s_wkp_poke;   /* new subscriber wants params */
 static uint8_t s_wk_draws;   /* per-step draw counter (pure RNG) */
 static int64_t s_wk_anchor = -1;
 
@@ -1053,6 +1054,8 @@ void whm_ui_ota_target(const char *inc)
 }
 
 bool whm_ui_ota_active(void) { return s_otui.active; }
+
+void whm_ui_walk_params_poke(void) { s_wkp_poke = true; }
 
 void whm_ui_ota_progress(uint32_t kb) { s_otui.got_kb = kb; }
 
@@ -2804,6 +2807,15 @@ static void pat_walker(int64_t t)
                 s_cam_acc = sv_cam;
                 memcpy(s_wk_seen, sv_seen, sizeof(s_wk_seen));
                 s_wk_seen_wr = sv_wr;
+                {
+                    static uint8_t wkp_ctr;
+                    if (s_wkp_poke || ++wkp_ctr >= 20) {
+                        wkp_ctr = 0;
+                        s_wkp_poke = false;
+                        whm_sync_wkparams_send(s_wk_anchor,
+                            (float)s_wk_scroll, (uint8_t)s_w_n);
+                    }
+                }
                 whm_sync_wkb_send(s_wko.owner, fx, fy, fst, fdir,
                                   ftm, fstep, ftg, fvx);
                 }

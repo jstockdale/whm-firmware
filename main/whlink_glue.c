@@ -46,7 +46,15 @@ static const char *TAG = "whlink";
  * datagram per message. Filed with the watch agent per wh-link §6;
  * 0x68 is next-free after NETSCAN_RESULT. Old peers NAK unknown
  * types - graceful by spec design. */
-#define WHM_MSG_WHMCAST_PROPOSED 0x68
+#define WHM_MSG_WHMCAST_PROPOSED       0x68  /* CONCURRED (watch,
+    TO-PANEL-AGENT §3) - local defines retire when the canonical
+    header redistributes with the four additive symbols */
+#define WHM_MSG_PANEL_STATUS_PROPOSED  0x69  /* the 19-B brief,
+    MOVED OFF 0x62: that type is the shared wh_device_status (34 B)
+    and our brief misparses under wh_dec_status. The watch caught
+    it; my recon had the struct on screen and missed the collision -
+    doctrine 17, personally. ANNOUNCE covers identity; this carries
+    only the fleet brief. */
 
 static bool s_feed = false;      /* ble feed on|off */
 
@@ -307,7 +315,8 @@ static void wl_status_send(void)
     b[15] = (up >> 16) & 0xFF; b[16] = (up >> 24) & 0xFF;
     uint16_t kb = (uint16_t)(esp_get_free_heap_size() / 1024);
     b[17] = kb & 0xFF; b[18] = (kb >> 8) & 0xFF;
-    wh_send(&s_ctx, WH_MSG_STATUS, WH_FLAG_EVENT, 0, b, sizeof(b));
+    wh_send(&s_ctx, WHM_MSG_PANEL_STATUS_PROPOSED, WH_FLAG_EVENT,
+            0, b, sizeof(b));
 }
 
 static void wl_status_tick(void *arg)
@@ -402,6 +411,7 @@ static int gap_event(struct ble_gap_event *ev, void *arg)
                     wh_ctx_set_peer(&s_ctx, s_bond.peer_id);
                     s_paired = true;
                     bond_save_from_ctx();
+                    if (s_feed) whm_ui_walk_params_poke();
                     printf("whlink: central connected - sealed "
                            "session RESUMED (bond)\n");
                 } else {
@@ -583,6 +593,8 @@ void whm_whlink_pair_window(uint32_t secs)
 void whm_whlink_feed(bool on)
 {
     s_feed = on;
+    if (on) whm_ui_walk_params_poke();   /* new subscriber: send
+                                            the world seed now */
     printf("whlink: feed %s\n", on ? "ON - tunneling fleet types "
            "2/7/9 to the sealed peer" : "off");
 }

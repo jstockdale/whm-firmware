@@ -196,7 +196,7 @@ static void sync_tap(const void *buf, int len)
 {
     const uint8_t *b = (const uint8_t *)buf;
     if (!s_tap || len < 8) return;
-    if (b[5] != 2 && b[5] != 7 && b[5] != 9) return;
+    if (b[5] != 2 && b[5] != 7 && b[5] != 9 && b[5] != 10) return;
     s_tap(b, len);
 }
 
@@ -1029,6 +1029,42 @@ void whm_sync_set_lead_ms(uint32_t ms)
     if (ms > 1000) ms = 1000;
     whm_settings_set_u32("fl_lead", ms);
     s_lead_us = ms * 1000;
+}
+
+/* WK_PARAMS - whml type 10 (watch agent, TO-PANEL-AGENT §4): the
+ * world seed a Tier-1 viewer cannot derive. anchor is the universe;
+ * same step under a different anchor is different terrain. Low-rate
+ * (every ~5 s from the owner + poked on a new subscriber), never
+ * baked into keyframes. 24 bytes packed LE. */
+typedef struct __attribute__((packed)) {
+    char magic[4];
+    uint8_t ver;            /* 2 */
+    uint8_t type;           /* 10 = walker params */
+    uint16_t rsv;
+    int64_t anchor;         /* fleet epoch anchor (fleet time base) */
+    float cam_speed;        /* the walk-speed dial */
+    uint8_t wver;           /* walker/world version = 2 */
+    uint8_t strips;         /* fleet strip count (parallax hint) */
+    uint16_t rsv2;
+} whm_wkp_t;
+_Static_assert(sizeof(whm_wkp_t) == 24, "wkp wire");
+
+esp_err_t whm_sync_wkparams_send(int64_t anchor, float cam_speed,
+                                 uint8_t strips)
+{
+    if (s_sock < 0) return ESP_ERR_INVALID_STATE;
+    whm_wkp_t k = { .magic = { 'W', 'H', 'M', 'L' }, .ver = 2,
+                    .type = 10, .anchor = anchor,
+                    .cam_speed = cam_speed, .wver = 2,
+                    .strips = strips };
+    struct sockaddr_in dst = { 0 };
+    dst.sin_family = AF_INET;
+    dst.sin_port = htons(7777);
+    dst.sin_addr.s_addr = htonl(INADDR_BROADCAST);
+    sendto(s_sock, &k, sizeof(k), 0, (struct sockaddr *)&dst,
+           sizeof(dst));
+    sync_tap((const uint8_t *)&k, (int)sizeof(k));
+    return ESP_OK;
 }
 
 esp_err_t whm_sync_wkb_send(uint8_t owner, float x, int8_t y,

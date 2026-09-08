@@ -115,3 +115,16 @@ zero extra hops - but any panel works.
   seq) command dedupe is the loop guard. A `fleet ...` line the
   watch could already run via CONSOLE; WHMCAST lets a future BLE
   peer speak raw fleet wire.
+
+## 9. Reconciliation round 1 (v0.43.0)
+
+- STATUS moved: the 19-byte brief now rides **PANEL_STATUS 0x69**
+  (0x62 belongs to wh_device_status - watch catch, our miss).
+  Body unchanged from §5.
+- **WK_PARAMS = whml type 10** (24 B, layout in
+  TO-WATCH-AGENT-2.md §3): the world seed for Tier-1 viewers.
+  Owner emits every ~5 s + immediately on feed-enable/resume.
+  Tunnel now forwards types 2/7/9/10.
+- Concurred additive set: ROLE_PANEL=4, WHMCAST=0x68,
+  PANEL_STATUS=0x69, PANEL_STAT=0x6A (body per watch §5,
+  verbatim). Local defines retire on header redistribution.

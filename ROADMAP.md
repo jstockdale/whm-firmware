@@ -54,7 +54,7 @@ short-lead); authority-mode escape hatch = the ownership machinery.
 Controller reality: ESP32-S3 is BLE-only; DualSense pairs Classic.
 Paths: (a) BLE pads (Xbox Series, Stadia, 8BitDo BLE), (b) USB-host
 HID - wired DualSense, the honest 10 ms path, (c) classic-ESP32
-bridge. Type-10 input events, exec-at-step, UDP burst + TCP mirror
+bridge. Type-11 input events (type 10 = WK_PARAMS, shipped v0.43.0), exec-at-step, UDP burst + TCP mirror
 (events only - never the pose channel). Sources: pad, console
 (walker left|right|jump), BOOT button, phone-over-HTTP.
 
@@ -85,8 +85,10 @@ rehearsal FINISH before new panel display features start. The
 watch-integration SPECS ship now (docs/SPEC-panel-link.md,
 docs/SPEC-walker-port.md, docs/TO-WATCH-AGENT.md) because specs
 unblock the other project in parallel at document cost; the
-piconet-stats/graphs display surface is explicitly GATED behind P1
-and ranked by the watch agent's answers.
+piconet-stats/graphs display surface is explicitly GATED behind P1.
+Watch ranking received (TO-PANEL-AGENT) = the build order: 1 threat
+interrupt (0x61 reuse), 2 find ticker (0x60 reuse), 3 PANEL_STAT
+rate graph (0x6A), 4 GPS/time, 5 battery glyph, 6 LoRa.
 
 ## Backlog
 
