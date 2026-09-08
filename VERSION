@@ -1,4 +1,4 @@
-whm-bringup 0.36.1-phase0
-built: 2026-09-07 (r98: FLEET ADDRESSING HARDENED (his catch: fleet [@node] <line> pre-existed - wire target[16], help-documented - my duplicate reverted before it shipped). Receiver target match now case-insensitive + .local-forgiving (was strncmp: @two ran on issuer, dropped on Two). whm_sync_node_name() getter added. OTA SELF-SOURCE GUARD: ota <me> prints that s me - I m the source and abstains, so fleet ota one.local is safe fleet-wide (the source politely skips; mirrors the 0.25.7 media lesson))
+whm-bringup 0.36.2-phase0
+built: 2026-09-08 (r99: OTA TRUNCATION LAW - the 11KB mystery: h_fw aborted silently on partition_read/send_chunk failure (chunked stream just ends), and the client folded read-errors into EOF and never compared got to anything. Now: both server branches print offset+cause, success prints served KB; client prints the expected full-partition size up front, treats n<0 as named network error, and enforces got == dst partition size (the local truth both units share) - TRUNCATED aborts before validation and points at the source console. Next failed attempt convicts its own root on One.)
 idf: v5.5.2
 board: Waveshare ESP32-S3-RGB-Matrix | panel: ADA P2.5 64x64 1/32 HUB75E

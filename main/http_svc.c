@@ -298,10 +298,15 @@ static esp_err_t h_fw(httpd_req_t *r)
     while (left > 0) {
         size_t want = left > 4096 ? 4096 : left;
         if (esp_partition_read(run, off, buf, want) != ESP_OK) {
+            printf("fw: partition_read FAILED at %u - aborting "
+                   "serve\n", (unsigned)off);
             err = ESP_FAIL;
             break;
         }
         if (httpd_resp_send_chunk(r, buf, want) != ESP_OK) {
+            printf("fw: send_chunk FAILED at %u (client gone / "
+                   "socket timeout / no mem) - aborting serve\n",
+                   (unsigned)off);
             err = ESP_FAIL;
             break;
         }
@@ -309,7 +314,10 @@ static esp_err_t h_fw(httpd_req_t *r)
         left -= want;
     }
     free(buf);
-    if (err == ESP_OK) httpd_resp_send_chunk(r, NULL, 0);
+    if (err == ESP_OK) {
+        httpd_resp_send_chunk(r, NULL, 0);
+        printf("fw: served %u KB\n", (unsigned)(off / 1024));
+    }
     return ESP_OK;
 }
 

@@ -72,8 +72,10 @@ esp_err_t whm_ota_from_url(const char *arg)
             break;
         }
         long got = 0, mark = 0;
-        int n;
+        int n = 0;
         err = ESP_OK;
+        printf("ota: pulling %u KB (full partition image)\n",
+               (unsigned)(dst->size / 1024));
         while ((n = esp_http_client_read(h, buf, 4096)) > 0) {
             err = esp_ota_write(oh, buf, (size_t)n);
             if (err != ESP_OK) {
@@ -92,8 +94,24 @@ esp_err_t whm_ota_from_url(const char *arg)
             }
         }
         if (err != ESP_OK) break;
-        if (got == 0) {
-            printf("ota: empty response\n");
+        if (n < 0) {
+            printf("ota: network read ERROR at %ld KB (%d) - "
+                   "aborting\n", got / 1024, n);
+            esp_ota_abort(oh);
+            oh = 0;
+            err = ESP_FAIL;
+            break;
+        }
+        if (got != (long)dst->size) {
+            /* both units share the partition table, so the expected
+               size is known locally - no header trusted. A chunked
+               stream that dies looks like EOF; this names it. */
+            printf("ota: TRUNCATED - %ld of %u KB (server aborted "
+                   "or link died; check the source's console) - "
+                   "not validating\n", got / 1024,
+                   (unsigned)(dst->size / 1024));
+            esp_ota_abort(oh);
+            oh = 0;
             err = ESP_FAIL;
             break;
         }
