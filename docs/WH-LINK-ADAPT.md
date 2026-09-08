@@ -145,6 +145,35 @@ reconnect.
   relax to sub-pixel wobble. This is the take-it-anywhere mode -
   a fleet in a field.
 
+## 6b. Pairing topology (owner model, confirmed)
+
+BONDS and SESSIONS are different things.
+
+- **Bonds** (who has paired; NVS, Phase 2): EVERYONE WITH
+  EVERYONE, established once at commissioning - watch <-> every
+  panel, panels <-> each other. The SAS ritual needs a human, so
+  it is done on the bench (N panels + watch = N(N+1)/2 ceremonies,
+  minutes, once), then held with rotating pseudonyms so
+  reconnection is silent. Pre-existing bonds are what let the
+  failure modes need no hands: a WiFi-orphan connects to its
+  bonded neighbor and becomes the hybrid case; a fleet in a field
+  wakes its BLE star without ceremony.
+- **Sessions** (who is connected now): in a healthy WiFi fleet,
+  exactly ONE - watch <-> the LEAD (anchor or conductor). The lead
+  fans CONSOLE fleet lines out over whmcast with zero extra hops
+  and serves the AGGREGATED fleet brief in STATUS. Panel <->
+  panel sessions stay dormant (whmcast outclasses them; the
+  Tier-0 law forbids spending radio on redundancy) and activate
+  only for the hybrid bridge or BLE-only modes.
+- **Any-panel entry point (free property)**: fleet commands are
+  location-independent - the deadline machinery does not care
+  which panel injects a fleet line - so if the lead is absent the
+  watch connects to whoever is awake and loses only aggregation.
+  Lead preference is an optimization, not a requirement.
+- Ladder consequence: L4 (NVS bonding + pseudonyms) rises - it is
+  the enabler of paired-in-advance / connect-on-demand. L3 STATUS
+  gains a lead flag so the watch finds its preferred partner.
+
 ## 7. Reconciliation items (spec §6 additive process)
 
 Propose to the ring/watch agents before shipping enums:
