@@ -4922,14 +4922,20 @@ void whm_ui_task(void *arg)
             continue;
         }
 
+        if (s_otui.active) {           /* OTA takeover: every mode
+                                          yields (hook was buried in
+                                          the M_TEXT branch - home
+                                          screen never consulted it) */
+            int64_t tf = ui_frame_wait_div(2);
+            if (ota_screen(tf)) {
+                ui_present(tf);
+                continue;
+            }
+        }
         if (mode == M_TEXT) {
             drawn_mode = M_TEXT;
             drawn_pattern = P_COUNT;
             int64_t tf = ui_frame_wait_div(1);
-        if (ota_screen(tf)) {          /* OTA takeover: all modes */
-            ui_present(tf);
-            continue;
-        }
             whm_display_clear();
             scr_text(tf);
             whm_display_flip();
