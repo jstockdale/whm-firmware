@@ -3907,13 +3907,15 @@ static void fleet_indicator(int x, int y)
         else if (aage < 20000)
             fleet_glyph_circle(x, y, false, 240, 190, 70);
         else {
-            /* ISO 3864 prohibition: circle + top-left->bottom-right
-               diagonal - the world's symbol, borrowed exactly (the
-               owner proposed the slash; the dot was our invention
-               and carried no semantics) */
+            /* Prohibition slash, OWNER-SPECIFIED 1:30 -> 7:30
+               (top-right to bottom-left). ISO 3864's canonical is
+               the mirror (10:30 -> 4:30); at 5 px both read
+               identically as "no", and the panel's owner has seen
+               both on LEDs and chosen. Math: +y is DOWN, so
+               (x+4-q, y+q) descends from the top-RIGHT corner. */
             fleet_glyph_circle(x, y, false, 240, 80, 80);
             for (int q = 0; q < 5; q++)
-                wk_px(x + q, y + q, 240, 80, 80);
+                wk_px(x + 4 - q, y + q, 240, 80, 80);
         }
     }
 }
@@ -4023,6 +4025,22 @@ static void scr_clock(void)
     }
     uint8_t h = (uint8_t)lt.tm_hour, mi = (uint8_t)lt.tm_min,
             s = (uint8_t)lt.tm_sec;
+    {   /* 12/24-hour, serial-toggled ('clock 12|24'), cached 3 s
+           like the label. 12-mode is bare wall-clock convention:
+           hour%12 with 0 -> 12, no AM/PM - no clock face on a
+           wall carries one. */
+        static uint8_t clk24 = 1;
+        static int64_t clk_t = 0;
+        if (esp_timer_get_time() - clk_t > 3000000) {
+            clk24 = 1;
+            whm_settings_get_u8("clk24", &clk24);
+            clk_t = esp_timer_get_time();
+        }
+        if (!clk24) {
+            h = (uint8_t)(h % 12);
+            if (h == 0) h = 12;
+        }
+    }
     uint8_t mo = (uint8_t)(lt.tm_mon + 1), d = (uint8_t)lt.tm_mday;
     uint16_t y = (uint16_t)(lt.tm_year + 1900);
     (void)y;

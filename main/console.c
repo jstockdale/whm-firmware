@@ -856,6 +856,19 @@ static int cmd_fleet(int argc, char **argv)
 
 static int cmd_clock(int argc, char **argv)
 {
+    if (argc >= 2 && (strcmp(argv[1], "12") == 0 ||
+                      strcmp(argv[1], "24") == 0)) {
+        uint8_t v24 = (argv[1][0] == '2') ? 1 : 0;
+        whm_settings_set_u8("clk24", v24);
+        printf("clock: %u-hour display (saved)\n", v24 ? 24 : 12);
+        return 0;
+    }
+    if (argc < 2) {
+        uint8_t v24 = 1;
+        whm_settings_get_u8("clk24", &v24);
+        printf("clock: %u-hour display ('clock 12|24' to set)\n",
+               v24 ? 24 : 12);
+    }
     if (argc >= 3 && strcmp(argv[1], "label") == 0) {
         if (strcmp(argv[2], "off") == 0) {
             whm_settings_set_str("clk_lbl", "-");
@@ -1423,7 +1436,7 @@ static const cmd_ent_t k_cmds[] = {
     { "factory",    "factory confirm",                "erase all settings + reboot",   cmd_factory },
     { "oracle",     "oracle",                         "consult the eight ball",        cmd_oracle },
     { "fleet",      "fleet [@node] <console line>",   "run a command fleet-wide or on one node",   cmd_fleet },
-    { "clock",      "clock label <text|tz|off>",      "label above the clock face",    cmd_clock },
+    { "clock",      "clock label <..> | 12|24",       "clock label / 12-24h display",    cmd_clock },
     { "vol",        "vol [1-100]",                    "beep/chime/tone volume",        cmd_vol },
         { "walk",       "walk [left|right|stop|jump|to <x>|auto|speed <r>]", "drive the walker (P1) / scroll", cmd_walk },
 { "fw",         "",                               "",                                  cmd_fw },  /* hidden */
