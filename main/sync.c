@@ -263,6 +263,38 @@ static const char *leader_word(void)
     return s_smode == SM_AUTO ? "anchor" : "conductor";
 }
 
+void whm_sync_status_brief(char *mode16, char *role16,
+                           uint8_t *prio, char *anchor16)
+{
+    strlcpy(mode16, s_smode == SM_AUTO ? "auto" :
+                    s_smode == SM_SOFTAP ? "softap" : "off", 16);
+    strlcpy(role16, s_role == WHM_SYNC_CONDUCTOR ? leader_word() :
+                    s_role == WHM_SYNC_MEMBER ? "member" : "off",
+            16);
+    *prio = s_prio;
+    strlcpy(anchor16, s_anchor_name[0] ? s_anchor_name : "-", 16);
+}
+
+int whm_sync_peer_iter(int i, char n16[16], char f8[8],
+                       uint32_t *age_ms, uint8_t *role)
+{
+    int64_t now2 = esp_timer_get_time();
+    int seen = 0;
+    for (int k = 0; k < PEER_MAX; k++) {
+        if (!s_peers[k].name[0]) continue;
+        if (now2 - s_peers[k].last_us > 30000000LL) continue;
+        if (seen++ == i) {
+            strlcpy(n16, s_peers[k].name, 16);
+            strlcpy(f8, s_peers[k].fw, 8);
+            *age_ms = (uint32_t)((now2 - s_peers[k].last_us)
+                                 / 1000);
+            *role = s_peers[k].role;
+            return 1;
+        }
+    }
+    return 0;
+}
+
 const char *whm_sync_peer_fw(const char *name)
 {
     int64_t now2 = esp_timer_get_time();

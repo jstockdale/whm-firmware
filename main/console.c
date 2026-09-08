@@ -874,6 +874,66 @@ static int cmd_fleet(int argc, char **argv)
 
 /* ---------------------------------------------------------------- clock */
 
+static int cmd_status(int argc, char **argv)
+{
+    (void)argc; (void)argv;
+    const esp_app_desc_t *ad = esp_app_get_description();
+    int64_t up = esp_timer_get_time() / 1000000;
+    printf("status: %s | fw %s | up %lldh%02lldm\n",
+           whm_sync_node_name(), ad->version,
+           (long long)(up / 3600), (long long)((up / 60) % 60));
+    char mo[16], ro[16], an[16];
+    uint8_t pr;
+    whm_sync_status_brief(mo, ro, &pr, an);
+    printf("sync:   mode %s | role %s | prio %u | anchor %s\n",
+           mo, ro, pr, an);
+    /* fleet fw breakdown from announce gossip */
+    char fws[4][8]; int cnt[4] = {0}, nfw = 0, npeer = 0;
+    char pn[16], pf[8]; uint32_t age; uint8_t prole;
+    for (int i = 0; whm_sync_peer_iter(i, pn, pf, &age, &prole);
+         i++) {
+        npeer++;
+        int f = -1;
+        for (int k = 0; k < nfw; k++)
+            if (strncmp(fws[k], pf, 8) == 0) f = k;
+        if (f < 0 && nfw < 4) { strlcpy(fws[nfw], pf, 8);
+                                f = nfw++; }
+        if (f >= 0) cnt[f]++;
+    }
+    printf("fleet:  %d peer%s heard", npeer, npeer == 1 ? "" : "s");
+    for (int k = 0; k < nfw; k++)
+        printf(" | %s x%d%s", fws[k], cnt[k],
+               strncmp(fws[k], ad->version, 8) ? " (!=me)" : "");
+    printf("\n");
+    for (int i = 0; whm_sync_peer_iter(i, pn, pf, &age, &prole);
+         i++)
+        printf("  peer: %-12s fw %-7s %-9s %lus ago\n", pn, pf,
+               (prole & 0x80) ? "anchor" :
+               (prole & 0x7F) == 1 ? "leader" :
+               (prole & 0x7F) == 2 ? "member" : "off",
+               (unsigned long)(age / 1000));
+    uint32_t wst; int wown; float wc, wx;
+    whm_ui_walk_status(&wst, &wown, &wc, &wx);
+    printf("walker: step %lu | %s | cam %.2f | x %.2f\n",
+           (unsigned long)wst, wown ? "OWNER" : "viewer",
+           (double)wc, (double)wx);
+    char wl[96];
+    whm_whlink_status_line(wl, sizeof(wl));
+    printf("whlink: %s\n", wl);
+    multi_heap_info_t ii;
+    heap_caps_get_info(&ii, MALLOC_CAP_INTERNAL);
+    printf("mem:    int %uK free (min %uK, largest %uK)\n",
+           (unsigned)(ii.total_free_bytes / 1024),
+           (unsigned)(ii.minimum_free_bytes / 1024),
+           (unsigned)(ii.largest_free_block / 1024));
+    char ip[20] = "-";
+    whm_wifi_ip_str(ip, sizeof(ip));
+    printf("net:    %s | rssi %d | tsf %s\n", ip,
+           whm_wifi_rssi(),
+           whm_wifi_tsf_now() > 0 ? "locked" : "-");
+    return 0;
+}
+
 static int cmd_clock(int argc, char **argv)
 {
     if (argc >= 2 && (strcmp(argv[1], "12") == 0 ||
@@ -1463,6 +1523,7 @@ static const cmd_ent_t k_cmds[] = {
     { "factory",    "factory confirm",                "erase all settings + reboot",   cmd_factory },
     { "oracle",     "oracle",                         "consult the eight ball",        cmd_oracle },
     { "fleet",      "fleet [@node] <console line>",   "run a command fleet-wide or on one node",   cmd_fleet },
+    { "status",     "status",                         "fleet + software state (see sysinfo for hw)", cmd_status },
     { "clock",      "clock label <..> | 12|24",       "clock label / 12-24h display",    cmd_clock },
     { "vol",        "vol [1-100]",                    "beep/chime/tone volume",        cmd_vol },
         { "walk",       "walk [left|right|stop|jump|to <x>|auto|speed <r>]", "drive the walker (P1) / scroll", cmd_walk },

@@ -34,6 +34,8 @@ void        whm_ui_nye_join(const char *from, const char *tz,
 void        whm_ui_fw_test(int mode, int fast);
 void        whm_ui_fw_sparkle(int secs);
 void        whm_ui_cam_set(float c);
+void        whm_ui_walk_status(uint32_t *step, int *own,
+                               float *cam2, float *x2);
 void        whm_ui_task(void *arg);
 
 /* "auto" resumes rotation, "next" advances, or a screen name to hold */

@@ -620,6 +620,15 @@ static float wk_cam(int64_t t)
     return (float)s_cam_acc;
 }
 
+void whm_ui_walk_status(uint32_t *step, int *own, float *cam2,
+                        float *x2)
+{
+    *step = s_wk_steps;
+    *own = wk_i_own() ? 1 : 0;
+    *cam2 = (float)s_cam_acc;
+    *x2 = s_wk.x;
+}
+
 void whm_ui_cam_set(float c)
 {
     if (s_wko.owner) return;                 /* the owner's cam IS

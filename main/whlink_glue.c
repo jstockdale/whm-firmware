@@ -61,6 +61,8 @@ static const char *TAG = "whlink";
     only the fleet brief. */
 
 static bool s_feed = false;      /* ble feed on|off */
+static bool s_wl_up = false;     /* init completed */
+static uint16_t s_wl_id = 0;
 
 /* LSB-first 128-bit UUIDs; only byte[12] differs (00/01/02). */
 static const ble_uuid128_t k_svc_uuid = BLE_UUID128_INIT(
@@ -552,6 +554,21 @@ static void host_task(void *param)
 }
 
 /* ---- public ---- */
+void whm_whlink_status_line(char *out, size_t cap)
+{
+    if (!s_wl_up) {
+        strlcpy(out, "down (fuse/disable or preflight)", cap);
+        return;
+    }
+    char bnd[32] = "no bond";
+    if (s_bond.present)
+        snprintf(bnd, sizeof(bnd), "bonded '%s'", s_bond.nick);
+    snprintf(out, cap, "up id %04x | %s | %s | feed %s",
+             s_wl_id, bnd,
+             s_conn != BLE_HS_CONN_HANDLE_NONE ? "SEALED" : "idle",
+             s_feed ? "on" : "off");
+}
+
 void whm_whlink_init(void)
 {
     /* BOOT-LOOP FUSE + PRE-FLIGHT (bench conviction: the BT
@@ -632,6 +649,8 @@ void whm_whlink_init(void)
     if (esp_timer_create(&ta, &th) == ESP_OK)
         esp_timer_start_periodic(th, 10 * 1000000);
     nimble_port_freertos_init(host_task);
+    s_wl_up = true;
+    s_wl_id = cfg.local_id;
     printf("whlink: up (id %04x, nick '%s') - 'ble pair' opens the "
            "window\n", cfg.local_id, cfg.nick);
     {   /* healthy for 30 s clears the boot fuse */
