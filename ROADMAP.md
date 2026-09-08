@@ -55,7 +55,8 @@ long-jump; console verbs walk left|right|stop|jump|auto; the
 tunnel carries type 11 so watch viewers stay lockstep. Timing:
 next-step-boundary-bound - 0..33 ms, mean 16.5 - meets <=25 in
 expectation, worst one tick, stated honestly. The wrist drives it
-TODAY through the L2 bridge. Remaining (P1.2+): BOOT-button verbs,
+TODAY through the L2 bridge. SEEK (act 5, walk to <x>, v0.44.1) makes the
+watch-visit steerable today. Remaining (P1.2+): BOOT-button verbs,
 BLE pads / USB-host HID / classic bridge, phone-HTTP, local
 cosmetic ack at input instant, owner short-lead ramp.
 
@@ -103,6 +104,17 @@ piconet-stats/graphs display surface is explicitly GATED behind P1.
 Watch ranking received (TO-PANEL-AGENT) = the build order: 1 threat
 interrupt (0x61 reuse), 2 find ticker (0x60 reuse), 3 PANEL_STAT
 rate graph (0x6A), 4 GPS/time, 5 battery glyph, 6 LoRa.
+
+## Operator visit (designed, TO-WATCH-AGENT-3; gated on bench+soak)
+
+Watch beacons rotating operator token (K_op pushed sealed via
+proposed 0x6B at commissioning; HMAC(K_op,epoch60)[0..5], mfg
+W-O). Panels resolve via DUTY-CYCLED observer sniff - the most
+Tier-0-hostile addition yet; ships only if the walker soak holds
+snap~=0 with sniffing active. Type-12 OPRSSI reports -> lead
+ranks -> lead issues SEEK to strips*64+16. Beacon side is the
+watch's to build now; our sensing lands after standing bench
+validation.
 
 ## Backlog
 

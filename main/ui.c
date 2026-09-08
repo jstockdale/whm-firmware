@@ -331,7 +331,7 @@ static uint32_t s_wk_steps;
  * flesh). USER mode expires after 300 steps (10 s) of silence and
  * the walker shakes off and wanders. */
 static struct { uint8_t mode; uint32_t until; int8_t vx;
-                uint8_t jump; } s_wkc;
+                uint8_t jump; uint8_t seek; float seekx; } s_wkc;
 static struct { uint32_t step; uint8_t act; float arg;
                 uint8_t valid; } s_wki[32];
 static uint8_t s_wki_w;
@@ -652,6 +652,13 @@ static void wk_step(int64_t t, uint8_t n)
             else if (a == 2) s_wkc.vx = 1;
             else if (a == 3) s_wkc.vx = 0;
             else if (a == 4) s_wkc.jump = 1;
+            else if (a == 5) {           /* SEEK world-x: the visit
+                                            verb - steer-to-edge is
+                                            just an input */
+                s_wkc.seek = 1;
+                s_wkc.seekx = s_wki[ii].arg;
+            }
+            if (a != 5 && a != 4) s_wkc.seek = 0;
         }
     }
     if (s_wkc.mode == 1 && s_wk_steps >= s_wkc.until) {
@@ -681,6 +688,15 @@ static void wk_step(int64_t t, uint8_t n)
     case WK_WALK: {
         if (s_wkc.mode == 1) {           /* USER: instant heel-turn,
                                             autonomy suspended */
+            if (s_wkc.seek) {
+                float dx2 = s_wkc.seekx - s_wk.x;
+                if (fabsf(dx2) < 1.0f) {
+                    s_wkc.seek = 0;      /* arrived: stand */
+                    s_wkc.vx = 0;
+                } else {
+                    s_wkc.vx = dx2 > 0 ? 1 : -1;
+                }
+            }
             if (s_wkc.vx) s_wk.dir = s_wkc.vx;
             if (s_wkc.vx) s_wk.x += (float)s_wk.dir * s_wk.spd;
             s_wk.phase++;

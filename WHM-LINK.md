@@ -163,3 +163,8 @@ channel.
 10 = 24 B walker WK_PARAMS (anchor i64 + cam_speed f32 + wver +
 strips) - the world seed for Tier-1 viewers; owner emits ~5 s +
 on-subscriber poke. P1 input events take type 11.
+11 = 36 B walker INPUT (act u8: 0 auto/1 left/2 right/3 stop/
+4 jump/5 SEEK(arg=world-x f32); exec_step u32; from+seq; x3
+burst) - applies at the stamped step on every replica; the input
+log is replay-consumed. 12 = OPRSSI (reserved: operator-beacon
+resolve reports {epoch, rssi} for nearest-panel election).

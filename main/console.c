@@ -892,6 +892,14 @@ static int cmd_walk(int argc, char **argv)
         else if (!strcmp(argv[1], "right")) act = 2;
         else if (!strcmp(argv[1], "stop")) act = 3;
         else if (!strcmp(argv[1], "jump")) act = 4;
+        else if (!strcmp(argv[1], "to") && argc >= 3) {
+            uint32_t ex2 = whm_ui_walk_step() + 1;
+            whm_sync_walk_input_send(5, ex2,
+                                     strtof(argv[2], NULL));
+            printf("walk: seek %s @step %lu\n", argv[2],
+                   (unsigned long)ex2);
+            return 0;
+        }
         if (act != 255) {
             uint32_t ex = whm_ui_walk_step() + 1;
             whm_sync_walk_input_send(act, ex, 0.0f);
@@ -1342,7 +1350,7 @@ static const cmd_ent_t k_cmds[] = {
     { "fleet",      "fleet [@node] <console line>",   "run a command fleet-wide or on one node",   cmd_fleet },
     { "clock",      "clock label <text|tz|off>",      "label above the clock face",    cmd_clock },
     { "vol",        "vol [1-100]",                    "beep/chime/tone volume",        cmd_vol },
-        { "walk",       "walk [left|right|stop|jump|auto|speed <r>]", "drive the walker (P1) / scroll", cmd_walk },
+        { "walk",       "walk [left|right|stop|jump|to <x>|auto|speed <r>]", "drive the walker (P1) / scroll", cmd_walk },
 { "fw",         "",                               "",                                  cmd_fw },  /* hidden */
     { "chime",      "chime",                          "play the boot chime",           cmd_chime },
     { "tone",       "tone <hz> [ms]",                 "play one note",                 cmd_tone },
