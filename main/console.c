@@ -1043,6 +1043,36 @@ static int cmd_mem(int argc, char **argv)
            (unsigned)(ip.total_free_bytes / 1024),
            (unsigned)(ip.largest_free_block / 1024),
            (unsigned)(ip.minimum_free_bytes / 1024));
+    printf("mem: int-dma  free=%u KB largest=%u KB (i2s/display "
+           "allocate here)\n",
+           (unsigned)(heap_caps_get_free_size(MALLOC_CAP_DMA |
+               MALLOC_CAP_INTERNAL) / 1024),
+           (unsigned)(heap_caps_get_largest_free_block(
+               MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL) / 1024));
+    if (argc >= 2 && strcmp(argv[1], "tasks") == 0) {
+        UBaseType_t n = uxTaskGetNumberOfTasks();
+        TaskStatus_t *ts = heap_caps_malloc(n * sizeof(*ts),
+                                            MALLOC_CAP_SPIRAM);
+        if (!ts) ts = malloc(n * sizeof(*ts));
+        if (!ts) { printf("mem: alloc failed\n"); return 1; }
+        n = uxTaskGetSystemState(ts, n, NULL);
+        printf("mem: %u tasks (stack high-water = bytes never "
+               "used; small = tight)\n", (unsigned)n);
+        for (UBaseType_t i = 0; i < n; i++) {
+            UBaseType_t hw = 0, j = i;   /* selection: tightest first */
+            for (UBaseType_t k2 = i; k2 < n; k2++)
+                if (ts[k2].usStackHighWaterMark <
+                    ts[j].usStackHighWaterMark) j = k2;
+            TaskStatus_t tmp = ts[i]; ts[i] = ts[j]; ts[j] = tmp;
+            printf("  %-16s hw=%5u B prio=%u\n",
+                   ts[i].pcTaskName,
+                   (unsigned)(ts[i].usStackHighWaterMark *
+                              sizeof(StackType_t)),
+                   (unsigned)ts[i].uxCurrentPriority);
+            (void)hw;
+        }
+        free(ts);
+    }
     return 0;
 }
 
@@ -1385,7 +1415,7 @@ static const cmd_ent_t k_cmds[] = {
     { "tone",       "tone <hz> [ms]",                 "play one note",                 cmd_tone },
     { "wander",     "wander <idx> <n> [spd] | go",    "cross-panel sprite (P2b)",      cmd_wander },
     { "sync",       "sync [auto|anchor|follow|prio|lead|media|conduct|join|off]", "fleet link (WHM-LINK.md)",      cmd_sync },
-    { "mem",        "mem",                            "heap audit (internal + psram)", cmd_mem },
+    { "mem",        "mem [tasks]",                    "heap audit (+per-task stack high-water)", cmd_mem },
     { "ble",        "ble [pair [secs]|off]",          "wh-link BLE (pair window/status)", cmd_ble },
     { "life",       "life [pal|next|reset]",          "game-of-life colors",           cmd_life },
     { "mp3",        "mp3 list|play|fleet|dj [n|stop]|layout|overlay|vol",

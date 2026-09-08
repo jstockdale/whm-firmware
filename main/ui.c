@@ -3907,8 +3907,13 @@ static void fleet_indicator(int x, int y)
         else if (aage < 20000)
             fleet_glyph_circle(x, y, false, 240, 190, 70);
         else {
+            /* ISO 3864 prohibition: circle + top-left->bottom-right
+               diagonal - the world's symbol, borrowed exactly (the
+               owner proposed the slash; the dot was our invention
+               and carried no semantics) */
             fleet_glyph_circle(x, y, false, 240, 80, 80);
-            wk_px(x + 2, y + 2, 240, 80, 80);
+            for (int q = 0; q < 5; q++)
+                wk_px(x + q, y + q, 240, 80, 80);
         }
     }
 }
