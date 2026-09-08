@@ -586,6 +586,10 @@ static const wsli_t *wk_slide_at(float x, int footy)
  * advancer, ticked once per frame; wk_cam() is a pure reader that
  * ignores its argument, so no caller can corrupt state. */
 static double s_cam_acc = -1.0;
+static double s_cam_base;
+static uint32_t s_cam_base_step;
+static float s_scr_from = 1.0f, s_scr_to = 1.0f;
+static uint32_t s_scr_step;
 static void wk_cam_tick(int64_t t)
 {
     static int64_t lt;
@@ -600,6 +604,8 @@ static void wk_cam_tick(int64_t t)
            cam(t) = t*SPD for constant speed, regardless of when a
            unit booted; 'fleet walk speed' keeps changes lock-step. */
         s_cam_acc = (double)t / 1e6 * (double)WK_CAM_SPD;
+        s_cam_base = s_cam_acc;
+        s_cam_base_step = s_wk_steps;
         lt = t;
     }
     (void)lt;
@@ -640,6 +646,8 @@ void whm_ui_cam_set(float c)
         printf("walker: CAM SNAP dx=%.2f (divergence alarm - "
                "should be ~0 forever)\n", dx2);
     s_cam_acc = (double)c;                 /* type-10 snap */
+    s_cam_base = s_cam_acc;
+    s_cam_base_step = s_wk_steps;
 }
 
 static void wk_respawn(int64_t t, uint8_t n)
@@ -662,31 +670,45 @@ static void wk_respawn(int64_t t, uint8_t n)
 
 static int32_t s_wk_last_chunk = INT32_MIN;
 
-static uint32_t s_cam_last_step;
-static void wk_cam_step(void)
+/* SEVENTH - AND ARCHITECTURAL: three integrator repairs, three
+   new leaks (starve on replay, starve on fast-forward, freeze in
+   storms - the owner's cam= columns convicted each). Integration
+   with guards is the wrong SHAPE: every execution path is another
+   chance to skip or double-feed. The camera is now CLOSED-FORM:
+   cam(step) = epoch_base + exact ramp-aware sum to step, rebased
+   once per frame and on shared events (scroll targets, type-10
+   snaps). It depends on WHICH STEP IT IS and on nothing else -
+   no path can starve what no path feeds. */
+static float wk_scroll_at(uint32_t st)
 {
-    /* FIFTH CONVICTION (0.49.0 regression, mine): the shadow-gate
-       was right for bisection and fatally wrong for RESYNC REPLAY
-       - replayed steps advanced the step counter while the camera
-       stood still, so every snap-storm starved the camera further
-       behind (-906 px on the bench), which forced more snaps: a
-       death spiral my own gate ignited. The law that survives
-       every path: EACH STEP NUMBER ADVANCES THE CAMERA EXACTLY
-       ONCE, EVER - idempotent by step index, no execution-path
-       reasoning required. Bisection of past steps: already
-       counted. Replay: already counted. Live: counts once. */
-    if (s_wk_steps <= s_cam_last_step && s_cam_last_step != 0)
-        return;
-    s_cam_last_step = s_wk_steps;
-    float d = s_wk_tgt_scroll - s_wk_scroll;
-    float mx = 0.0333f;                    /* 1.0x per second */
-    s_wk_scroll += d > mx ? mx : d < -mx ? -mx : d;
-    s_cam_acc += 0.0333 * (double)WK_CAM_SPD * (double)s_wk_scroll;
+    if (s_scr_to == s_scr_from || st <= s_scr_step)
+        return st <= s_scr_step ? s_scr_from : s_scr_to;
+    float span = fabsf(s_scr_to - s_scr_from) * 30.0f; /* 1.0x/s */
+    float f = (float)(st - s_scr_step) / span;
+    if (f >= 1.0f) return s_scr_to;
+    return s_scr_from + (s_scr_to - s_scr_from) * f;
+}
+
+static void wk_scroll_target(float v)
+{
+    s_scr_from = wk_scroll_at(s_wk_steps);
+    s_scr_to = v;
+    s_scr_step = s_wk_steps;
+    s_wk_tgt_scroll = v;               /* legacy readers */
+}
+
+static void wk_cam_sync(void)
+{
+    for (uint32_t s = s_cam_base_step; s < s_wk_steps; s++)
+        s_cam_base += 0.0333 * (double)WK_CAM_SPD *
+                      (double)wk_scroll_at(s + 1);
+    s_cam_base_step = s_wk_steps;
+    s_cam_acc = s_cam_base;
+    s_wk_scroll = wk_scroll_at(s_wk_steps);
 }
 
 static void wk_step(int64_t t, uint8_t n)
 {
-    wk_cam_step();                     /* camera is sim state */
     uint8_t st_in = (uint8_t)s_wk.st;
     s_wk_draws = 0;              /* pure RNG: draw# restarts per step */
     for (int ii = 0; ii < 32; ii++) {        /* input log: apply at
@@ -1519,7 +1541,7 @@ static void fw_tick(int64_t t)
             s_show.fleet = 0;
             s_show.initiator = 0;
             s_show.scene_x0 = -1.0f;
-            s_wk_tgt_scroll = 1.0f;
+            wk_scroll_target(1.0f);
             if (s_wk.st == WK_SIT) { s_wk.st = WK_PACK; s_wk.timer = 8; }
         }
         break;
@@ -1551,7 +1573,7 @@ static void fw_tick(int64_t t)
                    marched to a fixed point drifting out of view,
                    and the bursts fired 1-2 screens behind. The
                    world now holds still for its own show. */
-                s_wk_tgt_scroll = 0.0f;
+                wk_scroll_target(0.0f);
                 if (s_show.scene_x0 < 0.0f)
                     s_show.scene_x0 =
                         wk_cam(whm_wifi_tsf_now()) + 8.0f;
@@ -1596,11 +1618,11 @@ static void fw_tick(int64_t t)
                               s_show.start_tsf);
         }
         /* world speed: normal -> freeze at 23:58 -> ease back 12:12+ */
-        s_wk_tgt_scroll = ms < 175000 ? 1.0f
+        wk_scroll_target(ms < 175000 ? 1.0f
                     : ms < 180000 ? (float)(180000 - ms) / 5000.0f
                     : ms < 1020000 ? 0.0f
                     : ms < 1080000 ? (float)(ms - 1020000) / 60000.0f
-                    : 1.0f;
+                    : 1.0f);
         if (ms >= 170000 && s_wk.st < WK_GOCHAIR) {
             s_fw_hold = true;
             s_wk.st = WK_GOCHAIR;
@@ -1895,7 +1917,7 @@ void whm_ui_walk_speed(float v)
 {
     if (v > 2.0f) v = 2.0f;
     if (v < -2.0f) v = -2.0f;
-    s_wk_tgt_scroll = v;
+    wk_scroll_target(v);
 }
 
 void whm_ui_walk_speed_get(float *cur, float *tgt)
@@ -2752,16 +2774,7 @@ static void pat_walker(int64_t t)
                                      adopted pose IS current - pay no
                                      step debt from this window */
         s_wko.resync = 0;
-        {   /* fast-forward: the camera JUMPS WITH the steps
-               (0.49.1's idempotent guard advanced it once for the
-               whole span - every stall starved cam differently
-               per unit) */
-            uint32_t jump = want - s_wk_steps;
-            s_cam_acc += (double)jump * 0.0333 *
-                         (double)WK_CAM_SPD * (double)s_wk_scroll;
-            s_cam_last_step = want;
-        }
-        s_wk_steps = want;
+        s_wk_steps = want;   /* closed-form cam needs no escort */
     }
     while (s_wk_steps < want) {
         int64_t ts = s_wk_anchor * WK_ANCHOR_US +
@@ -2771,6 +2784,7 @@ static void pat_walker(int64_t t)
             s_wk.tgt = wk_cam(ts) + (float)n * 64.0f;  /* right edge */
         }
         wk_step(ts, n);
+        wk_cam_sync();                 /* exact to this step */
         if (s_w_n > 1 && !wk_i_own() && s_show.phase == 0) {
             for (int i = 0; i < WKF_N; i++) {
                 if (s_wkf[i].valid && s_wkf[i].step < s_wk_steps)
