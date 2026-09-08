@@ -46,6 +46,7 @@ esp_err_t whm_sync_nye_send(const char *tz, uint16_t year,
 esp_err_t whm_sync_djb_send(bool playing, uint32_t rate, uint8_t ch,
                             const char *title);
 const char *whm_sync_node_name(void);
+const char *whm_sync_peer_fw(const char *name);
 void whm_sync_brief(int *role, int *fresh, int *stale,
                     uint32_t *anchor_age_ms);
 void whm_sync_set_tap(void (*cb)(const uint8_t *, int));

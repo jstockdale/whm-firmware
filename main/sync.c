@@ -263,6 +263,17 @@ static const char *leader_word(void)
     return s_smode == SM_AUTO ? "anchor" : "conductor";
 }
 
+const char *whm_sync_peer_fw(const char *name)
+{
+    int64_t now2 = esp_timer_get_time();
+    for (int i = 0; i < PEER_MAX; i++)
+        if (s_peers[i].name[0] &&
+            strcasecmp(s_peers[i].name, name) == 0 &&
+            now2 - s_peers[i].last_us < 30000000LL)
+            return s_peers[i].fw;
+    return NULL;
+}
+
 static const char *role_name(uint8_t r)
 {
     if (r & 0x80) return "anchor";     /* elections-mode leader:

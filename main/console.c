@@ -53,6 +53,7 @@
 #include "mp3_player.h"
 #include "tz_table.h"
 #include "sync.h"
+#include "esp_app_desc.h"
 #include "whlink.h"
 #include "nvs_flash.h"
 #include "nvs.h"
@@ -760,23 +761,42 @@ static int cmd_mp3(int argc, char **argv)
 
 static int cmd_ota(int argc, char **argv)
 {
-    if (argc >= 2) {                     /* never pull from yourself */
-        char hn[32];
-        strlcpy(hn, argv[1], sizeof(hn));
-        char *dot = strstr(hn, ".local");
-        if (dot) *dot = 0;
-        const char *me = whm_sync_node_name();
-        if (me && strcasecmp(hn, me) == 0) {
-            printf("ota: that's me - I'm the source, nothing to "
-                   "pull\n");
-            return 0;
-        }
-    }
     if (argc < 2 || strcmp(argv[1], "status") == 0) {
         whm_ota_status_print();
         return 0;
     }
-    return whm_ota_from_url(argv[1]) == ESP_OK ? 0 : 1;
+    /* '@' TOLERANCE (bench: 'fleet ota @One.local' leaked the
+       fleet-addressing sugar into every node's argv - the guard
+       compared "@One" vs "One" and MISSED, then HTTP got a
+       garbage hostname. Normalize once, for guard AND url. */
+    const char *host = (argv[1][0] == '@') ? argv[1] + 1 : argv[1];
+    bool force = (argc >= 3 && strcmp(argv[2], "force") == 0);
+    char hn[32];
+    strlcpy(hn, host, sizeof(hn));
+    char *dot = strstr(hn, ".local");
+    if (dot) *dot = 0;
+    const char *me = whm_sync_node_name();
+    if (me && strcasecmp(hn, me) == 0) {
+        printf("ota: I am the source - skipping (the source "
+               "never re-flashes from itself)\n");
+        return 0;
+    }
+    /* VERSION-AWARE SKIP (owner design): the announce gossip
+       already carries every peer's fw - if the SOURCE runs what
+       I run, there is nothing to pull. 'force' bypasses this
+       check only; the source-guard above is absolute. Unknown
+       peer or raw-IP source: cannot verify, proceed. */
+    if (!force) {
+        const char *pf = whm_sync_peer_fw(hn);
+        const esp_app_desc_t *ad = esp_app_get_description();
+        if (pf && ad && strncmp(pf, ad->version, 8) == 0) {
+            printf("ota: already at %s (source %s runs the same) "
+                   "- skipping; 'ota %s force' re-pulls\n",
+                   ad->version, hn, host);
+            return 0;
+        }
+    }
+    return whm_ota_from_url(host) == ESP_OK ? 0 : 1;
 }
 
 /* -------------------------------------------------------------- factory */
