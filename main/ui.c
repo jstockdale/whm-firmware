@@ -602,20 +602,27 @@ static void wk_cam_tick(int64_t t)
         s_cam_acc = (double)t / 1e6 * (double)WK_CAM_SPD;
         lt = t;
     }
-    int64_t dt = t - lt;
-    if (dt < 0) dt = 0;
-    if (dt > 66000) dt = 66000;
-    double dts = (double)dt / 1e6;
-    float d = s_wk_tgt_scroll - s_wk_scroll;   /* slew 1.0x per sec */
-    float mx = (float)dts * 1.0f;
-    s_wk_scroll += d > mx ? mx : d < -mx ? -mx : d;
-    s_cam_acc += dts * (double)WK_CAM_SPD * (double)s_wk_scroll;
-    lt = t;
+    (void)lt;
+    /* FOURTH CONVICTION (owner: "pixel-perfect seam crossings get
+       rarer with uptime"): this function's own comment preaches
+       cam = pure f(TSF), identical everywhere - and the show-era
+       scroll multiplier quietly turned it into a LOCAL integral
+       fed by LOCAL frame dt. Two integrators, two jitters,
+       divergence forever. Slew + integration now live in the STEP
+       DOMAIN (wk_cam_step, fixed 33ms quanta on the shared step
+       count), and the owner's type-10 cam field carries POSITION
+       as a 5 s authoritative snap. The comment tells the truth
+       again. */
 }
 static float wk_cam(int64_t t)
 {
     (void)t;
     return (float)s_cam_acc;
+}
+
+void whm_ui_cam_set(float c)
+{
+    s_cam_acc = (double)c;                 /* type-10 snap */
 }
 
 static void wk_respawn(int64_t t, uint8_t n)
@@ -638,8 +645,20 @@ static void wk_respawn(int64_t t, uint8_t n)
 
 static int32_t s_wk_last_chunk = INT32_MIN;
 
+static void wk_cam_step(void)
+{
+    if (s_wk_shadowing) return;        /* replay re-runs steps;
+                                          the camera advances on
+                                          the LIVE pass only */
+    float d = s_wk_tgt_scroll - s_wk_scroll;
+    float mx = 0.0333f;                    /* 1.0x per second */
+    s_wk_scroll += d > mx ? mx : d < -mx ? -mx : d;
+    s_cam_acc += 0.0333 * (double)WK_CAM_SPD * (double)s_wk_scroll;
+}
+
 static void wk_step(int64_t t, uint8_t n)
 {
+    wk_cam_step();                     /* camera is sim state */
     uint8_t st_in = (uint8_t)s_wk.st;
     s_wk_draws = 0;              /* pure RNG: draw# restarts per step */
     for (int ii = 0; ii < 32; ii++) {        /* input log: apply at
@@ -2136,10 +2155,10 @@ static void wk_sky(int64_t t, float cam, int idx, float f)
                             float ang = atan2f((float)dy2,
                                                (float)dx2);
                             float run = 0.5f + 0.5f *
-                                cosf(ang - (float)t / 1.27e6f);
+                                cosf(ang - (float)t / 8.0e6f);
                             run = run * run;   /* sharpen the spot */
                             float brth = 0.84f + 0.16f *
-                                sinf((float)t / 2.9e6f);
+                                sinf((float)t / 9.0e6f);
                             float lum = brth * (0.45f +
                                                 0.75f * run);
                             if (lum > 1.15f) lum = 1.15f;
@@ -2153,17 +2172,31 @@ static void wk_sky(int64_t t, float cam, int idx, float f)
                             wk_px(sxi + dx2, py2, sunr, sung, sunb);
                         }
                     }
-                {   /* ORBITING RAY: 2px flare at the hot-spot */
-                    float ra = (float)t / 1.27e6f;
-                    for (int e2 = 1; e2 <= 2; e2++) {
-                        int rx2 = sxi + (int)(cosf(ra) *
-                                   (float)(rr2 + e2));
-                        int ry2 = sy + (int)(sinf(ra) *
-                                   (float)(rr2 + e2));
-                        if (ry2 < WK_GROUND && ry2 >= 0)
-                            wk_px(rx2, ry2,
-                                  255, (uint8_t)(232 - 20 * e2),
-                                  (uint8_t)(150 - 40 * e2));
+                {   /* THE CROWN (owner, from photos: "you can only
+                       really see the one ray"): eight rays all
+                       around, rotating SLOWLY (~100 s/rev vs the
+                       old 8 s), alternating long/short, each
+                       twinkling on its own gentle phase. */
+                    float rot = (float)t / 6.4e7f;
+                    for (int k9 = 0; k9 < 8; k9++) {
+                        float ang9 = rot + (float)k9 * 0.7854f;
+                        float cs = cosf(ang9), sn = sinf(ang9);
+                        int L9 = (k9 & 1) ? 3 : 5;
+                        float tw = 0.80f + 0.20f *
+                            sinf((float)t / 3.0e6f +
+                                 (float)k9 * 1.9f);
+                        for (int e2 = 1; e2 <= L9; e2++) {
+                            int rx2 = sxi + (int)(cs *
+                                       (float)(rr2 + e2));
+                            int ry2 = sy + (int)(sn *
+                                       (float)(rr2 + e2));
+                            if (ry2 < WK_GROUND && ry2 >= 0)
+                                wk_px(rx2, ry2,
+                                      (uint8_t)(sunr * tw),
+                                      (uint8_t)(sung * tw),
+                                      (uint8_t)(sunb * tw > 40 ?
+                                       40 : sunb * tw));
+                        }
                     }
                 }
             }
@@ -2955,7 +2988,9 @@ static void pat_walker(int64_t t)
                         wkp_ctr = 0;
                         s_wkp_poke = false;
                         whm_sync_wkparams_send(s_wk_anchor,
-                            (float)s_wk_scroll, (uint8_t)s_w_n);
+                            (float)s_cam_acc,   /* SEMANTIC: cam
+                                                   POSITION now */
+                            (uint8_t)s_w_n);
                     }
                 }
                 whm_sync_wkb_send(s_wko.owner, fx, fy, fst, fdir,

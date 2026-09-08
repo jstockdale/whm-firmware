@@ -530,6 +530,12 @@ static void recv_task(void *arg)
             char me6[17] = "";
             my_name(me6, sizeof(me6));
             if (strcmp(w.from, me6) != 0) {
+        if (rbuf[5] == 10 && n >= 24) {
+            float c10;
+            memcpy(&c10, rbuf + 16, 4);    /* cam POSITION (owner
+                                              authoritative snap) */
+            whm_ui_cam_set(c10);
+        }
         if (rbuf[5] == 11 && n >= (int)sizeof(whm_wki_t)) {
             whm_wki_t ki;
             memcpy(&ki, rbuf, sizeof(ki));
