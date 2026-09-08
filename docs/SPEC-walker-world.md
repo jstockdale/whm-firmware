@@ -85,7 +85,10 @@ Per WALK step (each `wk_rnd()` consumes a draw - order sacred):
    dh<=21 -> WK_CLIMB tgt=y                       (mark)
    else if !turn_cd -> consider turn
 6. no support underfoot -> WK_FALL
-7. leash: |x - (cam + idx*32 + 32)| > 60 walking AWAY ->
+7. leash: |x - (cam + strips*32)| > 60 walking AWAY ->
+   [ERRATUM v0.49.3: the shipped code has ALWAYS tethered to the
+    FLEET center, idx-free; this spec previously transcribed a
+    per-strip form that never existed. Port the fleet-center.] ->
    dir flips, turn_cd = 50 (once, latched)
 8. scout (wander bias): +-2 chunks, features 3..90 px ahead,
    score += reward / (1 + dist/24); s_wk_pure forces 0

@@ -2743,6 +2743,15 @@ static void pat_walker(int64_t t)
                                      adopted pose IS current - pay no
                                      step debt from this window */
         s_wko.resync = 0;
+        {   /* fast-forward: the camera JUMPS WITH the steps
+               (0.49.1's idempotent guard advanced it once for the
+               whole span - every stall starved cam differently
+               per unit) */
+            uint32_t jump = want - s_wk_steps;
+            s_cam_acc += (double)jump * 0.0333 *
+                         (double)WK_CAM_SPD * (double)s_wk_scroll;
+            s_cam_last_step = want;
+        }
         s_wk_steps = want;
     }
     while (s_wk_steps < want) {
@@ -2772,13 +2781,15 @@ static void pat_walker(int64_t t)
                     dtg > 0.5f || dtg < -0.5f ||
                     dvx > 0.05f || dvx < -0.05f) {
                     printf("walker: at-step SNAP @%lu (dx %.2f, "
-                           "%u vs %u, ptgt=%.1f) mine{x=%.2f "
+                           "%u vs %u, ptgt=%.1f cam=%.2f) "
+                           "mine{x=%.2f "
                            "y=%.2f tgt=%.1f "
                            "vx=%.2f dir=%d tm=%u}\n",
                            (unsigned long)s_wk_steps, (double)dx,
                            (unsigned)s_wkf[i].st,
                            (unsigned)s_wk.st,
-                           (double)s_wkf[i].tgt, (double)s_wk.x,
+                           (double)s_wkf[i].tgt, s_cam_acc,
+                           (double)s_wk.x,
                            (double)s_wk.y, (double)s_wk.tgt,
                            (double)s_wk.vx, (int)s_wk.dir,
                            (unsigned)s_wk.timer);
