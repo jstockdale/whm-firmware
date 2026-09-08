@@ -77,6 +77,17 @@ surface (DEVICE_SEEN ticker, THREAT_EVENT flash, HID_PROXY into
 P1 input). Phases L0-L8; upstream items: WH_ROLE_PANEL=4 +
 WH_MSG_WHMCAST.
 
+## Scope guard (owner directive)
+
+Core before creep: P1 controllable walker (the <=25 ms law), the
+Mode A/B listening verdicts, the walker soak verdict, and the NYE
+rehearsal FINISH before new panel display features start. The
+watch-integration SPECS ship now (docs/SPEC-panel-link.md,
+docs/SPEC-walker-port.md, docs/TO-WATCH-AGENT.md) because specs
+unblock the other project in parallel at document cost; the
+piconet-stats/graphs display surface is explicitly GATED behind P1
+and ranked by the watch agent's answers.
+
 ## Backlog
 
 Delights: walker easter eggs (summit flag, Meow cameo, balloon, 73
