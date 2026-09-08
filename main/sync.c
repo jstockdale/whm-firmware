@@ -265,6 +265,9 @@ static const char *leader_word(void)
 
 static const char *role_name(uint8_t r)
 {
+    if (r & 0x80) return "anchor";     /* elections-mode leader:
+                                          the peer's own dialect
+                                          travels in bit7 */
     return r == WHM_SYNC_CONDUCTOR ? leader_word()
          : r == WHM_SYNC_MEMBER ? "member" : "off";
 }
@@ -277,7 +280,11 @@ static void fill_announce(whm_ann_t *p)
     memcpy(p->magic, "WHML", 4);
     p->ver = 1;
     p->type = 1;
-    p->role = (uint8_t)s_role;
+    p->role = (uint8_t)s_role |
+              ((s_role == WHM_SYNC_CONDUCTOR &&
+                s_smode == SM_AUTO) ? 0x80 : 0);
+    /* bit7 = elections-mode leader: peers print "anchor" not
+       "conductor". Low bits stay wire-compat. */
     p->rsv = s_prio;                     /* election weight (wire-compat) */
     p->seq = s_seq++;
     my_name(p->name, sizeof(p->name));
@@ -629,7 +636,9 @@ static bool best_live_claim(uint8_t *prio, char *name, size_t nlen)
     char bn[16] = "";
     for (int i = 0; i < PEER_MAX; i++) {
         if (!s_peers[i].name[0]) continue;
-        if (s_peers[i].role != WHM_SYNC_CONDUCTOR) continue;
+        if ((s_peers[i].role & 0x7F) != WHM_SYNC_CONDUCTOR)
+            continue;      /* bit7 = anchor label; claims
+                              rank on the low bits */
         if (now - s_peers[i].last_us > CLAIM_FRESH_US) continue;
         if (!have || claim_rank_gt(s_peers[i].prio, s_peers[i].name,
                                    bp, bn)) {
@@ -1265,12 +1274,14 @@ void whm_sync_brief(int *role, int *fresh, int *stale,
         }
     }
     if (role) {
-        char me[16];
-        my_name(me, sizeof(me));
-        bool cond = (whm_sync_role() == WHM_SYNC_CONDUCTOR);
-        bool anch = s_anchor_name[0] &&
-                    strncmp(s_anchor_name, me, sizeof(me)) == 0;
-        *role = cond ? 2 : (anch ? 1 : 0);   /* UI-role */
+        /* GLYPH TRUTH (owner's question found the bug): an
+           elections ANCHOR carries internal s_role=CONDUCTOR (the
+           pre-elections enum), so checking role first made the
+           anchor glyph UNREACHABLE - every leader wore the baton.
+           The dialect decides: SM_AUTO leader = anchor glyph (1),
+           conduct/join leader = baton (2). */
+        bool lead2 = (s_role == WHM_SYNC_CONDUCTOR);
+        *role = lead2 ? (s_smode == SM_AUTO ? 1 : 2) : 0;
     }
     if (fresh) *fresh = fr;
     if (stale) *stale = st;

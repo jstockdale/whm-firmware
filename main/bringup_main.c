@@ -130,8 +130,17 @@ void app_main(void)
                             clean pool - display first (a
                             panel must show something),
                             radio order matters after */
+    printf("audit: post-%s internal %u KB free, largest %u KB\n",
+           "whlink",
+           (unsigned)(heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024),
+           (unsigned)(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL) / 1024));
 
     whm_wifi_start();
+    printf("audit: post-wifi internal free=%u KB largest=%u KB\n",
+           (unsigned)(heap_caps_get_free_size(
+               MALLOC_CAP_INTERNAL) / 1024),
+           (unsigned)(heap_caps_get_largest_free_block(
+               MALLOC_CAP_INTERNAL) / 1024));
 
     STAGE("3: i2c + sensors");
     whm_i2c_scan();
