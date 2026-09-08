@@ -7,7 +7,9 @@ identical pose with no communication; keyframes exist only to
 verify and to carry owner intent. That makes a watch port a
 first-class citizen, not a mirror hack. Authority: main/ui.c in
 the WHM repo (wk_* functions) is the reference implementation;
-this document is the orientation + wire contract.
+this document is the orientation + wire contract. The UNIVERSE
+(generators, state machine, layers, art, modes) is specified in
+the companion SPEC-walker-world.md.
 
 ## 1. The clocks
 
