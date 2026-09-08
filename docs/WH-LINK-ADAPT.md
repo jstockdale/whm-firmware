@@ -1,4 +1,9 @@
-# wh-link on WHM — BLE control-channel adaptation (design)
+# wh-link on WHM — piconet citizenship over BLE (design, v2)
+
+v2 supersedes v1's flat control-only law with a TIERED timing
+doctrine (owner direction: panels are full piconet citizens; BLE
+carries state, data, and control; BLE-only and hybrid fleets are
+supported outcomes, not accidents).
 
 Planning artifact - no firmware changes ride this commit. Decisions
 recorded here; implementation phased below.
@@ -11,20 +16,39 @@ header-split, C++). Watch-agent implementation guidance adopted via
 RING-BLE-REVIEW.md (the in-bundle consultation): proven GATT
 contract, MTU discipline, Phase-2 reconnect notes.
 
-## 1. Law: BLE is a control channel, never data or timing
+## 1. Law v2: the timing TIERS
 
-The S3 time-slices one 2.4 GHz radio between WiFi and BLE. WHM's
-soul rides WiFi: TSF (the walker's spine), whmcast deadlines, the
-DJ stream, OTA. Therefore wh-link on a panel carries commands,
-status, and pairing - nothing bulk, nothing the show's timing
-depends on. TIMESYNC is answered (from our SNTP-disciplined clock,
-advisory to the asker) but NEVER disciplines panel time inbound.
+The S3 time-slices one radio between WiFi and BLE. The law is not
+prohibition but hierarchy: BLE must never DEGRADE a tier above it
+where that tier exists, and must PROVIDE its own tier where the
+higher one does not.
 
-Acceptance test for every wh-link phase: a fleet walker soak with a
-BLE session active and chatting - `walk` must hold snap~=0 and TSF
-drift must stay flat. If BLE moves those numbers, the phase does
-not ship. Advertising is suspended while an OTA pull runs
-(s_otui.active) - the 3 MB stream owns the radio.
+- **Tier 0 - microseconds (WiFi TSF).** Mode A sample-locked
+  audio; tightest walker seams. Exists only with WiFi. BLE
+  coexistence must leave it untouched: the standing acceptance
+  test is a fleet walker soak with a BLE session actively chatting
+  - walk holds snap~=0, TSF drift stays flat, or the phase does
+  not ship. Advertising suspends during an OTA pull.
+- **Tier 1 - milliseconds (wh-link TIMESYNC).** The spec's
+  t1/t2/t3 + uncertainty exchange IS an NTP round; over a BLE
+  connection with median filtering it delivers ~2-10 ms wall
+  agreement, refinable toward sub-ms by CONNECTION-ANCHOR
+  timestamping (a BLE connection event is a shared physical
+  instant both radios observe - the same trick TSF plays with
+  beacons). Sufficient for: deadline fleet commands (333 ms lead),
+  the fireworks/nightly scripts, clock screens, and the walker -
+  which is STEP-INDEXED by design, so ms-class anchor skew appears
+  only as sub-pixel seam phase between panels. NOT sufficient for
+  Mode A audio (stays Tier 0 forever).
+- **Tier 2 - bulk (wh-link fragmentation + app chunking).** Media
+  and OTA as a slow emergency path (~30-60 KB/s realistic on 2M
+  PHY; a 3 MB image in minutes, not seconds). Never the routine
+  path where WiFi exists.
+
+A panel discipline rule replaces v1's inbound-time refusal: a
+WiFi-connected panel answers TIMESYNC but keeps SNTP/TSF as its
+own truth; a WiFi-ORPHAN panel accepts wh-link TIMESYNC as its
+wall-clock discipline (Tier 1 is its best available tier).
 
 ## 2. Transport: the ring's proven GATT contract, verbatim
 
@@ -72,6 +96,22 @@ before any wh-link-touching release). One TU defines
   walk ok/snap, ip. Emitted on change + slow heartbeat: the fleet
   indicator, on a wrist.
 - **ANNOUNCE**: role/caps/nick beacon per spec lifecycle.
+- **WH_MSG_WHMCAST (proposed additive, next free telemetry id)**:
+  a VERBATIM whmcast datagram tunneled in wh-link. This is the
+  entire fleet-over-BLE design in one message: types 2/7/8/9 -
+  deadline commands, takeover scripts, Mode-A beacons (ignored off
+  Tier 0), walker keyframes - ride the BLE leg unchanged. The
+  deterministic replicas neither know nor care which radio
+  delivered a keyframe; exec_at still governs; the one-timestamp
+  doctrine survives because TIMESYNC supplies the alignment that
+  makes deadlines meaningful.
+- **Ecosystem inbound (panels as the piconet's public display
+  surface)**: DEVICE_SEEN renders as a live find ticker (the
+  EvilCrow's sub-GHz catches scrolling on a matrix); THREAT_EVENT
+  interrupts with a red flash + reason; GPS_FIX may auto-set
+  timezone (opt-in); HID_PROXY becomes a P1 walker input source
+  from the watch. Panels consume telemetry as display content and
+  emit STATUS in return.
 - Unknown types: NAK, per spec - mixed-version piconets degrade
   gracefully.
 
@@ -86,15 +126,36 @@ all day is a surveillance signal of its own. Phase 2 adds NVS
 bonded root key + key-derived rotating pseudonym for silent
 reconnect.
 
-## 6. Reconciliation items (spec §6 additive process)
+## 6. Topologies
+
+- **WiFi fleet (today)**: Tier 0 everywhere; wh-link adds control,
+  status, and ecosystem citizenship.
+- **Hybrid (the bridge)**: a WiFi-orphan panel pairs by BLE to the
+  nearest WiFi panel, which becomes its BRIDGE: relays
+  WH_MSG_WHMCAST both ways and serves TIMESYNC from its
+  SNTP/TSF-disciplined clock. The orphan runs Tier 1: full fleet
+  membership (commands, scripts, walker at relaxed seams), no
+  Mode A. Bridge selection: the orphan's paired peer; multi-orphan
+  = star on one bridge (NimBLE central+peripheral concurrently on
+  the S3).
+- **BLE-only fleet (value-add)**: no AP at all. One panel elected
+  BLE-conductor (the conduct/join model transposed): central to
+  the others, TIMESYNC master from its RTC/SNTP-last-known,
+  WH_MSG_WHMCAST relay hub. Everything but Mode A works, seams
+  relax to sub-pixel wobble. This is the take-it-anywhere mode -
+  a fleet in a field.
+
+## 7. Reconciliation items (spec §6 additive process)
 
 Propose to the ring/watch agents before shipping enums:
 - `WH_ROLE_PANEL = 4` (next free after SUBGHZ=3).
 - `WH_CAPS_PANEL` as §3 above (no new cap bits needed).
-- No new message types required - CONSOLE + STATUS cover the panel
-  surface. Interim: GENERIC + nick, spec-blessed.
+- **`WH_MSG_WHMCAST`** (next free id, suggested 0x68): payload =
+  one verbatim whmcast datagram; deserves a vector set per the
+  sub-GHz precedent.
+- Interim: GENERIC + nick, spec-blessed.
 
-## 7. Phases
+## 8. Phases
 
 - **L0 vendor + gate**: bundle in-tree, verify.sh green in the
   build container (already demonstrated), no runtime yet.
@@ -105,10 +166,17 @@ Propose to the ring/watch agents before shipping enums:
 - **L3 telemetry**: STATUS brief + heartbeat.
 - **L4 trust**: NVS bonding, rotating pseudonym, re-advertise;
   merges with P4 (whmcast HMAC / signed OTA) into one auth story.
-- **L5 reconciliation**: WH_ROLE_PANEL upstream, redistribute the
-  shared header per the checklist.
+- **L5 tunnel + tiers**: WH_MSG_WHMCAST both directions;
+  wh-link TIMESYNC discipline for orphans (Tier 1 clock law);
+  bridge relay; acceptance = hybrid walker soak, seams observed.
+- **L6 BLE-only conductor**: elected BLE star, fleet-in-a-field
+  mode; acceptance = full nightly script over pure BLE.
+- **L7 ecosystem display**: DEVICE_SEEN ticker, THREAT_EVENT
+  interrupt, HID_PROXY into the P1 input path.
+- **L8 reconciliation**: WH_ROLE_PANEL + WH_MSG_WHMCAST upstream,
+  redistribute the shared header per the checklist.
 
-## 8. Roadmap fit
+## 9. Roadmap fit
 
 Lands as **P1.5**, after P1's input architecture - a BLE button is
 just another type-10 input source once that path exists. The

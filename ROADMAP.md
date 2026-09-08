@@ -67,8 +67,15 @@ the ring's proven GATT contract. BLE = control/pairing/status only
 with a session active. CONSOLE 0x2F tunnels the existing console
 grammar (sealed-only); STATUS 0x62 puts the fleet indicator on a
 wrist; SAS pairing renders on the panel with BOOT-button confirm.
-Phases L0-L5 in the design doc; WH_ROLE_PANEL=4 is the one
-upstream reconciliation item.
+v2 (owner direction): full piconet CITIZENSHIP - tiered timing
+law (Tier 0 us/TSF untouched; Tier 1 ms via wh-link TIMESYNC,
+connection-anchor refinable; Tier 2 bulk), WH_MSG_WHMCAST tunnel
+(verbatim whmcast over BLE - replicas transport-blind), hybrid
+bridge for WiFi-orphan panels, BLE-only fleet-in-a-field mode
+(everything but Mode A), and panels as the piconet's display
+surface (DEVICE_SEEN ticker, THREAT_EVENT flash, HID_PROXY into
+P1 input). Phases L0-L8; upstream items: WH_ROLE_PANEL=4 +
+WH_MSG_WHMCAST.
 
 ## Backlog
 
