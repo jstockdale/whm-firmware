@@ -58,6 +58,18 @@ bridge. Type-10 input events, exec-at-step, UDP burst + TCP mirror
 (events only - never the pose channel). Sources: pad, console
 (walker left|right|jump), BOOT button, phone-over-HTTP.
 
+## P1.5: wh-link BLE control channel (designed - docs/WH-LINK-ADAPT.md)
+
+wh-link v1 adopted verbatim (conformance suite passes on the build
+host); panels join the Whitehat piconet as NimBLE peripherals on
+the ring's proven GATT contract. BLE = control/pairing/status only
+- never data or timing; acceptance = walker soak stays snap~=0
+with a session active. CONSOLE 0x2F tunnels the existing console
+grammar (sealed-only); STATUS 0x62 puts the fleet indicator on a
+wrist; SAS pairing renders on the panel with BOOT-button confirm.
+Phases L0-L5 in the design doc; WH_ROLE_PANEL=4 is the one
+upstream reconciliation item.
+
 ## Backlog
 
 Delights: walker easter eggs (summit flag, Meow cameo, balloon, 73
