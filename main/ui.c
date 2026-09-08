@@ -1485,6 +1485,19 @@ static void fw_tick(int64_t t)
         if (s_show.year == 0) {             /* NIGHTLY mini-script */
             if (ms >= 2000 && s_wk.st < WK_GOCHAIR) {
                 s_fw_hold = true;
+                /* THE CHAIR WITH NO ADDRESS (bench, twice): force-
+                   entry skipped the state's entry contract - tgt is
+                   a REUSED field, and GOCHAIR read a stale ladder-Y
+                   as its X, marching him off-screen toward world
+                   x~30 deterministically. Stage anchors to the
+                   start-derived camera now (TSF-shared in fleet
+                   mode, per-unit in test: identical replicas either
+                   way). */
+                if (s_show.scene_x0 < 0.0f)
+                    s_show.scene_x0 =
+                        wk_cam(whm_wifi_tsf_now()) + 8.0f;
+                s_wk.tgt = s_show.scene_x0 + 30.0f;
+                s_wk.dir = (s_wk.tgt > s_wk.x) ? 1 : -1;
                 s_wk.st = WK_GOCHAIR;
             }
             uint32_t st2 = s_show.seed + (uint32_t)(ms / 1400);
@@ -1494,7 +1507,14 @@ static void fw_tick(int64_t t)
                 s_show.last_launch_ms = ms;
                 uint8_t r, g, b;
                 fw_pal(&st2, &r, &g, &b);
-                fw_launch(8.0f + (float)(fw_rnd(&st2) % 48u),
+                /* pre-unification relic: 8..56 was the world's
+                   ORIGIN - the shows have been firing faithfully
+                   behind everyone since the camera first scrolled.
+                   Bursts now span the fleet over the stage. */
+                fw_launch(s_show.scene_x0 - 8.0f +
+                              (float)(fw_rnd(&st2) %
+                                  (uint32_t)(64u *
+                                      (s_w_n ? s_w_n : 1))),
                           (int)(fw_rnd(&st2) % 3u), r, g, b,
                           (float)(fw_rnd(&st2) % 8u));
             }
