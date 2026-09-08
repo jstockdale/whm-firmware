@@ -33,6 +33,9 @@
 #include "freertos/task.h"
 #include "esp_log.h"
 #include "esp_timer.h"
+#ifndef WHM_VERSION_STR
+#define WHM_VERSION_STR "dev"
+#endif
 #include "esp_random.h"
 #include "esp_heap_caps.h"
 #include "driver/gpio.h"
@@ -3575,6 +3578,18 @@ static void ignition_render(int ms)
                                   (uint16_t)ux, 2, 150, 45, 8);
         }
     }
+    {   /* boot version: bottom-center, fading in ~0.7-1.1 s */
+        float a = ((float)ms - 700.0f) / 400.0f;
+        if (a > 0.0f) {
+            if (a > 1.0f) a = 1.0f;
+            const char *v = WHM_VERSION_STR;
+            int len = 0;
+            while (v[len]) len++;
+            int x0 = 32 - len * 2;
+            ota_text(v, x0, 57, (uint8_t)(198.0f * a),
+                     (uint8_t)(168.0f * a), (uint8_t)(72.0f * a));
+        }
+    }
 }
 
 /* -------- overlay compositor (WS3): text riding ABOVE any base -------- */
@@ -4848,6 +4863,20 @@ void whm_ui_task(void *arg)
         }
 
         ui_mode_t mode = s_mode;
+        if (s_otui.active) {           /* OTA takeover at the TRUE
+                                          loop head - two prior
+                                          placements sat below
+                                          branches that continue
+                                          (M_TEXT, then the screens
+                                          line); the photo of a home
+                                          screen mid-pull convicted
+                                          the second */
+            int64_t tf = ui_frame_wait_div(2);
+            if (ota_screen(tf)) {
+                ui_present(tf);
+                continue;
+            }
+        }
         bool in_screens = (mode == M_SCR_AUTO || mode == M_SCR_HOLD);
         bool was_screens = (drawn_mode == M_SCR_AUTO || drawn_mode == M_SCR_HOLD);
         if (in_screens) {
@@ -4923,16 +4952,6 @@ void whm_ui_task(void *arg)
             continue;
         }
 
-        if (s_otui.active) {           /* OTA takeover: every mode
-                                          yields (hook was buried in
-                                          the M_TEXT branch - home
-                                          screen never consulted it) */
-            int64_t tf = ui_frame_wait_div(2);
-            if (ota_screen(tf)) {
-                ui_present(tf);
-                continue;
-            }
-        }
         if (mode == M_TEXT) {
             drawn_mode = M_TEXT;
             drawn_pattern = P_COUNT;
