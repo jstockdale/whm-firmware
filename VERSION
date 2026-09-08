@@ -1,4 +1,4 @@
-whm-bringup 0.37.2-phase0
-built: 2026-09-08 (r102: OTA SCREEN HOIST - his bench: transfer WORKED (first successful unit-to-unit OTA in project history; the deadlock is dead on hardware) but the panel showed the home screen throughout. Convicted by grep: three frame-wait sites (30fps screens, M_TEXT, 60fps patterns) and the hook sat inside M_TEXT only - screens and patterns never consulted it. Hoisted: one gate above the mode dispatch owning its own 30fps wait; every mode yields.)
+whm-bringup 0.37.3-phase0
+built: 2026-09-08 (r103: THE V-BEAT - gulls trade the W for the sweeping V (three peaks = noise, one vertex = bird): shallow V glide, deep V flap with wingtips up-and-out a full row; the synthwave pigeon joins the wing language with its cyan pixels lifting into a small V on the beat)
 idf: v5.5.2
 board: Waveshare ESP32-S3-RGB-Matrix | panel: ADA P2.5 64x64 1/32 HUB75E

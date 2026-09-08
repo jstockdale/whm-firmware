@@ -2142,15 +2142,16 @@ static void wk_birds(int64_t t, float cam, int idx, float f,
                          (int64_t)(h & 7)) & 1;
         if (day) {
             uint8_t v = 205, g2 = 205, b2 = 210;
-            /* 5px W-silhouette - 4px read as a mouth, not a
-               bird (owner's note). Wingtips high, body dip. */
-            if (flap) {                    /* deep W */
-                wk_px(sx, sy, v, g2, b2);
-                wk_px(sx + 1, sy + 1, v, g2, b2);
-                wk_px(sx + 2, sy, 160, 160, 170);
-                wk_px(sx + 3, sy + 1, v, g2, b2);
-                wk_px(sx + 4, sy, v, g2, b2);
-            } else {                       /* shallow W glide */
+            /* V-BEAT (owner's note: three peaks = noise, one
+               vertex = bird). Shallow V glide, deep V flap with
+               wingtips swept up-and-out - the child's-drawing gull. */
+            if (flap) {                    /* deep V: tips up a row */
+                wk_px(sx, sy - 1, v, g2, b2);
+                wk_px(sx + 1, sy, v, g2, b2);
+                wk_px(sx + 2, sy + 1, 160, 160, 170);
+                wk_px(sx + 3, sy, v, g2, b2);
+                wk_px(sx + 4, sy - 1, v, g2, b2);
+            } else {                       /* shallow V glide */
                 wk_px(sx, sy, v, g2, b2);
                 wk_px(sx + 1, sy, v, g2, b2);
                 wk_px(sx + 2, sy + 1, 160, 160, 170);
@@ -2165,9 +2166,9 @@ static void wk_birds(int64_t t, float cam, int idx, float f,
             wk_px(sx + 4, sy, 40, 12, 56);     /* head */
             wk_px(sx + 1, sy + 2, pr, pg, pb); /* underlight */
             wk_px(sx + 2, sy + 2, pr, pg, pb);
-            if (flap) {
-                wk_px(sx + 1, sy, 60, 200, 220);
-                wk_px(sx + 3, sy, 60, 200, 220);
+            if (flap) {                    /* V over the body */
+                wk_px(sx + 1, sy - 1, 60, 200, 220);
+                wk_px(sx + 3, sy - 1, 60, 200, 220);
             } else {
                 wk_px(sx, sy + 1, 60, 200, 220);
             }
