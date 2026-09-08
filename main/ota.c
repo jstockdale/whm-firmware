@@ -36,6 +36,7 @@ esp_err_t whm_ota_from_url(const char *arg)
     } else if (strchr(arg, '/')) {
         snprintf(url, sizeof(url), "http://%s", arg);
     } else {
+        if (arg[0] == '@') arg++;   /* forgive @one.local */
         snprintf(url, sizeof(url), "http://%s/fw", arg);
     }
 
@@ -46,11 +47,31 @@ esp_err_t whm_ota_from_url(const char *arg)
     }
     printf("ota: %s -> %s (keep power on; ~10-60s)\n", url, dst->label);
 
+    /* ERASE BEFORE CONNECT: esp_ota_begin with SIZE_UNKNOWN erases
+       the whole 3MB slot (~10-20s). Doing it after open() left the
+       server pushing into a deaf client: httpd send timed out at 5s
+       (errno 11 @8192) while we erased - the zero-window deadlock
+       behind every 11KB truncation. */
+    {
+        const esp_app_desc_t *me0 = esp_app_get_description();
+        whm_ui_ota_begin(me0 ? me0->version : "?", NULL,
+                         (uint32_t)(dst->size / 1024));
+    }
+    whm_ui_ota_phase(4, NULL);           /* ERASING */
+    printf("ota: erasing target slot (~10-20s - normal, do not "
+           "power off)\n");
+    esp_ota_handle_t oh = 0;
+    esp_err_t e0 = esp_ota_begin(dst, OTA_SIZE_UNKNOWN, &oh);
+    if (e0 != ESP_OK) {
+        printf("ota: erase/begin failed: %s\n", esp_err_to_name(e0));
+        whm_ui_ota_phase(3, "ERASE FAIL");
+        return e0;
+    }
+
     esp_http_client_config_t cc = { .url = url, .timeout_ms = 15000 };
     esp_http_client_handle_t h = esp_http_client_init(&cc);
     if (!h) return ESP_FAIL;
 
-    esp_ota_handle_t oh = 0;
     esp_err_t err = ESP_FAIL;
     char *buf = heap_caps_malloc(4096, MALLOC_CAP_SPIRAM);
     if (!buf) buf = malloc(4096);
@@ -58,32 +79,32 @@ esp_err_t whm_ota_from_url(const char *arg)
         if (!buf) break;
         if (esp_http_client_open(h, 0) != ESP_OK) {
             printf("ota: connect failed\n");
+            whm_ui_ota_phase(3, "CONNECT");
+            esp_ota_abort(oh);
+            oh = 0;
             break;
         }
         int64_t cl = esp_http_client_fetch_headers(h);
         int status = esp_http_client_get_status_code(h);
         if (status != 200) {
             printf("ota: http %d\n", status);
-            break;
-        }
-        err = esp_ota_begin(dst, OTA_SIZE_UNKNOWN, &oh);
-        if (err != ESP_OK) {
-            printf("ota: begin failed: %s\n", esp_err_to_name(err));
+            whm_ui_ota_phase(3, "HTTP ERR");
+            esp_ota_abort(oh);
             oh = 0;
             break;
         }
+        {
+            char *inc = NULL;
+            esp_http_client_get_header(h, "X-WHM-FW", &inc);
+            whm_ui_ota_target(inc);
+        }
+        whm_ui_ota_phase(0, NULL);       /* PULL */
+        err = ESP_OK;
         long got = 0, mark = 0;
         int n = 0;
         err = ESP_OK;
         printf("ota: pulling %u KB (full partition image)\n",
                (unsigned)(dst->size / 1024));
-        {
-            char *inc = NULL;
-            esp_http_client_get_header(h, "X-WHM-FW", &inc);
-            const esp_app_desc_t *me2 = esp_app_get_description();
-            whm_ui_ota_begin(me2 ? me2->version : "?", inc,
-                             (uint32_t)(dst->size / 1024));
-        }
         while ((n = esp_http_client_read(h, buf, 4096)) > 0) {
             err = esp_ota_write(oh, buf, (size_t)n);
             if (err != ESP_OK) {

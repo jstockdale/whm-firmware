@@ -1040,6 +1040,12 @@ void whm_ui_ota_begin(const char *cur, const char *inc, uint32_t kb)
     s_otui.active = true;
 }
 
+void whm_ui_ota_target(const char *inc)
+{
+    if (inc && inc[0])
+        strlcpy(s_otui.to, inc, sizeof(s_otui.to));
+}
+
 void whm_ui_ota_progress(uint32_t kb) { s_otui.got_kb = kb; }
 
 void whm_ui_ota_phase(uint8_t ph, const char *why)
@@ -1119,7 +1125,9 @@ static bool ota_screen(int64_t t)
              (unsigned long)s_otui.got_kb, (unsigned long)tot);
     ota_text(ln, (int)(32 - (int)strlen(ln) * 2), 45, 120, 130,
              160);
-    if (s_otui.phase == 0)
+    if (s_otui.phase == 4)
+        ota_text("ERASING", 18, 55, 238, 180, 60);
+    else if (s_otui.phase == 0)
         ota_text("PULL", 24, 55, 150, 170, 220);
     else if (s_otui.phase == 1)
         ota_text("VERIFYING", 14, 55, 240, 200, 90);

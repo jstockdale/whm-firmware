@@ -9,6 +9,7 @@ extern "C" {
 float       whm_ui_walk_cam(void);
 void        whm_ui_ota_begin(const char *cur, const char *inc,
                              uint32_t total_kb);
+void        whm_ui_ota_target(const char *inc);
 void        whm_ui_ota_progress(uint32_t kb);
 void        whm_ui_ota_phase(uint8_t ph, const char *why);
 void        whm_ui_walk_pure(bool on);

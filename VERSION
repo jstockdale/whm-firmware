@@ -1,4 +1,4 @@
-whm-bringup 0.37.0-phase0
-built: 2026-09-08 (r100: OTA STATUS SCREEN - receiving unit takes over its panel: title, version arrow (X-WHM-FW), bordered progress bar w/ running-light sweep, percent + KB/KB, phases PULL -> VERIFYING -> REBOOTING or red FAILED + reason, 6s hold then restore. Hooked at frame-loop top = overrides every mode AND quiesces walker/shadow/storm load by construction (the 11KB suspect). fleet ota flips every follower to progress bars in unison. Gate note: FAILED literal tail-merged into ESP_ERR_*_FAILED by the linker - doctrine 11 cousin: the linker eats suffixes)
+whm-bringup 0.37.1-phase0
+built: 2026-09-08 (r101: THE ZERO-WINDOW DEADLOCK - one pincer run convicted it: server errno 11 (EAGAIN) at 8192 = two chunks + httpd 5s send timeout; client -28679 = 0x7007 ESP_ERR_HTTP_EAGAIN starving on the abandoned connection. Root: esp_ota_begin(SIZE_UNKNOWN) erases the whole 3MB slot (~10-20s) AFTER open() - the server pushed into a deaf client. Media-sync acquitted: it never erases. Fix: ERASE BEFORE CONNECT, with an ERASING phase on serial + status screen; connect/http failures now abort the held handle; and a leading @ on the host is forgiven at url build.)
 idf: v5.5.2
 board: Waveshare ESP32-S3-RGB-Matrix | panel: ADA P2.5 64x64 1/32 HUB75E
