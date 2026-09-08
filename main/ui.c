@@ -3907,15 +3907,17 @@ static void fleet_indicator(int x, int y)
         else if (aage < 20000)
             fleet_glyph_circle(x, y, false, 240, 190, 70);
         else {
-            /* Prohibition slash, OWNER-SPECIFIED 1:30 -> 7:30
-               (top-right to bottom-left). ISO 3864's canonical is
-               the mirror (10:30 -> 4:30); at 5 px both read
-               identically as "no", and the panel's owner has seen
-               both on LEDs and chosen. Math: +y is DOWN, so
-               (x+4-q, y+q) descends from the top-RIGHT corner. */
+            /* Prohibition slash, ISO 3864 canonical 10:30 -> 4:30
+               (owner reversal after a live A/B on LEDs - canon
+               won). ENDPOINTS TRIMMED q=1..3: the ring's corner
+               cells are deliberately empty (that emptiness is
+               what makes 5 px read as ROUND), and a full
+               corner-to-corner diagonal filled exactly those
+               cells - the O grew corners. Three inner pixels pass
+               through without capping the ring. */
             fleet_glyph_circle(x, y, false, 240, 80, 80);
-            for (int q = 0; q < 5; q++)
-                wk_px(x + 4 - q, y + q, 240, 80, 80);
+            for (int q = 1; q <= 3; q++)
+                wk_px(x + q, y + q, 240, 80, 80);
         }
     }
 }

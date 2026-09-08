@@ -1,4 +1,4 @@
-whm-bringup 0.47.2-phase0
-built: 2026-09-08 (r125: THE SLASH TURNS + THE CLOCK LEARNS 12. Prohibition slash redrawn OWNER-SPECIFIED 1:30->7:30 (top-right to bottom-left, (x+4-q, y+q) with +y down). The math audit: pixels matched my claim and my claim matched ISO - TL->BR IS the 3864 canonical - but the owner has seen both on LEDs and chosen the mirror; at 5px both read identically as NO, so the panel obeys its owner and the comment records whose call it was. Clock screen gains 12/24-hour display: clock 12|24 over serial, NVS clk24 (default 24), cached 3s like the label; 12-mode is bare wall-clock convention - hour%12 with 0->12, no AM/PM, because no clock face on a wall carries one. Merged into the existing clock command beside label.)
+whm-bringup 0.47.3-phase0
+built: 2026-09-08 (r126: THE SLASH SETTLES - ISO 10:30->4:30, ENDPOINTS TRIMMED. Owner reversal after a live A/B on LEDs: canon wins. And a sharp pixel-craft catch rides along - the 5px rings corner cells are deliberately empty (that emptiness is what reads as ROUND), and a full corner-to-corner diagonal filled exactly those cells, growing corners on the O. The diagonal is now q=1..3: three inner pixels passing through the ring without capping it.)
 idf: v5.5.2
 board: Waveshare ESP32-S3-RGB-Matrix | panel: ADA P2.5 64x64 1/32 HUB75E
