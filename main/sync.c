@@ -419,7 +419,11 @@ static void recv_task(void *arg)
                 ESP_LOGD(TAG, "fleet: own echo, skip");
                 continue;
             }
-            if (c.target[0] && strncmp(c.target, me, sizeof(me)) != 0) {
+            char tgt2[16];
+            strlcpy(tgt2, c.target, sizeof(tgt2));
+            char *dot2 = strstr(tgt2, ".local");
+            if (dot2) *dot2 = 0;         /* forgive @Two.local */
+            if (tgt2[0] && strncasecmp(tgt2, me, sizeof(me)) != 0) {
                 ESP_LOGD(TAG, "fleet: for '%s', not me ('%s')",
                          c.target, me);
                 continue;
@@ -1090,6 +1094,13 @@ esp_err_t whm_sync_djb_send(bool playing, uint32_t rate, uint8_t ch,
                sizeof(dst));
     }
     return ESP_OK;
+}
+
+const char *whm_sync_node_name(void)
+{
+    static char n[16];
+    my_name(n, sizeof(n));
+    return n;
 }
 
 esp_err_t whm_sync_fleet_send_to(const char *target, const char *line)

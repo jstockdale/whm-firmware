@@ -757,6 +757,18 @@ static int cmd_mp3(int argc, char **argv)
 
 static int cmd_ota(int argc, char **argv)
 {
+    if (argc >= 2) {                     /* never pull from yourself */
+        char hn[32];
+        strlcpy(hn, argv[1], sizeof(hn));
+        char *dot = strstr(hn, ".local");
+        if (dot) *dot = 0;
+        const char *me = whm_sync_node_name();
+        if (me && strcasecmp(hn, me) == 0) {
+            printf("ota: that's me - I'm the source, nothing to "
+                   "pull\n");
+            return 0;
+        }
+    }
     if (argc < 2 || strcmp(argv[1], "status") == 0) {
         whm_ota_status_print();
         return 0;

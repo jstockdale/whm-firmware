@@ -41,6 +41,7 @@ esp_err_t whm_sync_nye_send(const char *tz, uint16_t year,
                             int64_t start_tsf);
 esp_err_t whm_sync_djb_send(bool playing, uint32_t rate, uint8_t ch,
                             const char *title);
+const char *whm_sync_node_name(void);
 esp_err_t whm_sync_fleet_send_to(const char *target, const char *line);
 uint32_t  whm_sync_lead_ms(void);
 void      whm_sync_set_lead_ms(uint32_t ms);
