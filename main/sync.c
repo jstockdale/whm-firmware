@@ -137,8 +137,11 @@ typedef struct __attribute__((packed)) {
     float x;                /* world-x */
     char from[16];
     int64_t tsf;
+    float tgt;           /* complete-promise fields: a snap that */
+    float vx;            /* omits these leaves the replica       */
+                         /* chasing its own target               */
 } whm_wkb_t;
-_Static_assert(sizeof(whm_wkb_t) == 44, "wkb wire");
+_Static_assert(sizeof(whm_wkb_t) == 52, "wkb wire");
 
 _Static_assert(sizeof(whm_cmd_t) == 212,
                "cmd v2 wire format: 212 bytes on every unit");
@@ -458,7 +461,7 @@ static void recv_task(void *arg)
             my_name(me6, sizeof(me6));
             if (strcmp(w.from, me6) != 0) {
                 whm_ui_wkb_rx(w.owner, w.x, w.y, w.st, w.dir,
-                              w.timer, w.seq, w.tsf);
+                              w.timer, w.seq, w.tsf, w.tgt, w.vx);
             }
             continue;
         }
@@ -984,7 +987,7 @@ void whm_sync_set_lead_ms(uint32_t ms)
 
 esp_err_t whm_sync_wkb_send(uint8_t owner, float x, int8_t y,
                             uint8_t st, int8_t dir, uint16_t timer,
-                            uint32_t step)
+                            uint32_t step, float tgt, float vx)
 {
     if (s_sock < 0) return ESP_ERR_INVALID_STATE;
     whm_wkb_t w = { 0 };
@@ -996,6 +999,8 @@ esp_err_t whm_sync_wkb_send(uint8_t owner, float x, int8_t y,
     w.dir = dir;
     w.y = y;
     w.timer = timer;
+    w.tgt = tgt;
+    w.vx = vx;
     w.seq = step;                 /* seq REPURPOSED: step number */
     w.x = x;
     my_name(w.from, sizeof(w.from));

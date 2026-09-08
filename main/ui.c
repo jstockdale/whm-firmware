@@ -258,6 +258,7 @@ static struct {
 #define WKF_N 8
 static struct { uint32_t step; float x; int8_t yq1;
                 uint8_t st; int8_t dir; uint16_t timer;
+                float tgt, vx;
                 uint8_t valid; } s_wkf[WKF_N];
 static uint32_t s_wkf_ok, s_wkf_snap, s_wkf_stale;
 static struct { uint32_t step; uint8_t from, to; } s_wkh[8];
@@ -1523,7 +1524,7 @@ float whm_ui_walk_cam(void) { return s_cam_acc; }
 
 void whm_ui_wkb_rx(uint8_t owner, float x, int8_t y, uint8_t st,
                    int8_t dir, uint16_t timer, uint32_t step,
-                   int64_t btsf)
+                   int64_t btsf, float tgt, float vx)
 {
     if (s_w_n <= 1 || owner >= s_w_n) return;
     int64_t nowu = esp_timer_get_time();
@@ -1573,6 +1574,8 @@ void whm_ui_wkb_rx(uint8_t owner, float x, int8_t y, uint8_t st,
     s_wkf[slot].st = st;
     s_wkf[slot].dir = dir;
     s_wkf[slot].timer = timer;
+    s_wkf[slot].tgt = tgt;
+    s_wkf[slot].vx = vx;
     s_wkf[slot].valid = 1;
     return;
     /* EQUAL-STEP comparison: find MY pose at the beacon's step and
@@ -2016,18 +2019,20 @@ static void wk_birds(int64_t t, float cam, int idx, float f,
                          (int64_t)(h & 7)) & 1;
         if (day) {
             uint8_t v = 205, g2 = 205, b2 = 210;
-            if (flap) {                    /* wings up: \_/ */
+            /* 5px W-silhouette - 4px read as a mouth, not a
+               bird (owner's note). Wingtips high, body dip. */
+            if (flap) {                    /* deep W */
                 wk_px(sx, sy, v, g2, b2);
                 wk_px(sx + 1, sy + 1, v, g2, b2);
-                wk_px(sx + 2, sy + 1, 160, 160, 170);
+                wk_px(sx + 2, sy, 160, 160, 170);
                 wk_px(sx + 3, sy + 1, v, g2, b2);
                 wk_px(sx + 4, sy, v, g2, b2);
-            } else {                       /* glide: ~~ */
-                wk_px(sx, sy + 1, v, g2, b2);
+            } else {                       /* shallow W glide */
+                wk_px(sx, sy, v, g2, b2);
                 wk_px(sx + 1, sy, v, g2, b2);
-                wk_px(sx + 2, sy, 160, 160, 170);
+                wk_px(sx + 2, sy + 1, 160, 160, 170);
                 wk_px(sx + 3, sy, v, g2, b2);
-                wk_px(sx + 4, sy + 1, v, g2, b2);
+                wk_px(sx + 4, sy, v, g2, b2);
             }
         } else {                           /* synthwave pigeon */
             uint8_t pr = 200, pg = 60, pb = 170;
@@ -2407,16 +2412,22 @@ static void pat_walker(int64_t t)
                 float dx = s_wkf[i].x - s_wk.x;
                 int dyv = (int)s_wkf[i].yq1 -
                           (int)lroundf(s_wk.y * 2.0f);
+                float dtg = s_wkf[i].tgt - s_wk.tgt;
+                float dvx = s_wkf[i].vx - s_wk.vx;
                 if (dx > 0.75f || dx < -0.75f || dyv > 1 ||
                     dyv < -1 || s_wkf[i].st != (uint8_t)s_wk.st ||
                     s_wkf[i].dir != (int8_t)s_wk.dir ||
-                    s_wkf[i].timer != (uint16_t)s_wk.timer) {
+                    s_wkf[i].timer != (uint16_t)s_wk.timer ||
+                    dtg > 0.5f || dtg < -0.5f ||
+                    dvx > 0.05f || dvx < -0.05f) {
                     printf("walker: at-step SNAP @%lu (dx %.2f, "
-                           "%u vs %u) mine{x=%.2f y=%.2f tgt=%.1f "
+                           "%u vs %u, ptgt=%.1f) mine{x=%.2f "
+                           "y=%.2f tgt=%.1f "
                            "vx=%.2f dir=%d tm=%u}\n",
                            (unsigned long)s_wk_steps, (double)dx,
                            (unsigned)s_wkf[i].st,
-                           (unsigned)s_wk.st, (double)s_wk.x,
+                           (unsigned)s_wk.st,
+                           (double)s_wkf[i].tgt, (double)s_wk.x,
                            (double)s_wk.y, (double)s_wk.tgt,
                            (double)s_wk.vx, (int)s_wk.dir,
                            (unsigned)s_wk.timer);
@@ -2433,6 +2444,8 @@ static void pat_walker(int64_t t)
                     s_wk.st = s_wkf[i].st;    /* exactly at the    */
                     s_wk.dir = s_wkf[i].dir;  /* step it describes */
                     s_wk.timer = s_wkf[i].timer;
+                    s_wk.tgt = s_wkf[i].tgt;    /* COMPLETE snap */
+                    s_wk.vx = s_wkf[i].vx;
                     s_wkf_snap++;
                     int64_t nu = esp_timer_get_time();
                     if (nu - s_wko.storm_t0 > 3000000) {
@@ -2631,6 +2644,8 @@ static void pat_walker(int64_t t)
                 uint8_t fst = (uint8_t)s_wk.st;
                 int8_t fdir = (int8_t)s_wk.dir;
                 uint16_t ftm = (uint16_t)s_wk.timer;
+                float ftg = s_wk.tgt;
+                float fvx = s_wk.vx;
                 uint32_t fstep = s_wk_steps;
                 s_wk_shadowing = false;
                 s_wk = save;
@@ -2641,7 +2656,7 @@ static void pat_walker(int64_t t)
                 memcpy(s_wk_seen, sv_seen, sizeof(s_wk_seen));
                 s_wk_seen_wr = sv_wr;
                 whm_sync_wkb_send(s_wko.owner, fx, fy, fst, fdir,
-                                  ftm, fstep);
+                                  ftm, fstep, ftg, fvx);
                 }
             }
             if (!wk_i_own() && t - s_wko.rx_us > 1200000) {
