@@ -1608,22 +1608,56 @@ void whm_ui_fw_test(int mode, int fast)   /* hidden: 'fw' console */
     s_show.test = 1;
 }
 
-/* CORRECTED PARALLAX: distant layers scroll at k*cam only - the old
- * code subtracted full ox (which CONTAINS cam) plus another k*cam,
- * so stars moved at 1.3x FOREGROUND speed and the sun rode glued to
- * the platforms. Model: screen = wx - (k*cam + 64*idx); k on camera
- * alone, panel tiling whole, so seams stay continuous while the
- * firmament barely creeps behind the marching world.
- * k: sun/moon 0.04 | stars 0.10 | clouds 0.15 (+ own wind). */
+/* CORRECTED PARALLAX + THE ART PASS: screen = wx - (k*cam + 64*idx).
+ * Everything below is RENDER-ONLY - chunk hashes and wall-clock read
+ * freely, sim state touched never (doctrines 13-15 make art safe).
+ * Sun r11->15 dusk (1.67x), moon r9, rim glimmer on a hash timer;
+ * three cloud species with bob + edge shimmer; hash-gated flora;
+ * and the SYNTHWAVE HOUR, 3-5am local, 15-min fades. */
+static float wk_synth(void)
+{
+    static int64_t ck;
+    static float v;
+    int64_t now = esp_timer_get_time();
+    if (now - ck > 1000000) {
+        ck = now;
+        struct tm lt;
+        v = 0.0f;
+        if (wall_now(&lt, NULL)) {
+            float hm = (float)lt.tm_hour + (float)lt.tm_min / 60.0f;
+            if (hm >= 3.0f && hm < 5.0f) {
+                v = 1.0f;
+                if (hm < 3.25f) v = (hm - 3.0f) / 0.25f;
+                if (hm > 4.75f) v = (5.0f - hm) / 0.25f;
+            }
+        }
+    }
+    return v;
+}
+
 static void wk_sky(int64_t t, float cam, int idx, float f)
 {
+    float sw = wk_synth();
     uint8_t sr = (uint8_t)(0 + f * 16.0f);
     uint8_t sg = (uint8_t)(0 + f * 42.0f);
     uint8_t sb = (uint8_t)(2 + f * 100.0f);
-    whm_display_fill(sr, sg, sb);
+    if (sw > 0.0f) {                       /* purple night, pink low */
+        for (int y = 0; y < WK_GROUND; y++) {
+            float g2 = (float)y / (float)WK_GROUND;
+            uint8_t rr = (uint8_t)((1 - sw) * sr +
+                                   sw * (26.0f + g2 * 120.0f));
+            uint8_t gg = (uint8_t)((1 - sw) * sg + sw * (4.0f +
+                                   g2 * 18.0f));
+            uint8_t bb = (uint8_t)((1 - sw) * sb +
+                                   sw * (48.0f + g2 * 60.0f));
+            for (int x = 0; x < W; x++) wk_px(x, y, rr, gg, bb);
+        }
+    } else {
+        whm_display_fill(sr, sg, sb);
+    }
     float glow = f * (1.0f - f) * 4.0f;
     if (glow > 1.0f) glow = 1.0f;
-    if (glow > 0.05f) {
+    if (glow > 0.05f && sw < 0.5f) {
         for (int y = 46; y < WK_GROUND; y++) {
             float g2 = glow * (float)(y - 45) / 12.0f;
             uint8_t rr = (uint8_t)(sr + g2 * 90.0f);
@@ -1645,37 +1679,57 @@ static void wk_sky(int64_t t, float cam, int idx, float f)
             float tw = 0.7f + 0.3f * sinf((float)t / 3.0e5f +
                                           (float)(h2 & 63));
             uint8_t v = (uint8_t)(dim * tw * 150.0f);
-            wk_px(sx, sy, v, v, (uint8_t)(v / 2 + 40 * dim));
+            if (sw > 0.3f) {               /* cyan/magenta stars */
+                if (h2 & 1) wk_px(sx, sy, (uint8_t)(v / 3),
+                                  (uint8_t)(v * 0.9f), v);
+                else wk_px(sx, sy, v, (uint8_t)(v / 4),
+                           (uint8_t)(v * 0.8f));
+            } else {
+                wk_px(sx, sy, v, v, (uint8_t)(v / 2 + 40 * dim));
+            }
         }
-        int mxi = (((int)(300.0f - base_slow)) % 900 + 900) % 900 - 100;
-        if (mxi > -9 && mxi < W + 9) {
-            for (int dy2 = -6; dy2 <= 6; dy2++)
-                for (int dx2 = -6; dx2 <= 6; dx2++) {
-                    if (dx2 * dx2 + dy2 * dy2 > 36) continue;
-                    if ((dx2 - 4) * (dx2 - 4) + dy2 * dy2 <= 24)
+        int mxi = (((int)(300.0f - base_slow)) % 900 + 900) % 900
+                  - 100;
+        if (mxi > -12 && mxi < W + 12) {   /* MOON r9, scaled bite */
+            for (int dy2 = -9; dy2 <= 9; dy2++)
+                for (int dx2 = -9; dx2 <= 9; dx2++) {
+                    if (dx2 * dx2 + dy2 * dy2 > 81) continue;
+                    if ((dx2 - 6) * (dx2 - 6) + dy2 * dy2 <= 55)
                         continue;
-                    wk_px(mxi + dx2, 11 + dy2,
-                          (uint8_t)(120 * dim), (uint8_t)(120 * dim),
-                          (uint8_t)(88 * dim));
+                    uint8_t mr = (uint8_t)(120 * dim);
+                    uint8_t mg = (uint8_t)(120 * dim);
+                    uint8_t mb = (uint8_t)(88 * dim);
+                    if (sw > 0.3f) { mr = (uint8_t)(160 * dim);
+                        mg = (uint8_t)(60 * dim);
+                        mb = (uint8_t)(150 * dim); }
+                    wk_px(mxi + dx2, 12 + dy2, mr, mg, mb);
                 }
+            uint32_t gh = wk_h((uint32_t)(t / 2600000) * 41u);
+            if ((gh & 7) == 0) {           /* subtle rim glimmer */
+                float ga = 6.2832f * (float)((gh >> 4) & 31) / 32.0f;
+                wk_px(mxi + (int)(cosf(ga) * 9.0f),
+                      12 + (int)(sinf(ga) * 9.0f),
+                      (uint8_t)(230 * dim), (uint8_t)(230 * dim),
+                      (uint8_t)(200 * dim));
+            }
         }
     }
-    if (f > 0.02f) {
+    if (f > 0.02f || sw > 0.3f) {
         struct tm lt2;
         if (wall_now(&lt2, NULL)) {
             float hm = (float)lt2.tm_hour + (float)lt2.tm_min / 60.0f;
             if (hm >= 6.0f && hm < 20.0f) {
                 float p = (hm - 6.0f) / 14.0f;
                 float sunw = 30.0f + p * 80.0f;
-                int sxi = (((int)(sunw - base_slow)) % 900 + 900) % 900
-                          - 100;
+                int sxi = (((int)(sunw - base_slow)) % 900 + 900)
+                          % 900 - 100;
                 float dusk = hm > 17.0f ? (hm - 17.0f) / 3.0f : 0.0f;
                 float dawn = hm < 8.0f ? (8.0f - hm) / 2.0f : 0.0f;
                 float lowr = dusk > dawn ? dusk : dawn;
-                int sy = 10 + (int)(sinf((p - 0.5f) * 3.1416f) *
-                                    sinf((p - 0.5f) * 3.1416f) * 6.0f)
-                         + (int)(lowr * 34.0f);
-                int rr2 = 7 + (int)(dusk * 4.0f);
+                int sy = 12 + (int)(sinf((p - 0.5f) * 3.1416f) *
+                                    sinf((p - 0.5f) * 3.1416f) *
+                                    6.0f) + (int)(lowr * 30.0f);
+                int rr2 = 11 + (int)(dusk * 4.0f);   /* 1.67x sun */
                 uint8_t sunr = (uint8_t)(220 - dusk * 30.0f);
                 uint8_t sung = (uint8_t)(185 - dusk * 125.0f);
                 uint8_t sunb = (uint8_t)(70 - dusk * 62.0f);
@@ -1685,35 +1739,158 @@ static void wk_sky(int64_t t, float cam, int idx, float f)
                         if (q2 > rr2 * rr2 + 1) continue;
                         int py2 = sy + dy2;
                         if (py2 >= WK_GROUND) continue;
+                        if (sw > 0.3f && ((py2 & 3) == 3) &&
+                            dy2 > -2) continue;   /* synth lines */
                         if (q2 > (rr2 - 1) * (rr2 - 1)) {
-                            wk_px(sxi + dx2, py2, (uint8_t)(sunr / 2),
+                            wk_px(sxi + dx2, py2,
+                                  (uint8_t)(sunr / 2),
                                   (uint8_t)(sung / 2),
                                   (uint8_t)(sunb / 2));
                         } else {
                             wk_px(sxi + dx2, py2, sunr, sung, sunb);
                         }
                     }
+                uint32_t gh = wk_h((uint32_t)(t / 3100000) * 67u);
+                if ((gh & 7) == 0 && sy - rr2 > 0) {
+                    float ga = 6.2832f *
+                               (float)((gh >> 4) & 31) / 32.0f;
+                    int gx = sxi + (int)(cosf(ga) * (float)rr2);
+                    int gy = sy + (int)(sinf(ga) * (float)rr2);
+                    if (gy < WK_GROUND)
+                        wk_px(gx, gy, 255, 240, 180);
+                }
             }
         }
     }
-    if (f > 0.35f) {
-        float cf = (f - 0.35f) / 0.65f;
-        for (int i = 0; i < 3; i++) {
+    if (f > 0.35f || sw > 0.3f) {          /* CLOUD SPECIES x3 */
+        float cf = f > 0.35f ? (f - 0.35f) / 0.65f : sw * 0.5f;
+        for (int i = 0; i < 4; i++) {
             uint32_t h2 = wk_h(0xC10Du + (uint32_t)i * 991u);
-            /* wind: gentle and LEFTWARD (-0.25) so clouds travel the
-               same direction as the world, slower - the old +1.4
-               rightward gust overpowered the 0.15 parallax and sent
-               clouds sailing backward once the parallax was fixed. */
-            float wx = (float)(h2 % 640u) -
-                       (float)((double)t / 1e6) * 0.25f;
+            float wvar = -0.25f - 0.1f * (float)(h2 & 3) / 3.0f;
+            float wx = (float)(h2 % 640u) +
+                       (float)((double)t / 1e6) * wvar;
+            int bob = (int)(sinf((float)t / 4.0e6f +
+                                 (float)(h2 & 15)) * 1.2f);
             int sx = (((int)(wx - base_cld)) % 640 + 640) % 640 - 60;
-            int sy = 5 + (int)((h2 >> 10) % 12u);
+            int sy = 4 + (int)((h2 >> 10) % 12u) + bob;
             uint8_t cv = (uint8_t)(cf * 120.0f);
-            for (int dx2 = 0; dx2 < 12; dx2++)
-                wk_px(sx + dx2, sy + 1, cv + 45, cv + 47, cv + 55);
-            for (int dx2 = 2; dx2 < 10; dx2++) {
-                wk_px(sx + dx2, sy, cv + 60, cv + 62, cv + 70);
-                wk_px(sx + dx2, sy + 2, cv + 26, cv + 28, cv + 36);
+            uint8_t cr = cv + 45, cg = cv + 47, cb = cv + 55;
+            if (sw > 0.3f) { cr = cv / 2 + 40; cg = cv / 4 + 8;
+                             cb = cv / 2 + 46; }
+            int kind = (int)((h2 >> 20) % 3u);
+            int shim = ((int)(t / 1500000) + i) & 1;
+            if (kind == 0) {               /* wisp */
+                for (int dx2 = 0; dx2 < 10; dx2++)
+                    wk_px(sx + dx2, sy, cr, cg, cb);
+                if (shim) wk_px(sx + 3, sy - 1, cr, cg, cb);
+            } else if (kind == 1) {        /* double puff */
+                for (int dx2 = 0; dx2 < 16; dx2++)
+                    wk_px(sx + dx2, sy + 1, cr, cg, cb);
+                for (int dx2 = 1; dx2 < 7; dx2++)
+                    wk_px(sx + dx2, sy, cr + 20, cg + 20, cb + 20);
+                for (int dx2 = 9; dx2 < 15; dx2++)
+                    wk_px(sx + dx2, sy, cr + 20, cg + 20, cb + 20);
+                if (shim) wk_px(sx + 4, sy - 1, cr, cg, cb);
+                for (int dx2 = 2; dx2 < 14; dx2++)
+                    wk_px(sx + dx2, sy + 2, cr - 22, cg - 22,
+                          cb - 18);
+            } else {                       /* big cumulus */
+                for (int dx2 = 0; dx2 < 24; dx2++)
+                    wk_px(sx + dx2, sy + 2, cr, cg, cb);
+                for (int dx2 = 2; dx2 < 9; dx2++)
+                    wk_px(sx + dx2, sy + 1, cr + 18, cg + 18,
+                          cb + 18);
+                for (int dx2 = 8; dx2 < 17; dx2++) {
+                    wk_px(sx + dx2, sy, cr + 26, cg + 26, cb + 26);
+                    wk_px(sx + dx2, sy + 1, cr + 18, cg + 18,
+                          cb + 18);
+                }
+                for (int dx2 = 16; dx2 < 22; dx2++)
+                    wk_px(sx + dx2, sy + 1, cr + 18, cg + 18,
+                          cb + 18);
+                if (shim) wk_px(sx + 12, sy - 1, cr + 26, cg + 26,
+                                cb + 26);
+                for (int dx2 = 1; dx2 < 23; dx2++)
+                    wk_px(sx + dx2, sy + 3, cr - 26, cg - 26,
+                          cb - 20);
+            }
+        }
+    }
+}
+
+/* hash-gated flora: 1-2 pieces on ~55%% of chunks, never the same
+ * mix; night-dimmed, synthwave-silhouetted; render-only. */
+static void wk_flora(float cam, int idx, float f, int64_t t)
+{
+    (void)t;
+    float sw = wk_synth();
+    float li = 0.35f + 0.65f * f;
+    int32_t c0 = (int32_t)floorf((cam + 64.0f * (float)idx) / 64.0f);
+    for (int ci = c0 - 1; ci <= c0 + 1; ci++) {
+        if (wk_nye_window(ci)) continue;
+        uint32_t h = wk_h((uint32_t)ci * 2246822519u ^ 0xF10FAu);
+        if ((h % 100u) >= 55u) continue;
+        int npc = 1 + (int)((h >> 8) & 1u);
+        for (int k = 0; k < npc; k++) {
+            uint32_t hk = wk_h(h ^ (uint32_t)(k + 1) * 40503u);
+            int wx = ci * 64 + 6 + (int)(hk % 52u);
+            int sx = wx - (int)(cam + 64.0f * (float)idx);
+            if (sx < -8 || sx > 71) continue;
+            int kind = (int)((hk >> 16) % 5u);
+            int gy = WK_GROUND - 1;
+            uint8_t tr = (uint8_t)(96 * li), tg = (uint8_t)(66 * li),
+                    tb = (uint8_t)(30 * li);
+            uint8_t lr = (uint8_t)(30 * li), lg = (uint8_t)(120 * li),
+                    lb = (uint8_t)(34 * li);
+            if (sw > 0.3f) { lr = (uint8_t)(20 * li);
+                lg = (uint8_t)(10 * li); lb = (uint8_t)(36 * li); }
+            if (kind == 0) {               /* oak */
+                wk_px(sx, gy, tr, tg, tb);
+                wk_px(sx, gy - 1, tr, tg, tb);
+                for (int dy2 = 0; dy2 < 4; dy2++)
+                    for (int dx2 = -3; dx2 <= 3; dx2++) {
+                        if ((dy2 == 0 || dy2 == 3) &&
+                            (dx2 < -2 || dx2 > 2)) continue;
+                        wk_px(sx + dx2, gy - 2 - dy2, lr, lg, lb);
+                    }
+                if (sw > 0.3f) wk_px(sx + 3, gy - 4,
+                                     (uint8_t)(40 * li),
+                                     (uint8_t)(180 * li),
+                                     (uint8_t)(200 * li));
+            } else if (kind == 1) {        /* pine */
+                wk_px(sx, gy, tr, tg, tb);
+                for (int dy2 = 0; dy2 < 7; dy2++) {
+                    int hw = (7 - dy2) / 2;
+                    for (int dx2 = -hw; dx2 <= hw; dx2++)
+                        wk_px(sx + dx2, gy - 1 - dy2,
+                              (uint8_t)(lr * 0.8f),
+                              (uint8_t)(lg * 0.85f),
+                              (uint8_t)(lb * 0.9f));
+                }
+            } else if (kind == 2) {        /* bush */
+                for (int dx2 = -2; dx2 <= 2; dx2++)
+                    wk_px(sx + dx2, gy, lr, lg, lb);
+                for (int dx2 = -1; dx2 <= 1; dx2++)
+                    wk_px(sx + dx2, gy - 1, lr, (uint8_t)(lg + 16),
+                          lb);
+            } else if (kind == 3) {        /* rocks */
+                wk_px(sx, gy, (uint8_t)(92 * li), (uint8_t)(92 * li),
+                      (uint8_t)(98 * li));
+                wk_px(sx + 1, gy, (uint8_t)(74 * li),
+                      (uint8_t)(74 * li), (uint8_t)(80 * li));
+                wk_px(sx, gy - 1, (uint8_t)(110 * li),
+                      (uint8_t)(110 * li), (uint8_t)(116 * li));
+            } else {                       /* flowers */
+                for (int fx2 = 0; fx2 < 3; fx2++) {
+                    uint32_t fh = wk_h(hk ^ (uint32_t)fx2 * 77u);
+                    uint8_t fr = (uint8_t)(180 * li),
+                            fg2 = (uint8_t)(60 * li),
+                            fb = (uint8_t)(120 * li);
+                    if (fh & 1) { fr = (uint8_t)(220 * li);
+                        fg2 = (uint8_t)(190 * li);
+                        fb = (uint8_t)(40 * li); }
+                    wk_px(sx + (int)(fh % 5u) - 2, gy, fr, fg2, fb);
+                }
             }
         }
     }
@@ -2030,6 +2207,7 @@ static void pat_walker(int64_t t)
         wk_px(chx + 1, (int)s_wk.y - 1, 60, 13, 8);
     }
     if (wlx >= -6 && wlx <= 70) {
+        wk_flora(cam, (int)s_w_idx, f, t);
         wk_sprite(wlx, (int)lroundf(s_wk.y), t);
         if (s_w_n > 1) {
             bool talk = wk_i_own() || t < s_wko.grace_until;
