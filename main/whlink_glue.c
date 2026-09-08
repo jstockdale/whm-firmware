@@ -632,7 +632,8 @@ void whm_whlink_init(void)
                                        .name = "wl_fuse" };
         esp_timer_handle_t fh;
         if (esp_timer_create(&fa, &fh) == ESP_OK)
-            esp_timer_start_once(fh, 30 * 1000000);
+            esp_timer_start_once(fh, 15 * 1000000);   /* 15 s: bench
+                                        reflash cycles tripped 30 */
     }
 }
 

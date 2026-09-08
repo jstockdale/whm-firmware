@@ -1432,6 +1432,16 @@ void whm_sync_status_print(void)
                (long long)age, s_peers[i].temp_c, s_peers[i].rh);
     }
     if (!np) printf("peers:     none heard in 30s\n");
+    if (s_smode == SM_OFF && s_role == WHM_SYNC_OFF) {
+        int vis = 0;
+        int64_t now2 = esp_timer_get_time();
+        for (int i = 0; i < PEER_MAX; i++)
+            if (s_peers[i].name[0] &&
+                now2 - s_peers[i].last_us < 30000000LL) vis++;
+        if (vis)
+            printf("        (mode off: you can SEE the fleet; it "
+                   "cannot see you - 'sync auto' to join)\n");
+    }
     printf("lead:   %u ms ('sync lead <ms>' 100-1000)\n",
            (unsigned)(fleet_lead_us() / 1000));
     printf("rx:     ann=%u life=%u cmd=%u play=%u\n",
