@@ -1013,6 +1013,10 @@ static int cmd_ble(int argc, char **argv)
         whm_whlink_pair_window(secs);
         return 0;
     }
+    if (argc >= 2 && strcmp(argv[1], "feed") == 0) {
+        whm_whlink_feed(argc >= 3 && strcmp(argv[2], "on") == 0);
+        return 0;
+    }
     if (argc >= 2 && strcmp(argv[1], "forget") == 0) {
         whm_whlink_forget();
         return 0;
@@ -1026,6 +1030,7 @@ static int cmd_ble(int argc, char **argv)
     printf("       ble pair [secs]    open pairing window (adv)\n");
     printf("       ble off            close window / drop link\n");
     printf("       ble forget         erase the bond\n");
+    printf("       ble feed on|off    tunnel fleet 2/7/9 to peer\n");
     return 0;
 }
 

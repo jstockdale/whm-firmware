@@ -41,6 +41,15 @@
 
 static const char *TAG = "whlink";
 
+/* RECONCILIATION-PROPOSED, NOT YET IN THE SHARED HEADER (which
+ * stays verbatim): WH_MSG_WHMCAST = one verbatim whmcast (WHML)
+ * datagram per message. Filed with the watch agent per wh-link §6;
+ * 0x68 is next-free after NETSCAN_RESULT. Old peers NAK unknown
+ * types - graceful by spec design. */
+#define WHM_MSG_WHMCAST_PROPOSED 0x68
+
+static bool s_feed = false;      /* ble feed on|off */
+
 /* LSB-first 128-bit UUIDs; only byte[12] differs (00/01/02). */
 static const ble_uuid128_t k_svc_uuid = BLE_UUID128_INIT(
     0x01, 0x00, 0xde, 0xc0, 0x48, 0x57, 0x21, 0x9d,
@@ -206,10 +215,28 @@ static int cb_send(void *user, const uint8_t *frame, size_t len)
                ? 0 : -1;
 }
 
+static void cb_feed_tap(const uint8_t *buf, int len)
+{
+    if (!s_feed || !s_notify_on || !wh_is_established(&s_ctx))
+        return;
+    wh_send(&s_ctx, WHM_MSG_WHMCAST_PROPOSED, WH_FLAG_EVENT, 0,
+            buf, (size_t)len);
+}
+
 static void cb_on_message(void *user, const wh_msg *m)
 {
     (void)user;
     switch (m->type) {
+    case WHM_MSG_WHMCAST_PROPOSED: {
+        if (!wh_is_established(&s_ctx)) {
+            printf("whlink: WHMCAST before pairing - dropped\n");
+            break;
+        }
+        if (m->len < 8 || memcmp(m->payload, "WHML", 4) != 0)
+            break;                 /* not family - ignore */
+        whm_sync_inject(m->payload, (int)m->len, true);
+        break;
+    }
     case WH_MSG_ANNOUNCE: {
         wh_announce a;
         if (wh_dec_announce(m->payload, m->len, &a) == WH_OK) {
@@ -530,6 +557,7 @@ void whm_whlink_init(void)
     cfg.on_sas = cb_on_sas;
     cfg.on_paired = cb_on_paired;
     wh_ctx_init(&s_ctx, &cfg);
+    whm_sync_set_tap(cb_feed_tap);
 
     bond_load();
     s_cmd_q = xQueueCreate(4, sizeof(wl_cmd_t));
@@ -550,6 +578,13 @@ void whm_whlink_pair_window(uint32_t secs)
     adv_maybe();
     printf("whlink: pairing window open %lus\n",
            (unsigned long)secs);
+}
+
+void whm_whlink_feed(bool on)
+{
+    s_feed = on;
+    printf("whlink: feed %s\n", on ? "ON - tunneling fleet types "
+           "2/7/9 to the sealed peer" : "off");
 }
 
 void whm_whlink_forget(void)
@@ -575,6 +610,8 @@ void whm_whlink_status_print(void)
            s_notify_on ? " +subscribed" : "",
            s_paired ? " +SEALED" : "",
            esp_timer_get_time() < s_adv_until ? "OPEN" : "closed");
+    printf("whlink: feed %s (types 2/7/9 -> WHMCAST 0x68 "
+           "proposed)\n", s_feed ? "ON" : "off");
     if (s_bond.present)
         printf("whlink: bonded to %04x '%s' (pseudonym adv %s)\n",
                s_bond.peer_id, s_bond.nick,

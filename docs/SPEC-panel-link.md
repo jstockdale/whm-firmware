@@ -93,3 +93,25 @@ zero extra hops - but any panel works.
   salt="wh-pseud-v1", ikm = tx_key XOR rx_key, 32 out) - the XOR
   makes the ikm side-invariant (my tx is your rx). Accept the
   current and adjacent epoch when resolving. Interval 800-1100 ms.
+
+## 8. L5 as shipped (v0.42.0) — the whmcast tunnel (0x68 proposed)
+
+- WH_MSG_WHMCAST (locally defined 0x68, pending your concur; the
+  shared header stays verbatim): payload = ONE verbatim whmcast
+  datagram. Family magic is "WHML"; byte[4]=ver(1..2),
+  byte[5]=type. Type-2 is exactly 212 B - a sealed single
+  fragment, no reassembly ever needed.
+- OUTBOUND (panel -> watch): off by default; `ble feed on` arms a
+  tap that forwards every fleet-relevant datagram - types 2
+  (deadline cmd), 7 (takeover script), 9 (walker keyframe) - both
+  inbound-heard and locally-sent, EVENT-flagged, sealed session
+  only. This is the V2 walker-viewer feed: keyframes carry the
+  owner tsf per frame, so the watch maps panel-time from arrivals
+  (Tier-1, no TIMESYNC dependency).
+- INBOUND (watch/orphan -> panel): sealed-only, magic-checked,
+  then injected through the panel's own rx FRONT DOOR (loopback) -
+  full validation, dedupe, and handlers apply - and REBROADCAST to
+  the WiFi fleet: the receiving panel IS the bridge. The (from,
+  seq) command dedupe is the loop guard. A `fleet ...` line the
+  watch could already run via CONSOLE; WHMCAST lets a future BLE
+  peer speak raw fleet wire.

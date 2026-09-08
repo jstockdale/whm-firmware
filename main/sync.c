@@ -185,9 +185,48 @@ static char s_anchor_name[16] = "";      /* current winner we follow */
 static int64_t s_promote_at = 0;         /* jittered election deadline */
 static whm_sync_role_t s_role = WHM_SYNC_OFF;
 static char s_peer_name[16] = "";
+
+/* L5 tunnel surface: a TAP sees every fleet-relevant datagram
+ * (types 2/7/9) - inbound after the door gate, outbound at every
+ * tx site - and INJECT feeds one in through the FRONT DOOR via UDP
+ * loopback (full validation, dedupe, and handlers for free; the
+ * (from,seq) cmd dedupe is the loop guard). */
+static void (*s_tap)(const uint8_t *buf, int len);
+static void sync_tap(const void *buf, int len)
+{
+    const uint8_t *b = (const uint8_t *)buf;
+    if (!s_tap || len < 8) return;
+    if (b[5] != 2 && b[5] != 7 && b[5] != 9) return;
+    s_tap(b, len);
+}
+
+void whm_sync_set_tap(void (*cb)(const uint8_t *, int))
+{
+    s_tap = cb;
+}
+
 static peer_t s_peers[PEER_MAX];
 static uint16_t s_seq = 0;
 static int s_sock = -1;
+
+void whm_sync_inject(const uint8_t *buf, int len, bool rebroadcast)
+{
+    if (len < 8 || len > 256 || !s_sock) return;
+    struct sockaddr_in lo = { 0 };
+    lo.sin_family = AF_INET;
+    lo.sin_port = htons(7777);
+    lo.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    sendto(s_sock, buf, len, 0, (struct sockaddr *)&lo,
+           sizeof(lo));                    /* front door, locally */
+    if (rebroadcast) {
+        struct sockaddr_in dst = { 0 };
+        dst.sin_family = AF_INET;
+        dst.sin_port = htons(7777);
+        dst.sin_addr.s_addr = htonl(INADDR_BROADCAST);
+        sendto(s_sock, buf, len, 0, (struct sockaddr *)&dst,
+               sizeof(dst));               /* the bridge role */
+    }
+}
 static volatile bool s_wall_applied = false;
 static int64_t s_last_cond_us = 0;
 
@@ -254,6 +293,7 @@ static void announce_task(void *arg)
             fill_announce(&p);
             sendto(s_sock, &p, sizeof(p), 0,
                    (struct sockaddr *)&dst, sizeof(dst));
+        sync_tap((const uint8_t *)&p, (int)sizeof(p));
         }
         tick++;
         vTaskDelay(pdMS_TO_TICKS(1000));
@@ -345,6 +385,7 @@ static void recv_task(void *arg)
         int n = recvfrom(s_sock, rbuf, sizeof(rbuf), 0,
                          (struct sockaddr *)&from, &fl);
         if (n < 8 || memcmp(rbuf, "WHML", 4) != 0) continue;
+        sync_tap(rbuf, n);
         if (rbuf[4] < 1 || rbuf[4] > 2) {
             /* THE DOOR GATE that silently ate every v2 cmd for three
                releases - now it counts and confesses instead */
@@ -885,6 +926,7 @@ esp_err_t whm_sync_play_send(const char *name, const char *sha,
     for (int i = 0; i < 3; i++) {           /* UDP: say it thrice */
         sendto(s_sock, &p, sizeof(p), 0, (struct sockaddr *)&dst,
                sizeof(dst));
+        sync_tap((const uint8_t *)&p, (int)sizeof(p));
         if (i < 2) vTaskDelay(pdMS_TO_TICKS(60));
     }
     return ESP_OK;
@@ -1064,6 +1106,7 @@ esp_err_t whm_sync_nye_send(const char *tz, uint16_t year,
         if (i) vTaskDelay(pdMS_TO_TICKS(40));
         sendto(s_sock, &y, sizeof(y), 0, (struct sockaddr *)&dst,
                sizeof(dst));
+        sync_tap((const uint8_t *)&y, (int)sizeof(y));
     }
     return ESP_OK;
 }
@@ -1092,6 +1135,7 @@ esp_err_t whm_sync_djb_send(bool playing, uint32_t rate, uint8_t ch,
         if (i) vTaskDelay(pdMS_TO_TICKS(50));
         sendto(s_sock, &d, sizeof(d), 0, (struct sockaddr *)&dst,
                sizeof(dst));
+        sync_tap((const uint8_t *)&d, (int)sizeof(d));
     }
     return ESP_OK;
 }
