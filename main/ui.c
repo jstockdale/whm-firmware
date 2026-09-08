@@ -1556,11 +1556,17 @@ void whm_ui_wkb_rx(uint8_t owner, float x, int8_t y, uint8_t st,
     s_wko.ev_step = step;
     if (step <= s_wk_steps) { s_wkf_stale++; return; }   /* past */
     int slot = -1;
+    uint32_t oldest = 0xFFFFFFFFu;
+    int oldi = 0;
     for (int i = 0; i < WKF_N; i++) {
         if (s_wkf[i].valid && s_wkf[i].step == step) { slot = i; break; }
         if (slot < 0 && !s_wkf[i].valid) slot = i;
+        if (s_wkf[i].valid && s_wkf[i].step < oldest) {
+            oldest = s_wkf[i].step;
+            oldi = i;
+        }
     }
-    if (slot < 0) slot = 0;              /* overwrite oldest-ish */
+    if (slot < 0) slot = oldi;           /* evict the true oldest */
     s_wkf[slot].step = step;
     s_wkf[slot].x = x;
     s_wkf[slot].yq1 = y;
@@ -1753,18 +1759,35 @@ static void wk_sky(int64_t t, float cam, int idx, float f)
                                                (float)dx2);
                             float run = 0.5f + 0.5f *
                                 cosf(ang - (float)t / 1.27e6f);
-                            float brth = 0.86f + 0.14f *
+                            run = run * run;   /* sharpen the spot */
+                            float brth = 0.84f + 0.16f *
                                 sinf((float)t / 2.9e6f);
-                            float lum = brth * (0.55f +
-                                                0.45f * run);
+                            float lum = brth * (0.45f +
+                                                0.75f * run);
+                            if (lum > 1.15f) lum = 1.15f;
                             wk_px(sxi + dx2, py2,
-                                  (uint8_t)(sunr * lum),
-                                  (uint8_t)(sung * lum),
-                                  (uint8_t)(sunb * lum * 0.9f));
+                                  (uint8_t)(sunr * lum > 255 ? 255
+                                   : sunr * lum),
+                                  (uint8_t)(sung * lum > 255 ? 255
+                                   : sung * lum),
+                                  (uint8_t)(sunb * lum));
                         } else {
                             wk_px(sxi + dx2, py2, sunr, sung, sunb);
                         }
                     }
+                {   /* ORBITING RAY: 2px flare at the hot-spot */
+                    float ra = (float)t / 1.27e6f;
+                    for (int e2 = 1; e2 <= 2; e2++) {
+                        int rx2 = sxi + (int)(cosf(ra) *
+                                   (float)(rr2 + e2));
+                        int ry2 = sy + (int)(sinf(ra) *
+                                   (float)(rr2 + e2));
+                        if (ry2 < WK_GROUND && ry2 >= 0)
+                            wk_px(rx2, ry2,
+                                  255, (uint8_t)(232 - 20 * e2),
+                                  (uint8_t)(150 - 40 * e2));
+                    }
+                }
             }
         }
     }
@@ -1789,6 +1812,18 @@ static void wk_sky(int64_t t, float cam, int idx, float f)
             int elen = kind == 0 ? 10 : (kind == 1 ? 14 : 22);
             int epos = (int)((t / 220000 + (int64_t)i * 7) %
                              (int64_t)elen);
+            int bpos = elen - 1 -
+                       (int)((t / 300000 + (int64_t)i * 5) %
+                             (int64_t)elen);
+            #define CLD_BOT(px2, py2, ex)                             \
+                do { int d2 = (ex) - bpos;                            \
+                     if (d2 < 0) d2 = -d2;                            \
+                     if (d2 <= 2)                                     \
+                         wk_px((px2), (py2),                          \
+                               (uint8_t)(cr + 26 - 8 * d2),           \
+                               (uint8_t)(cg + 25 - 8 * d2),           \
+                               (uint8_t)(cb + 22 - 7 * d2));          \
+                } while (0)
             #define CLD_EDGE(px2, py2, ex)                            \
                 do { int d2 = (ex) - epos;                            \
                      if (d2 < 0) d2 = -d2;                            \
@@ -1814,9 +1849,11 @@ static void wk_sky(int64_t t, float cam, int idx, float f)
                     CLD_EDGE(sx + dx2, dx2 < 7 || dx2 > 8 ? sy - 1
                                                           : sy,
                              dx2 - 1);
-                for (int dx2 = 2; dx2 < 14; dx2++)
+                for (int dx2 = 2; dx2 < 14; dx2++) {
                     wk_px(sx + dx2, sy + 2, cr - 22, cg - 22,
                           cb - 18);
+                    CLD_BOT(sx + dx2, sy + 2, dx2 - 2);
+                }
             } else {                       /* big cumulus */
                 for (int dx2 = 0; dx2 < 24; dx2++)
                     wk_px(sx + dx2, sy + 2, cr, cg, cb);
@@ -1836,11 +1873,71 @@ static void wk_sky(int64_t t, float cam, int idx, float f)
                              (dx2 >= 2 && dx2 <= 21 ? sy : sy + 1);
                     CLD_EDGE(sx + dx2, ey, dx2 - 1);
                 }
-                for (int dx2 = 1; dx2 < 23; dx2++)
+                for (int dx2 = 1; dx2 < 23; dx2++) {
                     wk_px(sx + dx2, sy + 3, cr - 26, cg - 26,
                           cb - 20);
+                    CLD_BOT(sx + dx2, sy + 3, dx2 - 1);
+                }
             }
+            #undef CLD_BOT
             #undef CLD_EDGE
+        }
+    }
+}
+
+/* FAUNA: seagulls drift the daytime sky; synthwave pigeons haunt
+ * the 3-5am hour. Two-frame wing glyphs, star-parallax (k=0.10),
+ * hash-spawned in 15s epochs - render-only. */
+static void wk_birds(int64_t t, float cam, int idx, float f,
+                     float sw)
+{
+    bool day = f > 0.5f && sw < 0.3f;
+    bool syn = sw > 0.3f;
+    if (!day && !syn) return;
+    float base = cam * 0.10f + 64.0f * (float)idx;
+    uint32_t ep = (uint32_t)(t / 15000000LL);
+    for (int i = 0; i < 2; i++) {
+        uint32_t h = wk_h(ep * 2654435761u ^ (uint32_t)i * 977u);
+        uint32_t gate = h % 100u;
+        if (day && gate >= 30u) continue;
+        if (syn && (gate >= 18u || i > 0)) continue;
+        float spd = syn ? -2.2f : -4.5f;
+        float wx = (float)(h % 640u) +
+                   (float)((double)(t % 15000000LL) / 1e6) * spd;
+        int sx = (((int)(wx - base)) % 640 + 640) % 640 - 20;
+        if (sx < -6 || sx > 70) continue;
+        int sy = 7 + (int)((h >> 10) % 14u);
+        int flap = (int)(t / (syn ? 620000 : 380000) +
+                         (int64_t)(h & 7)) & 1;
+        if (day) {
+            uint8_t v = 205, g2 = 205, b2 = 210;
+            if (flap) {                    /* wings up: \_/ */
+                wk_px(sx, sy, v, g2, b2);
+                wk_px(sx + 1, sy + 1, v, g2, b2);
+                wk_px(sx + 2, sy + 1, 160, 160, 170);
+                wk_px(sx + 3, sy + 1, v, g2, b2);
+                wk_px(sx + 4, sy, v, g2, b2);
+            } else {                       /* glide: ~~ */
+                wk_px(sx, sy + 1, v, g2, b2);
+                wk_px(sx + 1, sy, v, g2, b2);
+                wk_px(sx + 2, sy, 160, 160, 170);
+                wk_px(sx + 3, sy, v, g2, b2);
+                wk_px(sx + 4, sy + 1, v, g2, b2);
+            }
+        } else {                           /* synthwave pigeon */
+            uint8_t pr = 200, pg = 60, pb = 170;
+            wk_px(sx + 1, sy + 1, 30, 8, 44);
+            wk_px(sx + 2, sy + 1, 30, 8, 44);
+            wk_px(sx + 3, sy + 1, 30, 8, 44);
+            wk_px(sx + 4, sy, 40, 12, 56);     /* head */
+            wk_px(sx + 1, sy + 2, pr, pg, pb); /* underlight */
+            wk_px(sx + 2, sy + 2, pr, pg, pb);
+            if (flap) {
+                wk_px(sx + 1, sy, 60, 200, 220);
+                wk_px(sx + 3, sy, 60, 200, 220);
+            } else {
+                wk_px(sx, sy + 1, 60, 200, 220);
+            }
         }
     }
 }
@@ -1941,12 +2038,19 @@ static void wk_flora(float cam, int idx, float f, int64_t t)
     (void)t;
     float sw = wk_synth();
     float li = 0.35f + 0.65f * f;
-    int32_t c0 = (int32_t)floorf((cam + 64.0f * (float)idx) / 64.0f);
+    /* TREE PARALLAX k=0.7, same k*cam+64*idx form as every sky
+       layer (seam-continuous), lroundf like the platforms - one
+       shared beat, no more off-phase chunk-origin stepping. */
+    float base = 0.7f * cam + 64.0f * (float)idx;
+    int32_t c0 = (int32_t)floorf(base / 64.0f);
+    int32_t cw0 = (int32_t)floorf((cam + 64.0f * (float)idx)
+                                  / 64.0f);
+    for (int cj = cw0 - 1; cj <= cw0 + 2; cj++)
+        if (wk_nye_window(cj)) return;   /* keep the plaza clean */
     for (int ci = c0 - 1; ci <= c0 + 2; ci++) {
-        if (wk_nye_window(ci)) continue;
         uint32_t h = wk_h((uint32_t)ci * 2246822519u ^ 0xF10FAu);
         uint32_t roll = h % 100u;
-        int sxbase = ci * 64 - (int)(cam + 64.0f * (float)idx);
+        int sxbase = (int)lroundf((float)(ci * 64) - base);
         int gy = WK_GROUND - 1;
         if (roll < 30u) {                   /* LARGE tree */
             int wx = 10 + (int)((h >> 8) % 40u);
@@ -2190,6 +2294,8 @@ static void pat_walker(int64_t t)
         wk_step(ts, n);
         if (s_w_n > 1 && !wk_i_own() && s_show.phase == 0) {
             for (int i = 0; i < WKF_N; i++) {
+                if (s_wkf[i].valid && s_wkf[i].step < s_wk_steps)
+                    s_wkf[i].valid = 0;      /* expired unverified */
                 if (!s_wkf[i].valid || s_wkf[i].step != s_wk_steps)
                     continue;
                 s_wkf[i].valid = 0;
@@ -2197,7 +2303,9 @@ static void pat_walker(int64_t t)
                 int dyv = (int)s_wkf[i].yq1 -
                           (int)lroundf(s_wk.y * 2.0f);
                 if (dx > 0.75f || dx < -0.75f || dyv > 1 ||
-                    dyv < -1 || s_wkf[i].st != (uint8_t)s_wk.st) {
+                    dyv < -1 || s_wkf[i].st != (uint8_t)s_wk.st ||
+                    s_wkf[i].dir != (int8_t)s_wk.dir ||
+                    s_wkf[i].timer != (uint16_t)s_wk.timer) {
                     printf("walker: at-step SNAP @%lu (dx %.2f, "
                            "%u vs %u) mine{x=%.2f y=%.2f tgt=%.1f "
                            "vx=%.2f dir=%d tm=%u}\n",
@@ -2258,6 +2366,7 @@ static void pat_walker(int64_t t)
     float f = wk_daylight();
     wk_sky(t, cam, (int)s_w_idx, f);
     wk_flora(cam, (int)s_w_idx, f, t);   /* behind platforms */
+    wk_birds(t, cam, (int)s_w_idx, f, wk_synth());
 
     /* ground - carved by gaps, planked by bridges */
     int32_t id0 = (int32_t)floorf((float)ox / 64.0f);
@@ -2378,7 +2487,7 @@ static void pat_walker(int64_t t)
                    (camera advanced per-step so the prediction rides
                    the future camera), capture the promise, restore.
                    Determinism makes clairvoyance free. */
-                uint32_t K = (whm_sync_lead_ms() * 2 * 1000)
+                uint32_t K = (whm_sync_lead_ms() * 3 * 1000)
                              / (uint32_t)WK_TICK_US;
                 if (K < 6) K = 6;
                 if (K > 120) K = 120;
