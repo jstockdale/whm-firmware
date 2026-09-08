@@ -325,6 +325,16 @@ static struct {
 } s_wk;
 static uint32_t wk_h(uint32_t s);          /* defined just below */
 static uint32_t s_wk_steps;
+/* P1 input spine: control block + step-stamped event log. The log
+ * is consumed AT STEP HEAD by wk_step itself, so live stepping and
+ * replay are the same consumer - one mechanism (doctrine 15 made
+ * flesh). USER mode expires after 300 steps (10 s) of silence and
+ * the walker shakes off and wanders. */
+static struct { uint8_t mode; uint32_t until; int8_t vx;
+                uint8_t jump; } s_wkc;
+static struct { uint32_t step; uint8_t act; float arg;
+                uint8_t valid; } s_wki[32];
+static uint8_t s_wki_w;
 static volatile bool s_wkp_poke;   /* new subscriber wants params */
 static uint8_t s_wk_draws;   /* per-step draw counter (pure RNG) */
 static int64_t s_wk_anchor = -1;
@@ -629,6 +639,25 @@ static void wk_step(int64_t t, uint8_t n)
 {
     uint8_t st_in = (uint8_t)s_wk.st;
     s_wk_draws = 0;              /* pure RNG: draw# restarts per step */
+    for (int ii = 0; ii < 32; ii++) {        /* input log: apply at
+                                                the stamped step */
+        if (!s_wki[ii].valid || s_wki[ii].step != s_wk_steps)
+            continue;
+        uint8_t a = s_wki[ii].act;
+        if (a == 0) { s_wkc.mode = 0; }
+        else {
+            s_wkc.mode = 1;
+            s_wkc.until = s_wk_steps + 300;
+            if (a == 1) s_wkc.vx = -1;
+            else if (a == 2) s_wkc.vx = 1;
+            else if (a == 3) s_wkc.vx = 0;
+            else if (a == 4) s_wkc.jump = 1;
+        }
+    }
+    if (s_wkc.mode == 1 && s_wk_steps >= s_wkc.until) {
+        s_wkc.mode = 0;          /* shakes off, wanders again */
+        s_wkc.jump = 0;
+    }
     /* STEP-TIME GENERATOR (doctrine 13): reward marks are a pure
        function of the trajectory - one mark per chunk ENTRY, inside
        the step, so a late entrant's replay produces the identical
@@ -650,6 +679,22 @@ static void wk_step(int64_t t, uint8_t n)
     float center = wk_cam(t) + (float)n * 32.0f;
     switch (s_wk.st) {
     case WK_WALK: {
+        if (s_wkc.mode == 1) {           /* USER: instant heel-turn,
+                                            autonomy suspended */
+            if (s_wkc.vx) s_wk.dir = s_wkc.vx;
+            if (s_wkc.vx) s_wk.x += (float)s_wk.dir * s_wk.spd;
+            s_wk.phase++;
+            int ufy = (int)lroundf(s_wk.y);
+            if (s_wkc.jump && ufy >= WK_GROUND - 0) {
+                s_wkc.jump = 0;
+                s_wk.st = WK_CROUCH;     /* the CHARGED long jump -
+                                            user gets the good one */
+                s_wk.timer = 8;
+            } else {
+                s_wkc.jump = 0;          /* airborne press: consumed */
+            }
+            break;
+        }
         s_wk.x += (float)s_wk.dir * s_wk.spd;
         s_wk.phase++;
         if (s_wk.turn_cd) s_wk.turn_cd--;
@@ -1056,6 +1101,22 @@ void whm_ui_ota_target(const char *inc)
 bool whm_ui_ota_active(void) { return s_otui.active; }
 
 void whm_ui_walk_params_poke(void) { s_wkp_poke = true; }
+
+uint32_t whm_ui_walk_step(void) { return s_wk_steps; }
+
+void whm_ui_walk_input_rx(uint8_t act, uint32_t exec_step, float arg)
+{
+    s_wki[s_wki_w] = (__typeof__(s_wki[0])){ .step = exec_step,
+        .act = act, .arg = arg, .valid = 1 };
+    s_wki_w = (uint8_t)((s_wki_w + 1) & 31);
+    for (int i = 0; i < WKF_N; i++)       /* input invalidates the
+                                             future (doctrine 15) */
+        s_wkf[i].valid = 0;
+    if (exec_step <= s_wk_steps && s_wk_steps)
+        s_wko.resync = 1;                 /* late: replay consumes
+                                             the log at the right
+                                             step */
+}
 
 void whm_ui_ota_progress(uint32_t kb) { s_otui.got_kb = kb; }
 

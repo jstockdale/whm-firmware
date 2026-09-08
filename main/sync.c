@@ -186,6 +186,23 @@ static int64_t s_promote_at = 0;         /* jittered election deadline */
 static whm_sync_role_t s_role = WHM_SYNC_OFF;
 static char s_peer_name[16] = "";
 
+typedef struct __attribute__((packed)) {
+    char magic[4];
+    uint8_t ver;            /* 2 */
+    uint8_t type;           /* 11 = walker input */
+    uint8_t act;            /* 0 auto,1 left,2 right,3 stop,4 jump */
+    uint8_t rsv;
+    uint32_t exec_step;
+    uint32_t seq;
+    char from[16];
+    float arg;
+} whm_wki_t;
+_Static_assert(sizeof(whm_wki_t) == 36, "wki wire");
+
+static uint32_t s_wki_seq;
+static uint32_t s_wki_seen_seq[4];
+static char s_wki_seen_from[4][16];
+
 /* L5 tunnel surface: a TAP sees every fleet-relevant datagram
  * (types 2/7/9) - inbound after the door gate, outbound at every
  * tx site - and INJECT feeds one in through the FRONT DOOR via UDP
@@ -196,7 +213,8 @@ static void sync_tap(const void *buf, int len)
 {
     const uint8_t *b = (const uint8_t *)buf;
     if (!s_tap || len < 8) return;
-    if (b[5] != 2 && b[5] != 7 && b[5] != 9 && b[5] != 10) return;
+    if (b[5] != 2 && b[5] != 7 && b[5] != 9 && b[5] != 10 &&
+        b[5] != 11) return;
     s_tap(b, len);
 }
 
@@ -505,6 +523,28 @@ static void recv_task(void *arg)
             char me6[17] = "";
             my_name(me6, sizeof(me6));
             if (strcmp(w.from, me6) != 0) {
+        if (rbuf[5] == 11 && n >= (int)sizeof(whm_wki_t)) {
+            whm_wki_t ki;
+            memcpy(&ki, rbuf, sizeof(ki));
+            char me2[16];
+            my_name(me2, sizeof(me2));
+            if (strncmp(ki.from, me2, sizeof(me2)) != 0) {
+                bool dup = false;
+                for (int i2 = 0; i2 < 4; i2++)
+                    if (s_wki_seen_seq[i2] == ki.seq &&
+                        strncmp(s_wki_seen_from[i2], ki.from,
+                                16) == 0) { dup = true; break; }
+                if (!dup) {
+                    static uint8_t wr2;
+                    s_wki_seen_seq[wr2] = ki.seq;
+                    memcpy(s_wki_seen_from[wr2], ki.from, 16);
+                    wr2 = (uint8_t)((wr2 + 1) & 3);
+                    whm_ui_walk_input_rx(ki.act, ki.exec_step,
+                                         ki.arg);
+                }
+            }
+            continue;
+        }
                 whm_ui_wkb_rx(w.owner, w.x, w.y, w.st, w.dir,
                               w.timer, w.seq, w.tsf, w.tgt, w.vx);
             }
@@ -1029,6 +1069,32 @@ void whm_sync_set_lead_ms(uint32_t ms)
     if (ms > 1000) ms = 1000;
     whm_settings_set_u32("fl_lead", ms);
     s_lead_us = ms * 1000;
+}
+
+/* WK_INPUT - whml type 11 (P1: the input spine). Applies at its
+ * STAMPED step on every replica; the ui keeps a step-stamped log
+ * that both live stepping and replay consume - one mechanism, so
+ * late or missed events self-heal through snap-storm -> replay.
+ * 36 bytes packed LE; x3 burst; (from,seq) dedupe. */
+
+esp_err_t whm_sync_walk_input_send(uint8_t act, uint32_t exec_step,
+                                   float arg)
+{
+    if (s_sock < 0) return ESP_ERR_INVALID_STATE;
+    whm_wki_t k = { .magic = { 'W', 'H', 'M', 'L' }, .ver = 2,
+                    .type = 11, .act = act, .exec_step = exec_step,
+                    .seq = ++s_wki_seq, .arg = arg };
+    my_name(k.from, sizeof(k.from));
+    struct sockaddr_in dst = { 0 };
+    dst.sin_family = AF_INET;
+    dst.sin_port = htons(7777);
+    dst.sin_addr.s_addr = htonl(INADDR_BROADCAST);
+    for (int i = 0; i < 3; i++)
+        sendto(s_sock, &k, sizeof(k), 0, (struct sockaddr *)&dst,
+               sizeof(dst));
+    sync_tap((const uint8_t *)&k, (int)sizeof(k));
+    whm_ui_walk_input_rx(act, exec_step, arg);   /* self-apply */
+    return ESP_OK;
 }
 
 /* WK_PARAMS - whml type 10 (watch agent, TO-PANEL-AGENT §4): the

@@ -44,7 +44,21 @@ Fleet & OTA
 - Art tour by rtc: day / dusk / night / 03:30 synthwave; comet
   preview at 2027-01-25 evening; tree-parallax 0.7 verdict
 
-## Next up - P1: controllable walker (deferred by choice)
+## P1: controllable walker - IN FLIGHT (P1.1 landed v0.44.0)
+
+P1.1, the input spine, is live: type-11 events applying at their
+stamped step on every replica; a step-stamped log consumed by
+wk_step itself so live stepping and replay are ONE consumer (late
+or missed events self-heal via snap-storm -> replay); USER mode
+suspends autonomy with a 300-step shake-off; jump = the charged
+long-jump; console verbs walk left|right|stop|jump|auto; the
+tunnel carries type 11 so watch viewers stay lockstep. Timing:
+next-step-boundary-bound - 0..33 ms, mean 16.5 - meets <=25 in
+expectation, worst one tick, stated honestly. The wrist drives it
+TODAY through the L2 bridge. Remaining (P1.2+): BOOT-button verbs,
+BLE pads / USB-host HID / classic bridge, phone-HTTP, local
+cosmetic ack at input instant, owner short-lead ramp.
+
 
 Latency law: <=25 ms scheduled input-to-motion; 10 ms target.
 Down-payments already landed: the future-ref buffer IS the
