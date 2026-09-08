@@ -669,6 +669,11 @@ static void election_tick(void)
             s_role = WHM_SYNC_MEMBER;
             s_wall_applied = false;
             strlcpy(s_anchor_name, bn, sizeof(s_anchor_name));
+            strlcpy(s_peer_name, bn, sizeof(s_peer_name));
+            s_last_cond_us = now;    /* election stepdown now fills
+                                        the member-view fields the
+                                        follow path always set -
+                                        no more "member of ?" */
             mdns_role_update();
             ESP_LOGI(TAG, "stepping down: '%s' (prio %u) outranks me",
                      bn, (unsigned)bp);
@@ -678,9 +683,13 @@ static void election_tick(void)
     if (claim) {
         if (strncmp(s_anchor_name, bn, sizeof(s_anchor_name)) != 0) {
             strlcpy(s_anchor_name, bn, sizeof(s_anchor_name));
+            strlcpy(s_peer_name, bn, sizeof(s_peer_name));
             s_wall_applied = false;
             ESP_LOGI(TAG, "anchor: '%s' (prio %u)", bn, (unsigned)bp);
         }
+        s_last_cond_us = now;        /* any live claim = leader
+                                        heard; keeps "heard Xs
+                                        ago" honest for members */
         s_promote_at = 0;
         return;
     }

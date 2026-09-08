@@ -1140,7 +1140,7 @@ static int cmd_sync(int argc, char **argv)
             printf("usage: sync auto              join elections\n");
             printf("       sync anchor            claim now (prio>=200)\n");
             printf("       sync follow [name]     member; name = pin\n");
-            printf("       sync prio <0-255>      election weight\n");
+            printf("       sync prio <0-255>      election weight (ties: higher name wins)\n");
             printf("       sync conduct|join <n>  own-SoftAP flock (no "
                    "elections)\n");
             printf("       sync media <host>      pull tracks from a "
