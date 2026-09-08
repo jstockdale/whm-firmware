@@ -1,4 +1,4 @@
-whm-bringup 0.38.2-phase0
-built: 2026-09-08 (r107: FLEET INDICATOR TRUTH - his photo convicted two lies: (1) softap conduct/join stores the lead in s_peer_name, not s_anchor_name - the follower circle matched nothing and wore red-hollow while sync said heard 0s ago; brief() now matches either name. (2) amber 0 on the lead: 5s fresh window vs real announce cadence + DTIM flapped a live peer to stale, and the digit counted FRESH only - a late peer displayed as zero. Digit now counts KNOWN peers (fresh+stale), color carries health; thresholds widen to 8s/20s on both glyphs.)
+whm-bringup 0.38.3-phase0
+built: 2026-09-08 (r108: THE ORACLE READ GRAVITY AS PROPHECY - detector assumed rest=1.0 (g-units) while the driver speaks m/s2: dev ~8.8 vs threshold 0.55, breached 60x/s, a prediction on every lockout expiry (his continually). Detector v2: self-learned low-pass baseline seeded on entry (unit-agnostic), threshold = 0.45x baseline, 3 hits in 600ms, 3.5s lockout, and QUIET-REARM - must return to rest 400ms before counting resumes. And 73 enters the canon, seated beside 42 - the numbers keep company.)
 idf: v5.5.2
 board: Waveshare ESP32-S3-RGB-Matrix | panel: ADA P2.5 64x64 1/32 HUB75E

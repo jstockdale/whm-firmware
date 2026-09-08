@@ -4142,6 +4142,13 @@ static or_state_t s_or_state = OR_IDLE;
 static int64_t s_or_t0 = 0, s_or_last_shake = 0;
 static int s_or_ans = -1, s_or_hits = 0;
 static int64_t s_or_hit_t0 = 0;
+static float s_or_base = 0.0f;       /* self-learned rest |a| - the
+                                        old detector assumed rest =
+                                        1.0 (g) while the driver
+                                        speaks m/s2: gravity itself
+                                        read as prophecy, 60x/s */
+static int64_t s_or_quiet_t0 = 0;
+static bool s_or_armed = true;
 
 static const char *k_oracle[] = {
     "IT IS CERTAIN", "WITHOUT A DOUBT", "YES DEFINITELY",
@@ -4149,7 +4156,7 @@ static const char *k_oracle[] = {
     "ASK AGAIN LATER", "REPLY HAZY TRY AGAIN", "CANNOT PREDICT NOW",
     "BETTER NOT TELL YOU", "DONT COUNT ON IT", "MY REPLY IS NO",
     "OUTLOOK NOT SO GOOD", "VERY DOUBTFUL", "SHIP IT",
-    "REFLASH AND RETRY", "GREP THE LOGS", "42",
+    "REFLASH AND RETRY", "GREP THE LOGS", "42", "73",
     "CHECK YOUR SOLDER", "PACKET LOST ASK AGAIN", "TSF SAYS YES",
     "RACE CONDITION", "ITS A FEATURE", "REBOOT THE UNIVERSE",
 };
@@ -4219,15 +4226,32 @@ static void scr_oracle(void)
     float ax, ay, az, gx, gy, gz;
     if (whm_sensors_read_imu(&ax, &ay, &az, &gx, &gy, &gz) == ESP_OK) {
         float mag = sqrtf(ax * ax + ay * ay + az * az);
-        float dev = fabsf(mag - 1.0f);
-        if (dev > 0.55f) {
-            if (now - s_or_hit_t0 > 500000) s_or_hits = 0;
+        if (s_or_base <= 0.01f) s_or_base = mag;   /* seed on entry */
+        s_or_base += 0.02f * (mag - s_or_base);    /* slow gravity LP */
+        float dev = fabsf(mag - s_or_base);
+        float th = 0.45f * (s_or_base > 0.1f ? s_or_base : 1.0f);
+        if (!s_or_armed) {                 /* quiet-rearm: must rest
+                                              before counting again */
+            if (dev < th * 0.3f) {
+                if (!s_or_quiet_t0) s_or_quiet_t0 = now;
+                if (now - s_or_quiet_t0 > 400000) {
+                    s_or_armed = true;
+                    s_or_hits = 0;
+                }
+            } else {
+                s_or_quiet_t0 = 0;
+            }
+        } else if (dev > th) {
+            if (now - s_or_hit_t0 > 600000) s_or_hits = 0;
             if (!s_or_hits) s_or_hit_t0 = now;
             s_or_hits++;
-            if (s_or_hits >= 2 && now - s_or_last_shake > 1500000) {
+            if (s_or_hits >= 3 &&
+                now - s_or_last_shake > 3500000) {
                 s_or_last_shake = now;
                 s_or_hits = 0;
-                oracle_consult(mag);      /* guard inside */
+                s_or_armed = false;
+                s_or_quiet_t0 = 0;
+                oracle_consult(dev / th);  /* guard inside */
             }
         }
     }
