@@ -1190,6 +1190,14 @@ esp_err_t whm_sync_wkparams_send(int64_t anchor, float cam_speed,
                     .type = 10, .anchor = anchor,
                     .cam_speed = cam_speed, .wver = 2,
                     .strips = strips };
+    {   /* rsv2 -> SCROLL Q8 (additive, letter 9): now | tgt<<8.
+           Receivers integrate the shared ramp between snaps -
+           the show-freeze lurch never gets born. Old readers
+           see reserved bytes as before. */
+        uint8_t sn, st2;
+        whm_ui_scroll_q8(&sn, &st2);
+        k.rsv2 = (uint16_t)sn | ((uint16_t)st2 << 8);
+    }
     struct sockaddr_in dst = { 0 };
     dst.sin_family = AF_INET;
     dst.sin_port = htons(7777);

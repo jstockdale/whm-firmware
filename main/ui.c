@@ -590,6 +590,7 @@ static double s_cam_base;
 static uint32_t s_cam_base_step;
 static float s_scr_from = 1.0f, s_scr_to = 1.0f;
 static uint32_t s_scr_step;
+static float wk_scroll_at(uint32_t st);
 static void wk_cam_tick(int64_t t)
 {
     static int64_t lt;
@@ -633,6 +634,14 @@ void whm_ui_walk_status(uint32_t *step, int *own, float *cam2,
     *own = wk_i_own() ? 1 : 0;
     *cam2 = (float)s_cam_acc;
     *x2 = s_wk.x;
+}
+
+void whm_ui_scroll_q8(uint8_t *now8, uint8_t *tgt8)
+{
+    float nw = wk_scroll_at(s_wk_steps);
+    *now8 = (uint8_t)(nw * 256.0f > 255.0f ? 255 : nw * 256.0f);
+    *tgt8 = (uint8_t)(s_scr_to * 256.0f > 255.0f ? 255
+                                                 : s_scr_to * 256.0f);
 }
 
 void whm_ui_cam_set(float c)
