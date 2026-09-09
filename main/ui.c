@@ -305,7 +305,8 @@ static void wk_sprite(int lx, int y, int64_t t);
 enum { WK_WALK, WK_CLIMB, WK_LADDER, WK_SLIDE, WK_FALL, WK_IDLE,
        WK_CROUCH, WK_JUMP, WK_LAND,
        WK_GOCHAIR, WK_SETUP, WK_SIT, WK_PACK,   /* the camping ritual */
-       WK_SHIMMY, WK_POP };                      /* bezel-wrap ritual */
+       WK_SHIMMY, WK_POP,
+       WK_BASE };            /* CANOPY: the owner's sport, 64px */                      /* bezel-wrap ritual */
 
 typedef struct { int32_t x; uint8_t w, y; } wplat_t;
 typedef struct { int32_t x; uint8_t ytop, ybot; } wlad_t;
@@ -413,6 +414,38 @@ static float wk_scout(float x, int8_t dir)
         }
     }
     return score;
+}
+
+
+static float wk_daylight(void);        /* defined below */
+
+/* CANOPY eligibility - both pure f(chunk geometry) */
+static bool wk_base_top(int fy)
+{
+    int32_t id = (int32_t)floorf(s_wk.x / 64.0f);
+    for (int d = -1; d <= 1; d++) {
+        const wchunk_t *c = wk_chunk(id + d);
+        for (int k = 0; k < c->np; k++)
+            if ((int)c->p[k].y < fy - 2) return false;
+    }
+    return true;                     /* nothing above: top level */
+}
+static bool wk_base_clear(float x0, int fy, int8_t dir)
+{
+    int32_t id = (int32_t)floorf(x0 / 64.0f);
+    for (int d = -1; d <= 1; d++) {
+        const wchunk_t *c = wk_chunk(id + d);
+        for (int k = 0; k < c->np; k++) {
+            int py = (int)c->p[k].y;
+            if (py <= fy + 1 || py >= WK_GROUND - 1) continue;
+            float pl = (float)c->p[k].x - 3.0f;
+            float pr = (float)(c->p[k].x + c->p[k].w) + 3.0f;
+            float cl = dir > 0 ? x0 - 3.0f : x0 - 25.0f;
+            float cr = dir > 0 ? x0 + 25.0f : x0 + 3.0f;
+            if (pr > cl && pl < cr) return false;
+        }
+    }
+    return true;                     /* empty air to the ground */
 }
 
 static uint32_t wk_rnd(uint32_t key)
@@ -976,6 +1009,17 @@ static void wk_step(int64_t t, uint8_t n)
                 s_wk.vy = -1.5f;
                 s_wk.vx = (float)s_wk.dir *
                           ((float)hg + 2.0f) / 15.0f;
+            } else if (fy <= WK_GROUND - 26 && wk_base_top(fy) &&
+                       wk_base_clear(s_wk.x, fy, s_wk.dir) &&
+                       (wk_rnd(0xD1u) % 12) == 0) {
+                /* THE CANOPY: top level + clear air below - once
+                   in a while (stateless rarity, no cooldown byte
+                   to leak) he commits to the door. */
+                s_wk.st = WK_BASE;
+                s_wk.phase = 0;
+                s_wk.timer = 0;
+                s_wk.vy = -0.6f;
+                s_wk.vx = (float)s_wk.dir * 0.55f;
             } else if (fy < WK_GROUND && (r % 5) == 0) {
                 s_wk.st = WK_JUMP;         /* style hop-off */
                 s_wk.vy = -1.0f;
@@ -1057,6 +1101,57 @@ static void wk_step(int64_t t, uint8_t n)
         if (s_wk.timer) s_wk.timer--;
         else { s_wk.st = WK_WALK; s_wk.vx = 0; s_wk.vy = 0; }
         break;
+    case WK_BASE:
+        switch (s_wk.phase) {
+        case 0:                             /* freefall */
+            s_wk.x += s_wk.vx; s_wk.y += s_wk.vy;
+            s_wk.vy += 0.14f;
+            if (s_wk.y >= (float)(WK_GROUND - 24)) {
+                s_wk.phase = 1; s_wk.timer = 6;   /* pitch! */
+                s_wk.vy *= 0.35f;
+            }
+            break;
+        case 1:                             /* snivel + inflate */
+            s_wk.x += s_wk.vx * 0.6f; s_wk.y += 0.35f;
+            s_wk.vx *= 0.9f;
+            if (s_wk.timer) s_wk.timer--;
+            else s_wk.phase = 2;
+            break;
+        case 2:                             /* ram-air flight */
+            s_wk.vx = (float)s_wk.dir *
+                      (0.30f + (((s_wk_steps >> 3) & 1) ? 0.06f
+                                                        : -0.06f));
+            s_wk.x += s_wk.vx;
+            s_wk.y += 0.16f;
+            if (s_wk.y >= (float)(WK_GROUND - 6)) s_wk.phase = 3;
+            break;
+        case 3:                             /* flare */
+            s_wk.x += s_wk.vx; s_wk.vx *= 0.90f;
+            s_wk.y += 0.06f;
+            if (s_wk.y >= (float)WK_GROUND) {
+                s_wk.y = (float)WK_GROUND; s_wk.vy = 0;
+                s_wk.phase = 4; s_wk.timer = 10;  /* run-out+gather */
+            }
+            break;
+        case 4:
+            if (s_wk.timer > 6) s_wk.x += (float)s_wk.dir * 0.4f;
+            if (s_wk.timer) s_wk.timer--;
+            else { s_wk.phase = 5; s_wk.timer = 14; }  /* shake */
+            break;
+        case 5:
+            if (s_wk.timer) s_wk.timer--;
+            else { s_wk.phase = 6; s_wk.timer = 12; }  /* fold */
+            break;
+        default:
+            if (s_wk.timer) s_wk.timer--;
+            else {                         /* stowed - on with life */
+                s_wk.st = WK_WALK; s_wk.phase = 0;
+                s_wk.vy = 0; s_wk.vx = 0;
+                s_wk.turn_cd = 30; s_wk.fresh = 0;
+            }
+            break;
+        }
+        break;
     case WK_GOCHAIR:
         s_wk.x += (float)s_wk.dir * 0.65f;
         s_wk.phase++;
@@ -1068,6 +1163,10 @@ static void wk_step(int64_t t, uint8_t n)
         if (fabsf(s_wk.x - s_wk.tgt) < 1.0f) {
             s_wk.st = WK_SETUP;
             s_wk.timer = 10;
+            /* THE PARASOL: daytime + a pure roll -> phase=1 rides
+               the Whole Pose wire for free (SIT never used it). */
+            s_wk.phase = (wk_daylight() > 0.55f &&
+                          (wk_rnd(0xD2u) % 100) < 22) ? 1 : 0;
         }
         break;
     case WK_SETUP:
@@ -1097,7 +1196,8 @@ static void wk_step(int64_t t, uint8_t n)
         break;
     case WK_PACK:
         if (s_wk.timer) s_wk.timer--;
-        else { s_wk.st = WK_WALK; s_wk.turn_cd = 90; }
+        else { s_wk.st = WK_WALK; s_wk.turn_cd = 90;
+               s_wk.phase = 0; }        /* parasol stowed */
         break;
     case WK_SHIMMY: {
         float cam2 = s_wk.x;               /* pinned via tgt below */
@@ -3063,6 +3163,73 @@ static void wk_sprite(int lx, int y, int64_t t)
         wk_px(lx - 1, y - 4, br, bg, bb);          /* lap hands */
         wk_px(lx + s_wk.dir, y - 2, br, bg, bb);   /* legs fwd */
         wk_px(lx + 2 * s_wk.dir, y - 1, br, bg, bb);
+        if (s_wk.phase) {                     /* THE PARASOL */
+            int ux = lx + 4 * s_wk.dir * -1;  /* planted beside him */
+            int hh = 10;
+            if (s_wk.st == WK_SETUP)
+                hh = 10 - (int)s_wk.timer;    /* rises as he sets */
+            if (s_wk.st == WK_PACK)
+                hh = (int)s_wk.timer + 2;     /* sinks as he packs */
+            if (hh < 0) hh = 0;
+            for (int dy3 = 1; dy3 <= hh; dy3++)
+                wk_px(ux, y - dy3, 240, 240, 240);   /* pole */
+            if (hh >= 8) {
+                int spn = hh >= 10 ? 3 : hh - 7;
+                for (int i = -spn; i <= spn; i++) {
+                    uint8_t cr9, cg9, cb9;
+                    hsv_rgb((uint16_t)(((t / 90000) +
+                            (i + 3) * 51) % 360), 235, 255,
+                            &cr9, &cg9, &cb9);
+                    wk_px(ux + i, y - hh - 1, cr9, cg9, cb9);
+                    if (i > -spn && i < spn)
+                        wk_px(ux + i, y - hh - 2, cr9, cg9, cb9);
+                }
+            }
+        }
+    } else if (s_wk.st == WK_BASE) {
+        int ph = s_wk.phase;
+        if (ph <= 1) {                        /* tucked, head-down-ish */
+            wk_px(lx - s_wk.dir, y - 2, br, bg, bb);
+            wk_px(lx, y - 1, br, bg, bb);
+        } else if (ph <= 3) {                 /* under canopy: dangle */
+            wk_px(lx, y - 2, br, bg, bb);
+            wk_px(lx, y - 1, br, bg, bb);
+            wk_px(lx - 1, y - 10, br, bg, bb);   /* hands on risers */
+            wk_px(lx + 1, y - 10, br, bg, bb);
+        }
+        if (ph >= 1 && ph <= 3) {             /* the rainbow ram-air */
+            int wspan = ph == 1 ? 3 + (6 - (int)s_wk.timer) : 9;
+            if (wspan > 9) wspan = 9;
+            int half = wspan / 2;
+            for (int i = -half; i <= half; i++) {
+                uint8_t cr9, cg9, cb9;
+                hsv_rgb((uint16_t)(((t / 90000) +
+                        (i + half) * 36) % 360), 235, 255,
+                        &cr9, &cg9, &cb9);
+                wk_px(lx + i, y - 16, cr9, cg9, cb9);
+                if (i > -half && i < half)
+                    wk_px(lx + i, y - 15, cr9, cg9, cb9);
+            }
+            wk_px(lx - half, y - 13, 255, 255, 255);  /* lineset */
+            wk_px(lx + half, y - 13, 255, 255, 255);
+            wk_px(lx - 1, y - 12, 255, 255, 255);
+            wk_px(lx + 1, y - 12, 255, 255, 255);
+        }
+        if (ph >= 4) {                        /* grounded rituals */
+            int gx = lx - s_wk.dir * 3;
+            int wob = (ph == 5) ? (((int)s_wk.timer & 3) < 2 ? 1
+                                                             : -1)
+                                : 0;
+            int span = (ph == 6) ? 1 + (int)s_wk.timer / 4 : 4;
+            for (int i = -span; i <= span; i++) {
+                uint8_t cr9, cg9, cb9;
+                hsv_rgb((uint16_t)(((t / 90000) +
+                        (i + span) * 36) % 360), 235, 255,
+                        &cr9, &cg9, &cb9);
+                wk_px(gx + i + wob, y - 1 - ((i & 1) ? 1 : 0),
+                      cr9, cg9, cb9);
+            }
+        }
     } else if (s_wk.st == WK_POP) {
         uint8_t pr, pg, pb;                        /* arrival sparkle */
         hsv_rgb((uint16_t)((t / 15000) % 360), 255, 255, &pr, &pg, &pb);
