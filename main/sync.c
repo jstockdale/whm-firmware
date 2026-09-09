@@ -1006,21 +1006,25 @@ esp_err_t whm_sync_init(void)
     /* rx back on PSRAM: its only flash touch (name lookups) now rides
        the NVS broker, so the doctrine below is satisfied - and the
        6K stays with internal heap where it belongs. */
-    {
-        static StaticTask_t s_rx_tcb;             /* TCB: internal */
-        static StackType_t *s_rx_stack;
-        s_rx_stack = heap_caps_malloc(6144 * sizeof(StackType_t),
-                                      MALLOC_CAP_SPIRAM);
-        TaskHandle_t rh = s_rx_stack
-            ? xTaskCreateStatic(recv_task, "whm_sync_rx", 6144, NULL, 8,
-                                s_rx_stack, &s_rx_tcb)
-            : NULL;
-        if (!rh) {
-            printf("sync: rx task FAILED to start (internal=%u free)\n",
+    {   /* THE HIGH GROUND (owner: "I wish we could shim all the
+           non-system calls so we didn't have to chase them one by
+           one") - granted structurally: instead of shimming N call
+           sites, the CALLER moves. recv_task ran on a PSRAM stack
+           from the 24KB-internal era; depth-7 returned 81KB, so it
+           now runs on internal RAM and every flash touch from this
+           task - writes, reads, and the NVS library's own lazy page
+           compaction (nvs_page:895, the READ that crashed us) - is
+           safe by construction, forever. */
+        BaseType_t rh = xTaskCreatePinnedToCore(recv_task,
+                            "whm_sync_rx", 6144, NULL, 8, NULL, 0);
+        if (rh != pdPASS) {
+            printf("sync: rx task FAILED to start (internal=%u "
+                   "free)\n",
                    (unsigned)heap_caps_get_free_size(
                        MALLOC_CAP_INTERNAL));
         }
     }
+
     /* DOCTRINE (learned via cache_utils assert): PSRAM stacks ONLY for
        tasks that never touch spi_flash/NVS - flash ops disable cache,
        making PSRAM unreachable mid-call. mp3 qualifies (SD+I2S only).

@@ -44,7 +44,9 @@ static bool hexr(const char *s, uint8_t *b, int n)
 static bool ld(const char *key, uint8_t *b, int n)
 {
     char tmp[160];
-    if (whm_settings_get_str(key, tmp, sizeof(tmp)) != ESP_OK)
+    if (whm_settings_get_str(key, tmp, 144) != ESP_OK)
+        /* <= VAL_MAX so the GET rides the broker too (hygiene;
+           the internal stack above is the real guarantee) */
         return false;
     return hexr(tmp, b, n);
 }
