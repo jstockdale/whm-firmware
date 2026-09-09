@@ -677,7 +677,7 @@ static void recv_task(void *arg)
                 static struct { char nm[16]; int64_t last; } rt[4];
                 if (!whm_pin_get(cchk.from, ppk)) {
                     printf("fleet: cmd from %s DROPPED - no pinned "
-                           "identity yet (idents beacon ~3s)\n",
+                           "identity yet (idents: anchor ~3s, members ~15s)\n",
                            cchk.from);
                     continue;
                 }
