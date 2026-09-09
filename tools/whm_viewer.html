@@ -9,14 +9,14 @@ button{background:#1d2736;color:#cfd8e3;border:1px solid #2a3446;padding:4px 12p
 canvas{background:#05070b;border:1px solid #2a3446;display:block;margin-bottom:8px;image-rendering:pixelated}
 #hud{display:flex;gap:24px;flex-wrap:wrap;margin-bottom:6px}
 .g b{color:#7cc4ff}.g i{color:#8b96a8;font-style:normal}
-#tick{height:150px;overflow-y:auto;background:#0d1119;border:1px solid #22303f;padding:6px;white-space:pre}
+#tick{height:130px;overflow-y:auto;background:#0d1119;border:1px solid #22303f;padding:6px;white-space:pre}
 .o0{color:#41d0ff}.o1{color:#ff5cc8}.rg{color:#c8b445}.pm{color:#8b96a8}
 #foot{color:#5b6675;margin-top:6px}
 </style>
 <div id=bar><span id=dot></span>
 <input id=url value="ws://localhost:8777"><button id=go>connect</button>
 <span id=name class=pm></span></div>
-<canvas id=cv width=800 height=140></canvas>
+<canvas id=cv width=768 height=384></canvas>
 <div id=hud>
 <span class=g>step <b id=st>-</b></span>
 <span class=g>rate <b id=rt>-</b><i>/s</i></span>
@@ -26,15 +26,20 @@ canvas{background:#05070b;border:1px solid #2a3446;display:block;margin-bottom:8
 <span class=g>rung <b id=rg>-</b></span>
 <span class=g>lag <b id=lg>-</b><i>ms</i></span></div>
 <div id=tick></div>
-<div id=foot>whm_viewer v1 - the fleet's official reality (owner
-keyframes, type 9/10/16). Follower-private sims are audited by the
-oracle and serial, not visible here. Baton passes = color flips.</div>
+<div id=foot>whm_viewer v2 - terrain twin: world generation ported
+verbatim from ui.c (pure f(chunk); golden-hash lock arrives with M2).
+NYE plaza + fireworks not simulated. Follower-private sims remain the
+oracle's court. Owner colors the walker: cyan strip 0, magenta 1.</div>
 <script>
 "use strict";
 const $=id=>document.getElementById(id);
 const cv=$("cv"),cx=cv.getContext("2d");
-let ws=null,strips=2,cam=null,camV=0,camT=0,wkPrev=null;
-let trail=[],kfT=[],lastStep=0,lastStepT=0,rate=0;
+const S=6, GROUND=57, REACH=21;
+let ws=null,strips=2,wkPrev=null,kfT=[],lastStep=0,lastStepT=0,rate=0;
+let W={x:0,y:56.5,st:5,dir:1,phase:0,timer:0,sdir:1,step:0,owner:0,t:0};
+let CAM={p:null,t:0,v:1.0};    // position snaps + slope EMA; Q8 ramp
+                               // scale unverified so slope-EMA + snap
+                               // (<0.7 px inter-snap) chosen honestly
 function hex2u8(h){const a=new Uint8Array(h.length/2);
  for(let i=0;i<a.length;i++)a[i]=parseInt(h.substr(i*2,2),16);return a}
 function dv(u){return new DataView(u.buffer,u.byteOffset,u.byteLength)}
@@ -42,70 +47,235 @@ function tick(cls,txt){const t=$("tick");
  const d=document.createElement("div");d.className=cls;
  d.textContent=new Date().toISOString().substr(11,12)+"  "+txt;
  t.prepend(d);while(t.childElementCount>200)t.lastChild.remove()}
-function onPkt(m){
- const u=hex2u8(m.hex);if(u.length<8)return;
- if(u[0]!==0x57||u[1]!==0x48||u[2]!==0x4d||u[3]!==0x4c)return; // WHML
- const ver=u[4],ty=u[5],d=dv(u);
- if(ver!==2&&(ty===9||ty===10||ty===16))return;
- if(ty===9&&u.length>=64){                 // walker pose beacon
-  const owner=u[6],st=u[7],dir=d.getInt8(8),y=d.getInt8(9)*0.5;
-  const step=d.getUint32(12,true),x=d.getFloat32(16,true);
+/* ---- world generation: ported verbatim from main/ui.c ---- */
+function h32(v){v>>>=0;
+ v^=v>>>16; v=Math.imul(v,0x7feb352d)>>>0;
+ v^=v>>>15; v=Math.imul(v,0x846ca68b)>>>0;
+ v^=v>>>16; return v>>>0||1}
+const chunkCache=new Map();
+function chunk(id){id|=0;
+ let c=chunkCache.get(id); if(c)return c;
+ let r=h32((Math.imul(id,2654435761)>>>0)+0xB16B00B5>>>0);
+ const base=id*64;
+ c={id,p:[],l:[],s:[],gap_x:0,gap_w:0,bridged:false,house_x:-1};
+ const np=3+(r%3);
+ for(let k=0;k<np;k++){r=h32(r);
+  const w=14+(r%20);
+  c.p.push({w,x:base+(h32(r+7)%(64-w)),y:12+(h32(r+13)%34)})}
+ const gr=h32((Math.imul(id,977)>>>0)+5>>>0);
+ if((gr&3)===0){c.gap_w=10+((gr>>>4)%5);
+  c.gap_x=base+8+((gr>>>8)%(48-c.gap_w));
+  c.bridged=((gr>>>2)%5)<3}
+ const hr=h32(Math.imul(id,31337)>>>0);
+ c.house_x=((hr&3)===1)?base+4+((hr>>>4)%44):-1;
+ if(c.house_x>=0&&c.gap_w&&c.house_x+14>c.gap_x&&
+    c.house_x<c.gap_x+c.gap_w+2)c.house_x=-1;
+ for(let k=0;k<np;k++){
+  let below=GROUND,mb=-1;
+  for(let m=0;m<np;m++){if(m===k)continue;
+   const P=c.p[m],K=c.p[k];
+   if(P.y>K.y&&P.x<K.x+K.w&&P.x+P.w>K.x&&P.y<below){below=P.y;mb=m}}
+  const gap=below-c.p[k].y;
+  if(gap>REACH&&c.l.length<3){
+   let lo=c.p[k].x+2,hi=c.p[k].x+c.p[k].w-2;
+   if(mb>=0){const lo2=c.p[mb].x+1,hi2=c.p[mb].x+c.p[mb].w-1;
+    if(lo2>lo)lo=lo2; if(hi2<hi)hi=hi2}
+   if(hi-lo<3&&mb>=0){below=GROUND;
+    lo=c.p[k].x+2;hi=c.p[k].x+c.p[k].w-2}
+   if(hi>lo)c.l.push({x:lo+(h32((id+k)>>>0)%(hi-lo)),
+                      ytop:c.p[k].y,ybot:below})
+  }else if(gap>12&&c.s.length<2&&
+           (h32((Math.imul(id,5)>>>0)+k>>>0)&3)===0){
+   const dir=(h32((id+99+k)>>>0)&1)?1:-1;
+   c.s.push({dir,x:dir>0?c.p[k].x+c.p[k].w-1:c.p[k].x,
+             ytop:c.p[k].y,ybot:below})}}
+ chunkCache.set(id,c);
+ if(chunkCache.size>64)chunkCache.delete(chunkCache.keys().next().value);
+ return c}
+/* ---- painter: exact panel palette ---- */
+let ox=0;
+function px(x,y,r,g,b){if(y<0||y>63)return;
+ cx.fillStyle=`rgb(${r},${g},${b})`;
+ cx.fillRect((x-ox)*S,y*S,S,S)}
+function hsv(hh,s,v){hh=((hh%360)+360)%360;
+ const c=v*s/65025*255,x=c*(1-Math.abs((hh/60)%2-1)),m=v-c;
+ let r=0,g=0,b=0;
+ if(hh<60){r=c;g=x}else if(hh<120){r=x;g=c}
+ else if(hh<180){g=c;b=x}else if(hh<240){g=x;b=c}
+ else if(hh<300){r=x;b=c}else{r=c;b=x}
+ return[(r+m)|0,(g+m)|0,(b+m)|0]}
+function daylight(){const hr=new Date().getHours()+
+  new Date().getMinutes()/60;
+ return Math.max(0,Math.min(1,Math.sin((hr-6)/12*Math.PI)))}
+function sprite(lx,y,t,st,dir,phase,timer,sdir){
+ const a=(phase>>2)&1, br=213,bg=194,bb=167;
+ let[sr,sg,sb]=hsv((t/90000)%360,230,255);
+ const squat=(st===6||st===8)?2:(st===11||st===10||st===12)?3:0;
+ for(let dy=-11+squat;dy<=-9+squat;dy++)
+  for(let dx=-1;dx<=1;dx++)px(lx+dx,y+dy,br,bg,bb);
+ const scarf=(st===7)?2:0;
+ px(lx,y-8+squat,sr,sg,sb);
+ px(lx-dir,y-8+squat,sr,sg,sb);
+ px(lx-(2+scarf)*dir,y-8+squat+(a?1:0),sr,sg,sb);
+ if(scarf)px(lx-4*dir,y-7,sr,sg,sb);
+ for(let dy=-7+squat;dy<=-3;dy++)px(lx,y+dy,br,bg,bb);
+ if(st===6){                              // CROUCH sparkles
+  px(lx-1,y-2,br,bg,bb);px(lx+1,y-2,br,bg,bb);
+  px(lx-1,y-1,br,bg,bb);px(lx+1,y-1,br,bg,bb);
+  const ph=phase&7,[pr,pg,pb]=hsv((t/20000)%360,255,255);
+  px(lx,y-12-(ph&3),pr,pg,pb);
+  px(lx+((ph&1)?1:-1),y-13-(ph>>2),pr,pg,pb);
+ }else if(st===7){                        // JUMP
+  px(lx-dir,y-2,br,bg,bb);px(lx,y-1,br,bg,bb);
+  px(lx-1,y-9,br,bg,bb);px(lx+1,y-9,br,bg,bb);
+ }else if(st===8){                        // LAND squash
+  px(lx-2,y-1,br,bg,bb);px(lx+2,y-1,br,bg,bb);
+  px(lx-1,y-1,br,bg,bb);px(lx+1,y-1,br,bg,bb);
+ }else if(st===11||st===10||st===12){     // SIT/SETUP/PACK + parasol
+  px(lx-1,y-4,br,bg,bb);
+  px(lx+dir,y-2,br,bg,bb);px(lx+2*dir,y-1,br,bg,bb);
+  if(phase){const ux=lx-4*dir;
+   let hh2=10;
+   if(st===10)hh2=10-timer; if(st===12)hh2=timer+2;
+   if(hh2<0)hh2=0;
+   for(let dy=1;dy<=hh2;dy++)px(ux,y-dy,240,240,240);
+   if(hh2>=8){const spn=hh2>=10?3:hh2-7;
+    for(let i=-spn;i<=spn;i++){
+     const[cr,cg,cb]=hsv(((t/90000)+(i+3)*51)%360,235,255);
+     px(ux+i,y-hh2-1,cr,cg,cb);
+     if(i>-spn&&i<spn)px(ux+i,y-hh2-2,cr,cg,cb)}}}
+ }else if(st===15){                       // BASE canopy phases
+  const ph=phase;
+  if(ph<=1){px(lx-dir,y-2,br,bg,bb);px(lx,y-1,br,bg,bb)}
+  else if(ph<=3){px(lx,y-2,br,bg,bb);px(lx,y-1,br,bg,bb);
+   px(lx-1,y-10,br,bg,bb);px(lx+1,y-10,br,bg,bb)}
+  if(ph>=1&&ph<=3){
+   let wspan=ph===1?3+(6-timer):9; if(wspan>9)wspan=9;
+   const half=(wspan/2)|0;
+   for(let i=-half;i<=half;i++){
+    const[cr,cg,cb]=hsv(((t/90000)+(i+half)*36)%360,235,255);
+    px(lx+i,y-16,cr,cg,cb);
+    if(i>-half&&i<half)px(lx+i,y-15,cr,cg,cb)}
+   px(lx-half,y-13,255,255,255);px(lx+half,y-13,255,255,255);
+   px(lx-1,y-12,255,255,255);px(lx+1,y-12,255,255,255)}
+  if(ph>=4){const gx=lx-dir*3,
+   wob=(ph===5)?(((timer&3)<2)?1:-1):0,
+   span=(ph===6)?1+((timer/4)|0):4;
+   for(let i=-span;i<=span;i++){
+    const[cr,cg,cb]=hsv(((t/90000)+(i+span)*36)%360,235,255);
+    px(gx+i+wob,y-1-((i&1)?1:0),cr,cg,cb)}}
+ }else if(st===14){                       // POP sparkle
+  const[pr,pg,pb]=hsv((t/15000)%360,255,255);
+  px(lx-3,y-6,pr,pg,pb);px(lx+3,y-8,pr,pg,pb);
+  px(lx-2,y-11,pr,pg,pb);px(lx+2,y-3,pr,pg,pb);
+  px(lx-1,y-1,br,bg,bb);px(lx+1,y-1,br,bg,bb);
+ }else if(st===2||st===13){               // LADDER/SHIMMY grip
+  px(lx-1,y+(a?-8:-6),br,bg,bb);px(lx+1,y+(a?-6:-8),br,bg,bb);
+  px(lx-1,y-(a?1:2),br,bg,bb);px(lx+1,y-(a?2:1),br,bg,bb);
+ }else if(st===3){                        // SLIDE lean + dust
+  px(lx-1,y-9,br,bg,bb);px(lx+1,y-9,br,bg,bb);
+  px(lx-sdir*3,y-5,48,66,89);px(lx-sdir*5,y-4,26,36,58);
+  px(lx-1,y-1,br,bg,bb);px(lx+1,y-1,br,bg,bb);
+ }else{                                   // WALK/IDLE/CLMB/FALL legs
+  if(st===5){px(lx-1,y-1,br,bg,bb);px(lx+1,y-1,br,bg,bb)}
+  else{px(lx+(a?dir:-dir),y-1,br,bg,bb);
+       px(lx+(a?-dir:dir),y-2,br,bg,bb)}}}
+function drawWorld(now){
+ const f=daylight();
+ let c=CAM.p; if(c!==null)c+=CAM.v*(now-CAM.t)/1000;
+ if(c===null)c=W.x-strips*32;
+ ox=Math.round(c);
+ cx.fillStyle="#05070b";cx.fillRect(0,0,cv.width,cv.height);
+ const id0=Math.floor(ox/64);
+ for(let x=0;x<strips*64;x++){const wx=ox+x;
+  let gap=false,bridge=false;
+  for(let d=0;d<=2;d++){const C=chunk(id0+d);
+   if(C.gap_w&&wx>=C.gap_x&&wx<C.gap_x+C.gap_w){
+    gap=true;bridge=C.bridged}}
+  if(!gap){px(wx,58,11,16,11);px(wx,59,5,8,5);px(wx,60,2,3,3)}
+  else if(bridge){px(wx,58,79,42,11);px(wx,59,40,22,6);
+   if((wx&3)===0)px(wx,57,96,52,14)}
+  else{px(wx,60,1,1,2);px(wx,61,1,1,2)}}
+ for(let d=0;d<=2;d++){const C=chunk(id0+d);
+  if(C.house_x>=0){const hx=C.house_x;
+   for(let yy=46;yy<=57;yy++)for(let xx=0;xx<14;xx++)
+    px(hx+xx,yy,34,22,12);
+   for(let rr=0;rr<5;rr++)for(let xx=rr;xx<14-rr;xx++)
+    px(hx+xx,49-rr,70,16,8);
+   for(let yy=52;yy<=57;yy++){px(hx+10,yy,8,5,3);px(hx+11,yy,8,5,3)}
+   const wl=1-f,wr=6+wl*150|0,wg=6+wl*95|0;
+   for(let yy=49;yy<=51;yy++)for(let xx=3;xx<=5;xx++)
+    px(hx+xx,yy,wr,wg,8)}
+  for(const P of C.p){const py=P.y;
+   for(let wx=P.x;wx<P.x+P.w;wx++){const rel=wx-P.x,
+    rim=rel===0||rel===P.w-1;
+    if(py<=14){px(wx,py,rim?120:185,rim?122:187,rim?132:198);
+     px(wx,py+1,95,98,112);
+     if(!rim&&(wx&3)===1)px(wx,py-1,150,152,165)}
+    else if(py<=19){px(wx,py,34,150,44);px(wx,py+1,24,92,34);
+     px(wx,py+2,8,44,14);
+     if(rel===(P.w>>1)){px(wx,py+3,52,28,8);px(wx,py+4,52,28,8)}}
+    else{px(wx,py,29,133,36);px(wx,py+1,26,30,48);
+     px(wx,py+2,10,12,22);px(wx,py+3,5,6,12)}}}
+  for(const L of C.l)for(let y=L.ytop;y<=L.ybot;y++){
+   px(L.x-1,y,79,42,11);px(L.x+1,y,79,42,11);
+   if(((y-L.ytop)&3)===1)px(L.x,y,143,89,30)}
+  for(const Sl of C.s){const st2=Sl.ybot-Sl.ytop;
+   for(let q=0;q<=st2;q++){const lx2=Sl.x+Sl.dir*q;
+    px(lx2,Sl.ytop+q,98,126,158);
+    px(lx2+Sl.dir,Sl.ytop+q,48,66,89)}}}
+ cx.strokeStyle="#22303f";
+ for(let s2=1;s2<strips;s2++){const bx=s2*64*S;
+  cx.beginPath();cx.moveTo(bx,0);cx.lineTo(bx,cv.height);cx.stroke()}
+ const wlx=Math.round(W.x),wy=Math.round(W.y);
+ if(W.st===10||W.st===11||W.st===12){const chx=wlx-W.dir;
+  px(chx-1,wy-3,90,20,12);px(chx,wy-3,90,20,12);
+  px(chx+1,wy-3,90,20,12);px(chx-1,wy-5,90,20,12);
+  px(chx-1,wy-4,90,20,12);
+  px(chx-1,wy-1,60,13,8);px(chx+1,wy-1,60,13,8)}
+ sprite(wlx,wy,W.t*1000,W.st,W.dir,W.phase,W.timer,W.sdir);
+ cx.fillStyle=W.owner?"#ff5cc8":"#41d0ff";
+ cx.fillRect((wlx-ox)*S,(wy-14)*S+2,3,3)}
+function onPkt(m){const u=hex2u8(m.hex);if(u.length<8)return;
+ if(u[0]!==0x57||u[1]!==0x48||u[2]!==0x4d||u[3]!==0x4c)return;
+ const ty=u[5],d=dv(u); if(u[4]!==2&&(ty===9||ty===10||ty===16))return;
+ if(ty===9&&u.length>=64){
+  W={owner:u[6],st:u[7],dir:d.getInt8(8),y:d.getInt8(9)*0.5,
+     timer:d.getUint16(10,true),step:d.getUint32(12,true),
+     x:d.getFloat32(16,true),sdir:d.getInt8(60),phase:u[61],
+     t:m.t};
   let nm="";for(let i=20;i<36&&u[i];i++)nm+=String.fromCharCode(u[i]);
   const now=performance.now();
-  if(lastStepT){const ds=step-lastStep,dt=(now-lastStepT)/1000;
-   if(dt>0.2){rate=rate*0.7+(ds/dt)*0.3;lastStep=step;lastStepT=now}}
-  else{lastStep=step;lastStepT=now}
+  if(lastStepT){const ds=W.step-lastStep,dt=(now-lastStepT)/1000;
+   if(dt>0.2){rate=rate*0.7+(ds/dt)*0.3;
+    lastStep=W.step;lastStepT=now}}
+  else{lastStep=W.step;lastStepT=now}
   kfT.push(now);while(kfT.length&&now-kfT[0]>3000)kfT.shift();
-  if(wkPrev!==null&&wkPrev!==owner)
-   tick("o"+owner,`baton -> strip ${owner}  (${nm})  @${step}`);
-  wkPrev=owner;
-  trail.push({x,y,o:owner});if(trail.length>400)trail.shift();
-  $("st").textContent=step;$("ow").textContent=owner;
-  $("ow").className=owner?"o1":"o0";
+  if(wkPrev!==null&&wkPrev!==W.owner)
+   tick("o"+W.owner,`baton -> strip ${W.owner}  (${nm})  @${W.step}`);
+  wkPrev=W.owner;
+  $("st").textContent=W.step;$("ow").textContent=W.owner;
+  $("ow").className=W.owner?"o1":"o0";
   $("rt").textContent=rate.toFixed(1);
   $("kf").textContent=(kfT.length/3).toFixed(0);
   $("name").textContent="sender: "+nm+"  ("+m.ip+")";
-  draw(x,y,st,dir,owner);
- }else if(ty===10&&u.length>=24){          // walker params (cam)
+ }else if(ty===10&&u.length>=24){
   const c=d.getFloat32(16,true),now=performance.now();
-  if(cam!==null&&camT){const v=(c-cam)/((now-camT)/1000);
-   if(isFinite(v))camV=camV*0.6+v*0.4}
-  cam=c;camT=now;strips=u[21]||strips;
+  if(CAM.p!==null&&CAM.t){const v=(c-CAM.p)/((now-CAM.t)/1000);
+   if(isFinite(v)&&Math.abs(v)<20)CAM.v=CAM.v*0.5+v*0.5}
+  CAM.p=c;CAM.t=now;strips=u[21]||strips;
   $("cm").textContent=c.toFixed(1);
- }else if(ty===16&&u.length>=24){          // oracle rung
+ }else if(ty===16&&u.length>=24){
   const step=d.getUint32(8,true);
-  const h=d.getBigUint64(12,true).toString(16).padStart(16,"0");
+  const hh=d.getBigUint64(12,true).toString(16).padStart(16,"0");
   const hs=d.getUint16(20,true).toString(16).padStart(4,"0");
   $("rg").textContent="@"+step;
-  tick("rg",`rung @${step}  core ${h.substr(0,8)}..  soft ${hs}`);
+  tick("rg",`rung @${step}  core ${hh.substr(0,8)}..  soft ${hs}`);
   if(lastStepT)$("lg").textContent=
-   Math.max(0,((lastStep-step)/30*1000)).toFixed(0);
- }}
-function draw(wx,wy,st,dir,owner){
- const W=cv.width,H=cv.height,fw=strips*64;
- let c=cam;if(c!==null&&camT)c+= camV*(performance.now()-camT)/1000;
- if(c===null)c=wx-fw/2;
- const sx=w=> (w-c)/fw*W, sy=y=>y/64*H;
- cx.fillStyle="#05070b";cx.fillRect(0,0,W,H);
- cx.strokeStyle="#22303f";
- for(let s=1;s<strips;s++){const bx=s/strips*W;
-  cx.beginPath();cx.moveTo(bx,0);cx.lineTo(bx,H);cx.stroke()}
- cx.strokeStyle="#16324a";cx.beginPath();
- cx.moveTo(0,sy(57));cx.lineTo(W,sy(57));cx.stroke(); // ground line
- for(let i=1;i<trail.length;i++){const a=trail[i-1],b=trail[i];
-  cx.strokeStyle=b.o?"rgba(255,92,200,.35)":"rgba(65,208,255,.35)";
-  cx.beginPath();cx.moveTo(sx(a.x),sy(a.y));
-  cx.lineTo(sx(b.x),sy(b.y));cx.stroke()}
- const px=sx(wx),py=sy(wy);
- cx.fillStyle=owner?"#ff5cc8":"#41d0ff";
- cx.fillRect(px-3,py-8,6,10);
- cx.fillStyle="#0b0e14";cx.fillRect(px-3+(dir>0?3:0),py-6,1,2);
- const stn=["WALK","CLMB","LADR","SLID","FALL","IDLE","CRCH","JUMP",
-            "LAND","GOCH","SETP","SIT","PACK","SHIM","POP","BASE"];
- cx.fillStyle="#8b96a8";cx.font="10px monospace";
- cx.fillText(stn[st]||st,px+6,py-2)}
-function connect(){
- if(ws)try{ws.close()}catch(e){}
+   Math.max(0,((lastStep-step)/30*1000)).toFixed(0)}}
+function loop(){drawWorld(performance.now());requestAnimationFrame(loop)}
+requestAnimationFrame(loop);
+function connect(){if(ws)try{ws.close()}catch(e){}
  ws=new WebSocket($("url").value);
  ws.onopen=()=>{$("dot").className="on";tick("pm","bridge connected")};
  ws.onclose=()=>{$("dot").className="";
