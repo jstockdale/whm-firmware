@@ -12,10 +12,21 @@ canvas{background:#05070b;border:1px solid #2a3446;display:block;margin-bottom:8
 #tick{height:130px;overflow-y:auto;background:#0d1119;border:1px solid #22303f;padding:6px;white-space:pre}
 .o0{color:#41d0ff}.o1{color:#ff5cc8}.rg{color:#c8b445}.pm{color:#8b96a8}
 #foot{color:#5b6675;margin-top:6px}
+#wrap{display:flex;gap:12px;align-items:flex-start}
+#hist{width:300px;background:#0d1119;border:1px solid #22303f}
+#hh{position:sticky;top:0;background:#141a24;padding:6px 8px;
+ border-bottom:1px solid #22303f;display:flex;gap:8px;
+ align-items:center}
+#hl{max-height:560px;overflow-y:auto}
+.hr{padding:2px 8px;cursor:pointer;white-space:pre;font-size:11px}
+.hr:hover{background:#1a2333}
+.hr.sel{background:#22314a}
+#live.on{background:#1f4d3a;border-color:#46c390}
 </style>
 <div id=bar><span id=dot></span>
 <input id=url value="ws://localhost:8777"><button id=go>connect</button>
 <span id=name class=pm></span></div>
+<div id=wrap><div id=left>
 <canvas id=cv width=768 height=384></canvas>
 <canvas id=tv width=768 height=144></canvas>
 <div id=hud>
@@ -27,6 +38,9 @@ canvas{background:#05070b;border:1px solid #2a3446;display:block;margin-bottom:8
 <span class=g>rung <b id=rg>-</b></span>
 <span class=g>lag <b id=lg>-</b><i>ms</i></span></div>
 <div id=tick></div>
+</div><aside id=hist><div id=hh><b>state history</b>
+<button id=live class=on>LIVE</button><span id=hc class=pm>0</span>
+</div><div id=hl></div></aside></div>
 <div id=foot>whm_viewer v3 - twin + scope. Top: the terrain
 twin. Bottom: telemetry scope - full-rate path history, ownership
 color, state label. Both share one camera window, column-aligned.
@@ -44,6 +58,16 @@ let W={x:0,y:56.5,st:5,dir:1,phase:0,timer:0,sdir:1,step:0,
        owner:0,t:0,vx:0,vy:0,spd:0,tgt:0};
 const tvx=$("tv").getContext("2d");
 let BUF=[],TRAIL=[],play={step:0,init:false};
+let HIST=[],INS=null,lastSt=null;
+function fmtT(s){const d=new Date(s*1000);
+ return d.toISOString().substr(11,12)}
+function inspect(i){INS=HIST[i];$("live").className="";
+ for(const r of $("hl").children)r.classList.remove("sel");
+ const r=$("hl").children[HIST.length-1-i];
+ if(r)r.classList.add("sel");
+ tick("pm",`inspect @${INS.step} ${STN[INS.st]} - LIVE resumes`)}
+$("live").onclick=()=>{INS=null;$("live").className="on";
+ for(const r of $("hl").children)r.classList.remove("sel")};
 const STN=["WALK","CLMB","LADR","SLID","FALL","IDLE","CRCH","JUMP",
  "LAND","GOCH","SETP","SIT","PACK","SHIM","POP","BASE"];
 function stLabel(g,X,Y,st,col){const nm=STN[st]||""+st;
@@ -241,8 +265,10 @@ function drawScope(P9){
  tvx.strokeStyle="#22303f";
  for(let s2=1;s2<strips;s2++){const bx=s2*64*S;
   tvx.beginPath();tvx.moveTo(bx,0);tvx.lineTo(bx,H-PAD);tvx.stroke()}
- for(let i=1;i<TRAIL.length;i++){const a=TRAIL[i-1],b=TRAIL[i],
-  al=0.08+0.5*i/TRAIL.length;
+ for(let i=1;i<TRAIL.length;i++){const a=TRAIL[i-1],b=TRAIL[i];
+  if(INS&&Math.abs(b.step-INS.step)>300)continue;
+  const
+ al=0.08+0.5*i/TRAIL.length;
   tvx.strokeStyle=b.o?`rgba(255,92,200,${al})`
                      :`rgba(65,208,255,${al})`;
   tvx.beginPath();tvx.moveTo((a.x-ox)*S,a.y*ys);
@@ -276,8 +302,9 @@ function drawScope(P9){
 }
 function drawWorld(now){
  const f=daylight();
- let c=CAM.p; if(c!==null)c+=CAM.v*(now-CAM.t)/1000;
- if(c===null)c=(BUF.length?BUF[BUF.length-1].x:W.x)-strips*32;
+ let c; if(INS)c=INS.cam;
+ else{c=CAM.p; if(c!==null)c+=CAM.v*(now-CAM.t)/1000;
+  if(c===null)c=(BUF.length?BUF[BUF.length-1].x:W.x)-strips*32;}
  ox=Math.round(c);
  cx.fillStyle="#05070b";cx.fillRect(0,0,cv.width,cv.height);
  const id0=Math.floor(ox/64);
@@ -321,7 +348,7 @@ function drawWorld(now){
  cx.strokeStyle="#22303f";
  for(let s2=1;s2<strips;s2++){const bx=s2*64*S;
   cx.beginPath();cx.moveTo(bx,0);cx.lineTo(bx,cv.height);cx.stroke()}
- const P9=playPose(now);
+ const P9=INS?INS:playPose(now);
  const wlx=Math.round(P9.x),wy=Math.round(P9.y);
  {  /* the owner halo: his first instinct, painted BEHIND */
   cx.fillStyle=P9.owner?"rgba(255,92,200,0.22)"
@@ -339,6 +366,10 @@ function drawWorld(now){
  sprite(wlx,wy,now*1000,P9.st,P9.dir,P9.phase,P9.timer,P9.sdir);
  stLabel(cx,(wlx-ox)*S+S/2,(wy-15)*S,P9.st,
   P9.owner?"#ff5cc8":"#41d0ff");
+ if(INS){cx.fillStyle="rgba(200,180,69,0.92)";
+  cx.font="bold 13px monospace";
+  cx.fillText(`INSPECT  ${fmtT(INS.t)}  @${INS.step}  `+
+   `${STN[INS.st]}  -  LIVE to resume`,10,18)}
  drawScope(P9)}
 function onPkt(m){const u=hex2u8(m.hex);if(u.length<8)return;
  if(u[0]!==0x57||u[1]!==0x48||u[2]!==0x4d||u[3]!==0x4c)return;
@@ -355,8 +386,26 @@ function onPkt(m){const u=hex2u8(m.hex);if(u.length<8)return;
    BUF=[];TRAIL=[];play.init=false;      /* epoch turn */
    tick("pm","epoch turn - playback reset")}
   BUF.push(K); if(BUF.length>240)BUF.shift();
-  TRAIL.push({x:K.x,y:K.y,o:K.owner,st:K.st});
+  TRAIL.push({x:K.x,y:K.y,o:K.owner,st:K.st,step:K.step});
   if(TRAIL.length>600)TRAIL.shift();
+  if(K.st!==lastSt){lastSt=K.st;
+   const now2=performance.now();
+   let cm2=CAM.p!==null?CAM.p+CAM.v*(now2-CAM.t)/1000
+                       :K.x-strips*32;
+   const snap=Object.assign({cam:cm2},K);
+   HIST.push(snap);
+   const idx=HIST.length-1,r=document.createElement("div");
+   r.className="hr";r.onclick=()=>inspect(idx);
+   r.innerHTML=`<span class=pm>${fmtT(K.t)}</span> @${K.step} `+
+    `<b style="color:${K.owner?"#ff5cc8":"#41d0ff"}">`+
+    `${STN[K.st]}</b> x=${K.x.toFixed(0)} y=${K.y.toFixed(0)}`;
+   $("hl").prepend(r);
+   if(HIST.length>2000){HIST.shift();
+    $("hl").lastChild.remove();
+    for(let q=0;q<$("hl").children.length;q++)
+     $("hl").children[q].onclick=((j)=>()=>inspect(j))
+      ($("hl").children.length-1-q)}
+   $("hc").textContent=HIST.length}
   let nm="";for(let i=20;i<36&&u[i];i++)nm+=String.fromCharCode(u[i]);
   const now=performance.now();
   if(lastStepT){const ds=W.step-lastStep,dt=(now-lastStepT)/1000;
