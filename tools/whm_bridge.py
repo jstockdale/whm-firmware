@@ -5,10 +5,30 @@ logger. Run on any LAN host, open tools/whm_viewer.html, connect."""
 # ---- editable vars ---------------------------------------------------
 UDP_PORT = 7777          # whm-link broadcast port
 WS_PORT  = 8777          # viewer connects to ws://<this-host>:8777
+HTTP_PORT = 8778         # serves whm_viewer.html for phones/tablets
 BIND     = "0.0.0.0"
 LOG      = None          # e.g. "capture.jsonl" to record everything
 # ----------------------------------------------------------------------
-import sys, json, time, asyncio, socket
+import sys, json, time, asyncio, socket, threading, os
+import http.server, functools
+
+def _lan_ip():
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80)); ip = s.getsockname()[0]
+        s.close(); return ip
+    except OSError:
+        return "127.0.0.1"
+
+def _serve_viewer():
+    """Phones: iOS Quick Look / file previews render HTML statically
+    (no JavaScript). Serve the viewer over HTTP so real Safari/Chrome
+    run it; it auto-fills ws://<this-host>:WS_PORT and auto-connects."""
+    d = os.path.dirname(os.path.abspath(__file__))
+    H = functools.partial(http.server.SimpleHTTPRequestHandler,
+                          directory=d)
+    srv = http.server.ThreadingHTTPServer((BIND, HTTP_PORT), H)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
 
 def _dep_check():
     try:
@@ -51,8 +71,13 @@ async def main():
         finally:
             clients.discard(ws)
 
+    _serve_viewer()
+    ip = _lan_ip()
     async with websockets.serve(handler, BIND, WS_PORT):
-        print(f"whm_bridge: UDP :{UDP_PORT} -> ws://<host>:{WS_PORT}"
+        print(f"whm_bridge: viewer at http://{ip}:{HTTP_PORT}/"
+              f"whm_viewer.html  <- phones/tablets browse HERE"
+              f" (file previews don't run JS)")
+        print(f"whm_bridge: UDP :{UDP_PORT} -> ws://{ip}:{WS_PORT}"
               f"  (clients see raw sealed frames; viewer parses)")
         if LOG: print(f"whm_bridge: logging to {LOG}")
         await asyncio.Future()

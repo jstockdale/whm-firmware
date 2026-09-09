@@ -82,6 +82,11 @@ Any frozen gauge now arrives with its cause printed beside it.
     # scope with reticle, flight recorder with click-to-inspect + EXPORT
     python3 tools/whm_oracle_diff.py one.log two.log   # first-divergence finder
 
+Phones/tablets: browse to http://<bridge-host>:8778/whm_viewer.html -
+the bridge serves the page (iOS Quick Look and file previews render
+HTML statically, no JS); served this way it prefills the WS address
+from its own host and auto-connects.
+
 Observers are free: the viewer never transmits - kitchen, bedroom, N rooms,
 same broadcast. Full world+sprite ported verbatim from ui.c (pure f(chunk));
 golden-hash lock lands with RSK M2.
