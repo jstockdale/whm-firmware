@@ -17,6 +17,7 @@ canvas{background:#05070b;border:1px solid #2a3446;display:block;margin-bottom:8
 <input id=url value="ws://localhost:8777"><button id=go>connect</button>
 <span id=name class=pm></span></div>
 <canvas id=cv width=768 height=384></canvas>
+<canvas id=tv width=768 height=144></canvas>
 <div id=hud>
 <span class=g>step <b id=st>-</b></span>
 <span class=g>rate <b id=rt>-</b><i>/s</i></span>
@@ -26,7 +27,10 @@ canvas{background:#05070b;border:1px solid #2a3446;display:block;margin-bottom:8
 <span class=g>rung <b id=rg>-</b></span>
 <span class=g>lag <b id=lg>-</b><i>ms</i></span></div>
 <div id=tick></div>
-<div id=foot>whm_viewer v2 - terrain twin: world generation ported
+<div id=foot>whm_viewer v3 - twin + scope. Top: the terrain
+twin. Bottom: telemetry scope - full-rate path history, ownership
+color, state label. Both share one camera window, column-aligned.
+Playback: every keyframe buffered and interpolated (66 ms playhead),: world generation ported
 verbatim from ui.c (pure f(chunk); golden-hash lock arrives with M2).
 NYE plaza + fireworks not simulated. Follower-private sims remain the
 oracle's court. Owner colors the walker: cyan strip 0, magenta 1.</div>
@@ -37,6 +41,10 @@ const cv=$("cv"),cx=cv.getContext("2d");
 const S=6, GROUND=57, REACH=21;
 let ws=null,strips=2,wkPrev=null,kfT=[],lastStep=0,lastStepT=0,rate=0;
 let W={x:0,y:56.5,st:5,dir:1,phase:0,timer:0,sdir:1,step:0,owner:0,t:0};
+const tvx=$("tv").getContext("2d");
+let BUF=[],TRAIL=[],play={step:0,init:false};
+const STN=["WALK","CLMB","LADR","SLID","FALL","IDLE","CRCH","JUMP",
+ "LAND","GOCH","SETP","SIT","PACK","SHIM","POP","BASE"];
 let CAM={p:null,t:0,v:1.0};    // position snaps + slope EMA; Q8 ramp
                                // scale unverified so slope-EMA + snap
                                // (<0.7 px inter-snap) chosen honestly
@@ -185,10 +193,58 @@ function sprite(lx,y,t,st,dir,phase,timer,sdir){
  }else{                                   // WALK/CLMB stride
   px(lx+(a?dir:-dir),y-1,br,bg,bb);
   px(lx+(a?-dir:dir),y-2,br,bg,bb)}}
+function playPose(now){
+ /* FULL-RATE PLAYBACK: every kf buffered; the playhead trails the
+    newest frame by 2 steps (66 ms) with proportional follow, and
+    pose interpolates BETWEEN received frames - nothing skipped,
+    nothing extrapolated past real data. */
+ if(BUF.length<2)return W;
+ const newest=BUF[BUF.length-1].step;
+ if(!play.init){play.step=newest-2;play.t=now;play.init=true}
+ const dt=Math.min(0.1,(now-play.t)/1000); play.t=now;
+ play.step+=dt*30+((newest-2)-play.step)*0.15;
+ if(play.step>newest)play.step=newest;
+ if(play.step<BUF[0].step)play.step=BUF[0].step;
+ let i=BUF.length-2;
+ while(i>0&&BUF[i].step>play.step)i--;
+ const A=BUF[i],B=BUF[Math.min(i+1,BUF.length-1)];
+ const span=Math.max(1,B.step-A.step),
+       f2=Math.max(0,Math.min(1,(play.step-A.step)/span));
+ const lead=f2>0.5?B:A;
+ while(BUF.length>4&&BUF[1].step<play.step-4)BUF.shift();
+ return{x:A.x+(B.x-A.x)*f2,y:A.y+(B.y-A.y)*f2,
+        st:lead.st,dir:lead.dir,phase:lead.phase,timer:lead.timer,
+        sdir:lead.sdir,owner:lead.owner,step:Math.round(play.step),
+        t:B.t};
+}
+function drawScope(P9){
+ const T=$("tv"),H=T.height,ys=H/64;
+ tvx.fillStyle="#05070b";tvx.fillRect(0,0,T.width,H);
+ tvx.strokeStyle="#16324a";tvx.beginPath();
+ tvx.moveTo(0,57*ys);tvx.lineTo(T.width,57*ys);tvx.stroke();
+ tvx.strokeStyle="#22303f";
+ for(let s2=1;s2<strips;s2++){const bx=s2*64*S;
+  tvx.beginPath();tvx.moveTo(bx,0);tvx.lineTo(bx,H);tvx.stroke()}
+ for(let i=1;i<TRAIL.length;i++){const a=TRAIL[i-1],b=TRAIL[i],
+  al=0.08+0.5*i/TRAIL.length;
+  tvx.strokeStyle=b.o?`rgba(255,92,200,${al})`
+                     :`rgba(65,208,255,${al})`;
+  tvx.beginPath();tvx.moveTo((a.x-ox)*S,a.y*ys);
+  tvx.lineTo((b.x-ox)*S,b.y*ys);tvx.stroke()}
+ const px2=(P9.x-ox)*S,py2=P9.y*ys,col=P9.owner?"#ff5cc8":"#41d0ff";
+ tvx.strokeStyle=col;tvx.lineWidth=2;
+ tvx.strokeRect(px2-3*S/2,py2-12*ys,3*S,13*ys);
+ tvx.lineWidth=1;
+ tvx.fillStyle="#cfd8e3";tvx.font="12px monospace";
+ tvx.fillText(STN[P9.st]||P9.st,px2+2*S,py2-10*ys);
+ tvx.fillStyle="#8b96a8";tvx.font="11px monospace";
+ tvx.fillText(`x=${P9.x.toFixed(1)}  y=${P9.y.toFixed(1)}  `+
+  `step=${P9.step}  own=${P9.owner}`,8,H-8);
+}
 function drawWorld(now){
  const f=daylight();
  let c=CAM.p; if(c!==null)c+=CAM.v*(now-CAM.t)/1000;
- if(c===null)c=W.x-strips*32;
+ if(c===null)c=(BUF.length?BUF[BUF.length-1].x:W.x)-strips*32;
  ox=Math.round(c);
  cx.fillStyle="#05070b";cx.fillRect(0,0,cv.width,cv.height);
  const id0=Math.floor(ox/64);
@@ -232,23 +288,35 @@ function drawWorld(now){
  cx.strokeStyle="#22303f";
  for(let s2=1;s2<strips;s2++){const bx=s2*64*S;
   cx.beginPath();cx.moveTo(bx,0);cx.lineTo(bx,cv.height);cx.stroke()}
- const wlx=Math.round(W.x),wy=Math.round(W.y);
- if(W.st===10||W.st===11||W.st===12){const chx=wlx-W.dir;
+ const P9=playPose(now);
+ const wlx=Math.round(P9.x),wy=Math.round(P9.y);
+ {  /* the owner halo: his first instinct, painted BEHIND */
+  cx.fillStyle=P9.owner?"rgba(255,92,200,0.22)"
+                       :"rgba(65,208,255,0.22)";
+  cx.fillRect((wlx-3-ox)*S,(wy-13)*S,7*S,14*S);
+ }
+ if(P9.st===10||P9.st===11||P9.st===12){const chx=wlx-P9.dir;
   px(chx-1,wy-3,90,20,12);px(chx,wy-3,90,20,12);
   px(chx+1,wy-3,90,20,12);px(chx-1,wy-5,90,20,12);
   px(chx-1,wy-4,90,20,12);
   px(chx-1,wy-1,60,13,8);px(chx+1,wy-1,60,13,8)}
- sprite(wlx,wy,W.t*1000,W.st,W.dir,W.phase,W.timer,W.sdir);
- cx.fillStyle=W.owner?"#ff5cc8":"#41d0ff";
- cx.fillRect((wlx-ox)*S,(wy-14)*S+2,3,3)}
+ sprite(wlx,wy,P9.t*1000,P9.st,P9.dir,P9.phase,P9.timer,P9.sdir);
+ drawScope(P9)}
 function onPkt(m){const u=hex2u8(m.hex);if(u.length<8)return;
  if(u[0]!==0x57||u[1]!==0x48||u[2]!==0x4d||u[3]!==0x4c)return;
  const ty=u[5],d=dv(u); if(u[4]!==2&&(ty===9||ty===10||ty===16))return;
  if(ty===9&&u.length>=64){
-  W={owner:u[6],st:u[7],dir:d.getInt8(8),y:d.getInt8(9)*0.5,
+  const K={owner:u[6],st:u[7],dir:d.getInt8(8),y:d.getInt8(9)*0.5,
      timer:d.getUint16(10,true),step:d.getUint32(12,true),
      x:d.getFloat32(16,true),sdir:d.getInt8(60),phase:u[61],
      t:m.t};
+  W=K;
+  if(BUF.length&&Math.abs(K.step-BUF[BUF.length-1].step)>1000){
+   BUF=[];TRAIL=[];play.init=false;      /* epoch turn */
+   tick("pm","epoch turn - playback reset")}
+  BUF.push(K); if(BUF.length>240)BUF.shift();
+  TRAIL.push({x:K.x,y:K.y,o:K.owner,st:K.st});
+  if(TRAIL.length>600)TRAIL.shift();
   let nm="";for(let i=20;i<36&&u[i];i++)nm+=String.fromCharCode(u[i]);
   const now=performance.now();
   if(lastStepT){const ds=W.step-lastStep,dt=(now-lastStepT)/1000;
