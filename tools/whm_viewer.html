@@ -40,7 +40,8 @@ const $=id=>document.getElementById(id);
 const cv=$("cv"),cx=cv.getContext("2d");
 const S=6, GROUND=57, REACH=21;
 let ws=null,strips=2,wkPrev=null,kfT=[],lastStep=0,lastStepT=0,rate=0;
-let W={x:0,y:56.5,st:5,dir:1,phase:0,timer:0,sdir:1,step:0,owner:0,t:0};
+let W={x:0,y:56.5,st:5,dir:1,phase:0,timer:0,sdir:1,step:0,
+       owner:0,t:0,vx:0,vy:0,spd:0,tgt:0};
 const tvx=$("tv").getContext("2d");
 let BUF=[],TRAIL=[],play={step:0,init:false};
 const STN=["WALK","CLMB","LADR","SLID","FALL","IDLE","CRCH","JUMP",
@@ -211,7 +212,8 @@ function playPose(now){
     newest frame by 2 steps (66 ms) with proportional follow, and
     pose interpolates BETWEEN received frames - nothing skipped,
     nothing extrapolated past real data. */
- if(BUF.length<2)return W;
+ if(BUF.length<2)
+  return Object.assign({vx:0,vy:0,spd:0,tgt:W.x},W);
  const newest=BUF[BUF.length-1].step;
  if(!play.init){play.step=newest-2;play.t=now;play.init=true}
  const dt=Math.min(0.1,(now-play.t)/1000); play.t=now;
@@ -386,7 +388,10 @@ function onPkt(m){const u=hex2u8(m.hex);if(u.length<8)return;
   tick("rg",`rung @${step}  core ${hh.substr(0,8)}..  soft ${hs}`);
   if(lastStepT)$("lg").textContent=
    Math.max(0,((lastStep-step)/30*1000)).toFixed(0)}}
-function loop(){drawWorld(performance.now());requestAnimationFrame(loop)}
+function loop(){requestAnimationFrame(loop);
+ try{drawWorld(performance.now())}
+ catch(e){if(!loop.e){loop.e=1;
+  tick("pm","draw error (loop survives): "+e.message)}}}
 requestAnimationFrame(loop);
 function connect(){if(ws)try{ws.close()}catch(e){}
  ws=new WebSocket($("url").value);
