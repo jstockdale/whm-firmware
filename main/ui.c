@@ -706,6 +706,19 @@ static void wk_scroll_target(float v)
     s_wk_tgt_scroll = v;               /* legacy readers */
 }
 
+/* THE EDGE LAW (owner's spec, verbatim in mechanism): the walker
+   is owned by the panel he is ON; by the PREVIOUS panel while
+   still inside the edge band (interior deadband, tier 2); and by
+   the CLOSEST panel when completely off-world. Pure f(x, cam, n) -
+   identical on every replica. */
+static int wk_own_strip(float x, float cam2, int n)
+{
+    float sx = x - cam2;
+    if (sx < 0.0f) return 0;               /* off-left: strip 0 */
+    if (sx >= (float)n * 64.0f) return n - 1; /* off-right: last */
+    return (int)(sx / 64.0f);
+}
+
 static void wk_cam_sync(void)
 {
     /* BIDIRECTIONAL-EXACT (the +223 bomb, owner's capture,
@@ -2937,8 +2950,12 @@ static void pat_walker(int64_t t)
             }
         }
         if (s_w_n > 1 && wk_i_own()) {
-            int ns = (int)floorf((s_wk.x - wk_cam(ts)) / 64.0f);
-            float frh = (s_wk.x - wk_cam(ts)) - (float)ns * 64.0f;
+            float sxh = s_wk.x - wk_cam(ts);
+            int ns = wk_own_strip(s_wk.x, wk_cam(ts), (int)s_w_n);
+            bool inw = sxh >= 0.0f && sxh < (float)s_w_n * 64.0f;
+            float frh = inw ? sxh - (float)ns * 64.0f : 32.0f;
+            /* off-world: closest-panel resolves IMMEDIATELY (frh
+               forced mid-band); interior keeps the deadband. */
             /* DEADBAND (owner's flap): for n=2 the leash center
                IS the bezel - he lives at the seam, ownership
                flipped at walking frequency, every flip opened a
@@ -3178,8 +3195,11 @@ static void pat_walker(int64_t t)
                 }
             }
             if (!wk_i_own() && t - s_wko.rx_us > 2000000) {
-                int ns = (int)floorf((s_wk.x - cam) / 64.0f);
-                float fz = (s_wk.x - cam) - (float)ns * 64.0f;
+                float sxz = s_wk.x - cam;
+                int ns = wk_own_strip(s_wk.x, cam, (int)s_w_n);
+                bool inz = sxz >= 0.0f &&
+                           sxz < (float)s_w_n * 64.0f;
+                float fz = inz ? sxz - (float)ns * 64.0f : 32.0f;
                 /* symmetric deadband (audit R3): claim only when
                    genuinely inside - the seam band belongs to the
                    incumbent. */
