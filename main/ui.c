@@ -684,7 +684,26 @@ void whm_ui_cam_set(float c)
 
 static void wk_respawn(int64_t t, uint8_t n)
 {
-    s_wk.x = wk_cam(t) + (float)n * 32.0f;
+    /* THE COLD OPEN (field storm, pattern re-enter after 14 min on
+       other screens): two roots, one point of cure.
+       Root A - the spawn point WAS the bezel: cam + n*32 = the seam
+       exactly for n=2; two cold sims argued over a walker standing
+       on the property line. Spawn moves 16 px into strip 0.
+       Root B - ownership state survived the invalidate haunted:
+       rx_us from the previous session made t-rx_us ~ 840 s, so
+       "owner silent" fired on frame ONE, both sides, before anyone
+       could speak. The decree: every respawn resets the ownership
+       book and crowns a deterministic cold-start owner - strip 0,
+       always, by local law on every replica, zero wire. One frame
+       later the Baton and the Edge Law govern as usual. */
+    s_wko.owner = 0;
+    s_wko.own_tsf = 1;               /* any real claim outranks */
+    s_wko.rx_us = esp_timer_get_time();
+    s_wko.grace_until = 0;
+    s_wko.ev_step = 0;
+    s_wko.last_tx = 0;
+    s_wko.burst = (s_w_idx == 0) ? 2 : 0;
+    s_wk.x = wk_cam(t) + (float)n * 32.0f - 16.0f;
     s_wk.y = WK_GROUND;
     s_wk.vy = 0;
     s_wk.vx = 0;
