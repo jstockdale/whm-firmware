@@ -1,4 +1,5 @@
-<!doctype html><meta charset="utf-8"><title>WHM Fleet Viewer</title>
+<!doctype html><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>WHM Fleet Viewer</title>
 <style>
 body{background:#0b0e14;color:#cfd8e3;font:13px/1.4 ui-monospace,monospace;margin:0;padding:12px}
 #bar{display:flex;gap:8px;align-items:center;margin-bottom:8px}
@@ -6,6 +7,16 @@ input{background:#141a24;color:#cfd8e3;border:1px solid #2a3446;padding:4px 8px;
 button{background:#1d2736;color:#cfd8e3;border:1px solid #2a3446;padding:4px 12px;cursor:pointer}
 #dot{width:10px;height:10px;border-radius:5px;background:#e5484d}
 #dot.on{background:#46c390}
+button,input,.hr{touch-action:manipulation}
+#cv,#tv{max-width:100%;height:auto}
+#wrap{flex-wrap:wrap}
+#left{min-width:0;flex:1 1 640px}
+@media (pointer:coarse){
+ button{padding:10px 16px;font-size:15px}
+ input{padding:9px 10px;font-size:15px}
+ .hr{padding:7px 8px;font-size:13px}
+ #hl{max-height:45vh}
+ #hist{flex:1 1 100%;width:auto}}
 canvas{background:#05070b;border:1px solid #2a3446;display:block;margin-bottom:8px;image-rendering:pixelated}
 #hud{display:flex;gap:24px;flex-wrap:wrap;margin-bottom:6px}
 .g b{color:#7cc4ff}.g i{color:#8b96a8;font-style:normal}
@@ -25,7 +36,9 @@ canvas{background:#05070b;border:1px solid #2a3446;display:block;margin-bottom:8
 #live.paused{background:#4d3a1f;border-color:#c8b445;color:#e8d84a}
 </style>
 <div id=bar><span id=dot></span>
-<input id=url value="ws://localhost:8777"><button id=go>connect</button>
+<input id=url value="ws://localhost:8777" inputmode="url"
+ autocapitalize="off" autocorrect="off" spellcheck="false"
+ enterkeyhint="go"><button id=go>connect</button>
 <span id=name class=pm></span></div>
 <div id=wrap><div id=left>
 <canvas id=cv width=768 height=384></canvas>
@@ -503,4 +516,6 @@ function connect(){if(ws)try{ws.close()}catch(e){}
   setTimeout(()=>{if(ws&&ws.readyState===3)connect()},2000)};
  ws.onmessage=e=>{try{onPkt(JSON.parse(e.data))}catch(err){}}}
 $("go").onclick=connect;
+$("url").addEventListener("keydown",
+ e=>{if(e.key==="Enter"){e.preventDefault();connect()}});
 </script>
