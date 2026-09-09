@@ -14,6 +14,7 @@
  * broker exists precisely so flash work happens on its own
  * internal-stack context; identity now uses the front door. */
 #include "crypto_id.h"
+#include "sync.h"
 #include "monocypher.h"
 #include "settings.h"
 #include "esp_random.h"
@@ -77,7 +78,7 @@ void whm_id_init(void)
     sv("cid.xsk", s_xsk, 32);
     sv("cid.xpk", s_xpk, 32);
     char fp[17]; whm_id_fp(s_pk, fp);
-    printf("identity: NEW keypair minted, fp %s\n", fp);
+    whm_lts(); printf("identity: NEW keypair minted, fp %s\n", fp);
     s_up = true;
 }
 const uint8_t *whm_id_pk(void) { return s_pk; }

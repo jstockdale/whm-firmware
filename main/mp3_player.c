@@ -139,7 +139,7 @@ void whm_mp3_a_on_beacon(const char *from, int64_t tsf, int64_t idx)
     if (s_due_fn != ma_beacon_due && s_due_fn != bf_due) {
         s_due_fn = ma_beacon_due;   /* upgrade: chase the MASTER's
                                        real audio, not the formula */
-        printf("[modeA] locked to %s's beacon (real-audio sync)\n",
+        whm_lts(); printf("[modeA] locked to %s's beacon (real-audio sync)\n",
                from);
     }
 }
@@ -471,13 +471,13 @@ static void eng_write(const int16_t *out, int frames)
             if (now - dgl > 1000000) {
                 dgl = now;
                 if (s_fs_master) {
-                    printf("[A] M cont=%lld tx@500ms hz=%d\n",
+                    whm_lts(); printf("[A] M cont=%lld tx@500ms hz=%d\n",
                            (long long)s_fs_content, s_hz);
                 } else {
                     int64_t age = s_ma_bcn_us
                         ? (esp_timer_get_time() - s_ma_bcn_us)
                               / 1000 : -1;
-                    printf("[A] F ppm=%+.1f err=%+lldus "
+                    whm_lts(); printf("[A] F ppm=%+.1f err=%+lldus "
                            "cont=%lld bcn=%u age=%lldms %s\n",
                            (double)s_rs_ppm,
                            (long long)s_fs_err_us,
@@ -1191,7 +1191,7 @@ esp_err_t whm_mp3_fleet_play(const char *name, const char *sha,
     if (s_count == 0) whm_mp3_scan();
     int idx = track_by_fname(name);
     if (idx < 0) {
-        printf("[modeA] '%s' not on this card - run: sync media "
+        whm_lts(); printf("[modeA] '%s' not on this card - run: sync media "
                "<leader>\n", name);
         return ESP_ERR_NOT_FOUND;
     }
@@ -1199,17 +1199,17 @@ esp_err_t whm_mp3_fleet_play(const char *name, const char *sha,
     long lsz;
     if (sha && sha[0]) {
         if (whm_http_media_lookup(name, lsha, &lsz) != ESP_OK) {
-            printf("[modeA] no local hash for '%s' yet - playing by "
+            whm_lts(); printf("[modeA] no local hash for '%s' yet - playing by "
                    "name ('sync media' verifies)\n", name);
         } else if (strcasecmp(lsha, sha) != 0) {
-            printf("[modeA] '%s' differs from leader's copy - run: "
+            whm_lts(); printf("[modeA] '%s' differs from leader's copy - run: "
                    "sync media <leader>\n", name);
             return ESP_ERR_INVALID_STATE;
         }
     }
     {
         int64_t tn = whm_wifi_tsf_now();
-        printf("[modeA] '%s' downbeat in %dms\n", name,
+        whm_lts(); printf("[modeA] '%s' downbeat in %dms\n", name,
                (int)((start_tsf - tn) / 1000));
     }
     s_ma_ref_tsf = 0;            /* ARM RESET: a stale ref from the

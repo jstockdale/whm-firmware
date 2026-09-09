@@ -54,6 +54,17 @@ static uint32_t s_ctr_cmd_rx, s_ctr_cmd_exec, s_ctr_drop_size,
                 s_ctr_rx_ann, s_ctr_rx_life, s_ctr_rx_play;
 static uint32_t s_ctr_rx_cmd_alias(void) { return s_ctr_cmd_rx; }
 
+
+#include <sys/time.h>
+void whm_lts(void)
+{
+    struct timeval tv; struct tm lt;
+    gettimeofday(&tv, NULL);
+    localtime_r(&tv.tv_sec, &lt);
+    printf("[%02d:%02d:%02d.%03ld] ", lt.tm_hour, lt.tm_min,
+           lt.tm_sec, (long)(tv.tv_usec / 1000));
+}
+
 static const char *TAG = "whm_sync";
 
 #define WHM_SYNC_PORT 7777
@@ -199,19 +210,21 @@ static bool seal_rx(const uint8_t *b, int n, int base,
     sec_load();
     if (n == base) {
         if (s_sec_strict) {
-            printf("SEAL: UNSIGNED %s DROPPED (strict)\n", what);
+            whm_lts(); printf("SEAL: UNSIGNED %s DROPPED (strict)\n", what);
             return false;
         }
-        if ((s_seal_grace_warns++ % 64) == 0)
+        if ((s_seal_grace_warns++ % 64) == 0) {
+            whm_lts();
             printf("SEAL: unsigned %s honored (grace; 'secure "
                    "strict on' to enforce)\n", what);
+        }
         return true;
     }
     if (n == base + 16 && s_kf_have) {
         uint8_t t[16];
         crypto_blake2b_keyed(t, 16, s_kf, 32, b, base);
         if (crypto_verify16(b + base, t) == 0) return true;
-        printf("SEAL: BAD TAG on %s - DROPPED\n", what);
+        whm_lts(); printf("SEAL: BAD TAG on %s - DROPPED\n", what);
         return false;
     }
     return !s_sec_strict && n == base + 16; /* tagged, no key yet */
@@ -460,7 +473,7 @@ static void announce_task(void *arg)
                 if (!s_kf_have) {
                     esp_fill_random(s_kf, 32);
                     s_kf_have = true;
-                    printf("SEAL: fleet key minted (anchor)\n");
+                    whm_lts(); printf("SEAL: fleet key minted (anchor)\n");
                 }
                 if (tick % 3 == 1) {      /* wraps ride along */
                     for (int pi = 0; ; pi++) {
@@ -610,14 +623,14 @@ static void recv_task(void *arg)
             /* THE DOOR GATE that silently ate every v2 cmd for three
                releases - now it counts and confesses instead */
             s_ctr_drop_ver++;
-            printf("fleet: DROP ver %u pkt type %u (%dB) - mixed "
+            whm_lts(); printf("fleet: DROP ver %u pkt type %u (%dB) - mixed "
                    "firmware?\n", rbuf[4], rbuf[5], n);
             continue;
         }
         /* version-skew becomes a log line, not a mystery */
         if (rbuf[5] == 3 && n != (int)sizeof(whm_cmd_t) && n != 284) {
             s_ctr_drop_size++;
-            printf("fleet: DROP bad cmd size %d (want %d) - "
+            whm_lts(); printf("fleet: DROP bad cmd size %d (want %d) - "
                    "mixed firmware? flash all units\n",
                    n, (int)sizeof(whm_cmd_t));
             continue;
@@ -676,13 +689,13 @@ static void recv_task(void *arg)
                 cchk.from[15] = 0;
                 static struct { char nm[16]; int64_t last; } rt[4];
                 if (!whm_pin_get(cchk.from, ppk)) {
-                    printf("fleet: cmd from %s DROPPED - no pinned "
+                    whm_lts(); printf("fleet: cmd from %s DROPPED - no pinned "
                            "identity yet (idents: anchor ~3s, members ~15s)\n",
                            cchk.from);
                     continue;
                 }
                 if (!whm_id_verify(ppk, rbuf, 220, rbuf + 220)) {
-                    printf("fleet: BAD SIGNATURE from %s - "
+                    whm_lts(); printf("fleet: BAD SIGNATURE from %s - "
                            "DROPPED\n", cchk.from);
                     continue;
                 }
@@ -701,13 +714,13 @@ static void recv_task(void *arg)
                 if (ri >= 0 && (nn2 < rt[ri].last ||
                     nn2 > nw2 + 10000000LL ||
                     nn2 < nw2 - 10000000LL)) {
-                    printf("fleet: REPLAY/EXPIRED cmd from %s - "
+                    whm_lts(); printf("fleet: REPLAY/EXPIRED cmd from %s - "
                            "DROPPED\n", cchk.from);
                     continue;
                 }
                 if (ri >= 0) rt[ri].last = nn2;
             } else {
-                printf("fleet: UNSIGNED cmd honored (legacy grace "
+                whm_lts(); printf("fleet: UNSIGNED cmd honored (legacy grace "
                        "- signing enforced next release)\n");
             }
             whm_cmd_t c;
@@ -836,7 +849,7 @@ static void recv_task(void *arg)
                                    memcmp(nk, s_kf, 32) != 0;
                         if (chg) {
                             memcpy(s_kf, nk, 32);
-                            printf("SEAL: fleet key %s from %s\n",
+                            whm_lts(); printf("SEAL: fleet key %s from %s\n",
                                    s_kf_have ? "updated"
                                              : "received",
                                    wr.from);
@@ -1002,7 +1015,7 @@ static void election_tick(void)
                    anchor's keywrap (rebroadcast every 3s heals us). */
                 s_kf_have = false;
                 crypto_wipe(s_kf, 32);
-                printf("SEAL: self-minted key discarded - awaiting "
+                whm_lts(); printf("SEAL: self-minted key discarded - awaiting "
                        "anchor's keywrap\n");
             }
         }
@@ -1111,7 +1124,7 @@ esp_err_t whm_sync_init(void)
        rx and exec run console commands and name/NVS lookups: INTERNAL. */
     if (xTaskCreate(fleet_exec_task, "fleet_exec", 4608, NULL, 4, NULL)
         != pdPASS) {
-        printf("fleet: exec task FAILED to start (internal=%u free) - "
+        whm_lts(); printf("fleet: exec task FAILED to start (internal=%u free) - "
                "commands would queue forever\n",
                (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
     } else {
@@ -1347,9 +1360,9 @@ void whm_sync_defer_line(const char *line, int64_t at)
     {
         int rem = (int)((at - now) / 1000);
         if (rem >= 0) {
-            printf("fleet: queued '%s' (T-%dms)\n", line, rem);
+            whm_lts(); printf("fleet: queued '%s' (T-%dms)\n", line, rem);
         } else {
-            printf("fleet: queued '%s' (late %dms at rx - running "
+            whm_lts(); printf("fleet: queued '%s' (late %dms at rx - running "
                    "now)\n", line, -rem);
         }
     }
@@ -1367,7 +1380,7 @@ static void fleet_exec_task(void *arg)
             int64_t nw = whm_wifi_tsf_now();
             if (nw <= 0) nw = esp_timer_get_time();
             s_ctr_cmd_exec++;
-            printf("fleet: exec '%s' (%+dms vs deadline)\n", fl,
+            whm_lts(); printf("fleet: exec '%s' (%+dms vs deadline)\n", fl,
                    (int)((nw - s_fq_last_at) / 1000));
             int frc = 0;
             esp_console_run(fl, &frc);
@@ -1715,12 +1728,16 @@ esp_err_t whm_sync_fleet_send_to(const char *target, const char *line)
             if (n == (int)sizeof(sc) || errno != ENOMEM) break;
             vTaskDelay(pdMS_TO_TICKS(20));
         }
-        if (n == (int)sizeof(sc)) sent++;
-        else printf("fleet: tx shot %d FAILED (%d/%d, errno %d)\n",
-                    shot + 1, n, (int)sizeof(sc), errno);
+        if (n == (int)sizeof(sc)) {
+            sent++;
+        } else {
+            whm_lts();
+            printf("fleet: tx shot %d FAILED (%d/%d, errno %d)\n",
+                   shot + 1, n, (int)sizeof(sc), errno);
+        }
     }
     if (sent) {
-        printf("fleet: tx %dB cmd v3 SIGNED x%d -> "
+        whm_lts(); printf("fleet: tx %dB cmd v3 SIGNED x%d -> "
                "broadcast:7777\n", (int)sizeof(sc), sent);
         return ESP_OK;
     }
@@ -1820,7 +1837,7 @@ void whm_sync_status_print(void)
     printf("rx:     ann=%u life=%u cmd=%u play=%u\n",
            (unsigned)s_ctr_rx_ann, (unsigned)s_ctr_rx_life,
            (unsigned)s_ctr_rx_cmd_alias(), (unsigned)s_ctr_rx_play);
-    printf("fleet:  exec=%u q=%u | drop: ver=%u size=%u dup=%u self=%u\n",
+    whm_lts(); printf("fleet:  exec=%u q=%u | drop: ver=%u size=%u dup=%u self=%u\n",
            (unsigned)s_ctr_cmd_exec, (unsigned)s_fq_n,
            (unsigned)s_ctr_drop_ver, (unsigned)s_ctr_drop_size,
            (unsigned)s_ctr_drop_dup, (unsigned)s_ctr_drop_self);

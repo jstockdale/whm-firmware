@@ -343,7 +343,7 @@ static struct { uint32_t step; uint8_t act; float arg;
                 uint8_t valid; } s_wki[32];
 static uint8_t s_wki_w;
 static volatile bool s_wkp_poke;   /* new subscriber wants params */
-static uint8_t s_wk_draws;   /* per-step draw counter (pure RNG) */
+
 static int64_t s_wk_anchor = -1;
 
 /* -------- the reward table: purposeful exploration ------------------
@@ -413,15 +413,23 @@ static float wk_scout(float x, int8_t dir)
     return score;
 }
 
-static uint32_t wk_rnd(void)
+static uint32_t wk_rnd(uint32_t key)
 {
-    /* PURE f(anchor, step, draw#): stateful xorshift made replicas
-       depend on draw HISTORY - one skipped frame or corrector snap
-       desynced the cursor until the next anchor. This form is
-       identical on every unit by construction, forever. */
+    /* THE PURE STREAM (field: sims diverged at behavior scale -
+       dx to -105, walker "appearing at the wrong times" - while
+       terrain stayed perfect). The draw-COUNTER form was pure only
+       if every replica consumed the same number of draws per step;
+       any conditional draw (fresh-branches, probe loops, sandbox
+       re-sims) shifted one unit's stream forever after, and the
+       resulting SNAPs thrashed ownership, which changed the
+       conditionals, which shifted the stream further - a feedback
+       loop wearing a purity comment. Now the value depends on WHAT
+       is being decided (anchor, step, per-site key), never on how
+       many decisions came before. Identical on every replica by
+       construction - for real this time. */
     return wk_h((uint32_t)(s_wk_anchor & 0xffffffff)
                 ^ s_wk_steps * 2654435761u
-                ^ (uint32_t)(++s_wk_draws) * 0x9E3779B9u);
+                ^ key * 0x9E3779B9u);
 }
 
 static uint32_t wk_h(uint32_t v)
@@ -678,9 +686,10 @@ void whm_ui_cam_set(float c)
                                               an ownership flap
                                               cross-clobber it */
     double dx2 = (double)c - s_cam_acc;
-    if (dx2 > 2.0 || dx2 < -2.0)
-        printf("walker: CAM SNAP dx=%.2f (divergence alarm - "
+    if (dx2 > 2.0 || dx2 < -2.0) {
+        whm_lts(); printf("walker: CAM SNAP dx=%.2f (divergence alarm - "
                "should be ~0 forever)\n", dx2);
+    }
     s_cam_acc = (double)c;                 /* type-10 snap */
     s_cam_base = s_cam_acc;
     s_cam_base_step = s_wk_steps;
@@ -793,7 +802,7 @@ static void wk_cam_sync(void)
                                       sims free-ran, clones. The
                                       one place that KNOWS a rewind
                                       happened resets it. */
-        printf("walker: cam rewind %lu->%lu (undo %.2f px)\n",
+        whm_lts(); printf("walker: cam rewind %lu->%lu (undo %.2f px)\n",
                (unsigned long)s_cam_base_step,
                (unsigned long)s_wk_steps, undo);
     }
@@ -805,7 +814,6 @@ static void wk_cam_sync(void)
 static void wk_step(int64_t t, uint8_t n)
 {
     uint8_t st_in = (uint8_t)s_wk.st;
-    s_wk_draws = 0;              /* pure RNG: draw# restarts per step */
     for (int ii = 0; ii < 32; ii++) {        /* input log: apply at
                                                 the stamped step */
         if (!s_wki[ii].valid || s_wki[ii].step != s_wk_steps)
@@ -892,7 +900,7 @@ static void wk_step(int64_t t, uint8_t n)
         const wlad_t *lu = wk_ladder_at(s_wk.x, fy, false);
         const wlad_t *ld = wk_ladder_at(s_wk.x, fy, true);
         const wsli_t *sl = wk_slide_at(s_wk.x, fy);
-        uint32_t r = wk_rnd();
+        uint32_t r = wk_rnd(0xA1u);
         if (sl && (r % 100) <
             (uint32_t)(wk_reward_fun(0x20000000 ^ sl->x) * 45.0f)) {
             wk_mark(0x20000000 ^ sl->x);
@@ -928,14 +936,17 @@ static void wk_step(int64_t t, uint8_t n)
                     int dh = fy - c->p[k].y;
                     float rw = wk_reward_plat(id + d, k);
                     uint32_t gate = (uint32_t)(rw * 90.0f) + 8;
-                    if (dh <= 9 && (wk_rnd() % 100) < gate) {
+                    if (dh <= 9 && (wk_rnd(0xB1u ^
+                            (uint32_t)((id + d) * 8 + k)) % 100)
+                            < gate) {
                         wk_mark((id + d) * 8 + k);
                         s_wk.fresh = rw > 0.8f;
                         s_wk.st = WK_JUMP;      /* quick HOP up */
                         s_wk.vy = -1.6f;
                         s_wk.vx = (float)s_wk.dir * 0.45f;
                     } else if (dh <= WK_REACH &&
-                               (wk_rnd() % 100) < gate) {
+                               (wk_rnd(0xB2u ^ (uint32_t)((id + d)
+                                    * 8 + k)) % 100) < gate) {
                         wk_mark((id + d) * 8 + k);
                         s_wk.fresh = rw > 0.8f;
                         s_wk.st = WK_CLIMB;
@@ -992,7 +1003,7 @@ static void wk_step(int64_t t, uint8_t n)
             s_wk.dir = -1;
         } else if (r % 700 == 0) {
             s_wk.st = WK_IDLE;
-            s_wk.timer = (uint16_t)(25 + wk_rnd() % 70);
+            s_wk.timer = (uint16_t)(25 + wk_rnd(0xC1u) % 70);
         } else if (!s_wk.turn_cd && r % 1600 == 2) {
             s_wk.st = WK_JUMP;             /* exuberant hop */
             s_wk.vy = -1.4f;
@@ -1001,14 +1012,14 @@ static void wk_step(int64_t t, uint8_t n)
             float sl2 = wk_scout(s_wk.x, -1);
             float sr2 = wk_scout(s_wk.x, 1);
             int8_t toward = off > 0 ? -1 : 1;
-            if (fabsf(sl2 - sr2) > 0.15f && (wk_rnd() % 5)) {
+            if (fabsf(sl2 - sr2) > 0.15f && (wk_rnd(0xC2u) % 5)) {
                 s_wk.dir = sl2 > sr2 ? -1 : 1;   /* toward the fresh */
             } else {
-                s_wk.dir = ((wk_rnd() % 4) == 0) ? (int8_t)-toward
+                s_wk.dir = ((wk_rnd(0xC3u) % 4) == 0) ? (int8_t)-toward
                                                  : toward;
             }
             s_wk.turn_cd = 45;
-            s_wk.spd = (wk_rnd() & 1) ? 0.75f : 0.55f;  /* stroll */
+            s_wk.spd = (wk_rnd(0xC4u) & 1) ? 0.75f : 0.55f;  /* stroll */
         }
         break;
     }
@@ -1062,7 +1073,7 @@ static void wk_step(int64_t t, uint8_t n)
         else {
             s_wk.st = WK_SIT;
             /* SIT LONGER (owner): real contemplation, ~23-40 s. */
-            s_wk.timer = (uint16_t)(700 + wk_rnd() % 500);
+            s_wk.timer = (uint16_t)(700 + wk_rnd(0xC5u) % 500);
             s_wk.dir = -1;                 /* face the oncoming world */
         }
         break;
@@ -1125,10 +1136,10 @@ static void wk_step(int64_t t, uint8_t n)
         s_wk.phase++;
         if (s_wk.y <= s_wk.tgt) {
             s_wk.y = s_wk.tgt;
-            if (s_wk.fresh && (wk_rnd() % 5) < 2) {
+            if (s_wk.fresh && (wk_rnd(0xC6u) % 5) < 2) {
                 s_wk.st = WK_IDLE;      /* take in the NEW view -
                                            always pays best */
-                s_wk.timer = (uint16_t)(20 + wk_rnd() % 26);
+                s_wk.timer = (uint16_t)(20 + wk_rnd(0xC7u) % 26);
             } else {
                 s_wk.st = WK_WALK;
             }
@@ -2022,7 +2033,7 @@ void whm_ui_wkb_rx(uint8_t owner, float x, int8_t y, uint8_t st,
                                         received, grace ends */
         if (!was_me && wk_i_own()) {
             s_wko.burst = 2;
-            printf("walker: adopted - I own strip %u now\n", s_w_idx);
+            whm_lts(); printf("walker: adopted - I own strip %u now\n", s_w_idx);
         }
     }
     if (wk_i_own()) return;      /* owner never corrects to itself */
@@ -3104,10 +3115,12 @@ static void pat_walker(int64_t t)
     if (anchor != s_wk_anchor) {
         if (s_wk_anchor > 0 &&
             (anchor - s_wk_anchor > 1000000 ||
-             s_wk_anchor - anchor > 1000000))
+             s_wk_anchor - anchor > 1000000)) {
+            whm_lts();
             printf("walker: RE-ANCHOR delta %+.1fs (epoch moved - "
                    "world will rebase)\n",
                    (double)(anchor - s_wk_anchor) / 1e6);
+        }
         s_wk_anchor = anchor;
         wk_respawn(anchor * WK_ANCHOR_US, n);
         /* ANCHOR ROLLOVER HYGIENE: step numbers restart each window,
@@ -3173,7 +3186,7 @@ static void pat_walker(int64_t t)
                     s_wkf[i].timer != (uint16_t)s_wk.timer ||
                     dtg > 0.5f || dtg < -0.5f ||
                     dvx > 0.05f || dvx < -0.05f) {
-                    printf("walker: at-step SNAP @%lu (dx %.2f, "
+                    whm_lts(); printf("walker: at-step SNAP @%lu (dx %.2f, "
                            "%u vs %u, ptgt=%.1f cam=%.2f) "
                            "mine{x=%.2f "
                            "y=%.2f tgt=%.1f "
@@ -3209,9 +3222,9 @@ static void pat_walker(int64_t t)
                     }
                     if (++s_wko.storms > 5) {
                         s_wko.storms = 0;
-                        printf("walker: anchor INVALIDATED (site %d)\n", __LINE__);
+                        whm_lts(); printf("walker: anchor INVALIDATED (site %d)\n", __LINE__);
         s_wk_anchor = INT64_MIN;
-                        printf("walker: snap storm - replay-resync"
+                        whm_lts(); printf("walker: snap storm - replay-resync"
                                "\n");
                     }
                 } else {
@@ -3240,7 +3253,7 @@ static void pat_walker(int64_t t)
                 s_wko.own_tsf = whm_wifi_tsf_now();
                 s_wko.burst = 2;
                 s_wko.grace_until = ts + 2000000;
-                printf("walker: handoff -> strip %d\n", ns);
+                whm_lts(); printf("walker: handoff -> strip %d\n", ns);
             }
         }
         s_wk_steps++;
@@ -3419,7 +3432,6 @@ static void pat_walker(int64_t t)
                 if (emit) {
                 __typeof__(s_wk) save = s_wk;
                 uint32_t sv_steps = s_wk_steps;
-                uint8_t sv_draws = s_wk_draws;
                 int32_t sv_chunk = s_wk_last_chunk;
                 double sv_cam = s_cam_acc;
                 uint8_t sv_seen[sizeof(s_wk_seen)];
@@ -3448,7 +3460,6 @@ static void pat_walker(int64_t t)
                 s_wk_shadowing = false;
                 s_wk = save;
                 s_wk_steps = sv_steps;
-                s_wk_draws = sv_draws;
                 s_wk_last_chunk = sv_chunk;
                 s_cam_acc = sv_cam;
                 memcpy(s_wk_seen, sv_seen, sizeof(s_wk_seen));
@@ -3486,7 +3497,7 @@ static void pat_walker(int64_t t)
                     static int64_t seize_mute;
                     if (t - seize_mute > 1000000) {
                         seize_mute = t;
-                        printf("walker: owner silent - seizing "
+                        whm_lts(); printf("walker: owner silent - seizing "
                                "(strip %u)\n", s_w_idx);
                     }
                 }
@@ -3851,7 +3862,7 @@ bool whm_ui_pattern_set(const char *name)
         /* ENTRY = REPLAY POINT (doctrine 14): a resuming unit and a
            fresh one must rebuild identically. Force respawn + full
            catch-up from the shared anchor on every entry. */
-        printf("walker: anchor INVALIDATED (site %d)\n", __LINE__);
+        whm_lts(); printf("walker: anchor INVALIDATED (site %d)\n", __LINE__);
         s_wk_anchor = INT64_MIN;
     }
             return true;

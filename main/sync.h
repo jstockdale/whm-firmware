@@ -76,3 +76,5 @@ bool whm_sync_life_edge(uint8_t peer_idx, uint8_t side, uint8_t *out64,
 #ifdef __cplusplus
 }
 #endif
+
+void whm_lts(void);   /* UTC wall-clock stamp [HH:MM:SS.mmm] */
