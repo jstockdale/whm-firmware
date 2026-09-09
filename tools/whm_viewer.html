@@ -176,10 +176,15 @@ function sprite(lx,y,t,st,dir,phase,timer,sdir){
   px(lx-1,y-9,br,bg,bb);px(lx+1,y-9,br,bg,bb);
   px(lx-sdir*3,y-5,48,66,89);px(lx-sdir*5,y-4,26,36,58);
   px(lx-1,y-1,br,bg,bb);px(lx+1,y-1,br,bg,bb);
- }else{                                   // WALK/IDLE/CLMB/FALL legs
-  if(st===5){px(lx-1,y-1,br,bg,bb);px(lx+1,y-1,br,bg,bb)}
-  else{px(lx+(a?dir:-dir),y-1,br,bg,bb);
-       px(lx+(a?-dir:dir),y-2,br,bg,bb)}}}
+ }else if(st===4){                        // FALL: arms up
+  px(lx-1,y-8,br,bg,bb);px(lx+1,y-8,br,bg,bb);
+  px(lx-1,y-1,br,bg,bb);px(lx+1,y-1,br,bg,bb);
+ }else if(st===5){                        // IDLE: arms at sides
+  px(lx-1,y-5,br,bg,bb);px(lx+1,y-5,br,bg,bb);
+  px(lx-1,y-1,br,bg,bb);px(lx+1,y-1,br,bg,bb);
+ }else{                                   // WALK/CLMB stride
+  px(lx+(a?dir:-dir),y-1,br,bg,bb);
+  px(lx+(a?-dir:dir),y-2,br,bg,bb)}}
 function drawWorld(now){
  const f=daylight();
  let c=CAM.p; if(c!==null)c+=CAM.v*(now-CAM.t)/1000;
