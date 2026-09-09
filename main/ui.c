@@ -277,7 +277,7 @@ static struct { uint32_t step; float x; int8_t yq1;
                 float tgt, vx;
                 uint8_t valid; } s_wkf[WKF_N];
 static uint32_t s_wkf_ok, s_wkf_snap, s_wkf_stale;
-static uint32_t s_wk_txn, s_wk_rxn;   /* wire tallies for [W] */
+static uint32_t s_wk_txn, s_wk_rxn, s_wk_wm;  /* wire tallies for [W] */
 static struct { uint32_t step; uint8_t from, to; } s_wkh[8];
 static uint8_t s_wkh_w;
 static bool s_wk_shadowing;      /* shadow steps: no trace writes */
@@ -2183,6 +2183,18 @@ void whm_ui_wkb_rx(uint8_t owner, float x, int8_t y, uint8_t st,
        triplicates and reordered delivery apply exactly once. */
     if (step <= s_wko.ev_step) return;
     s_wko.ev_step = step;
+    /* THE HONEST WATERMARK: a pre-rollover straggler (step ~18150)
+       arriving just after the epoch reset used to ADVANCE ev_step
+       into the old era, silently swallowing every legitimate
+       new-window frame for the rest of the 10-minute window - the
+       exact "clean for a stretch, then inexplicable divergence
+       after an epoch event" signature, and the drops left no body.
+       A frame must now land inside a plausibility corridor around
+       LOCAL truth (-120 .. +240 steps: 4 s of past, 8 s of shadow
+       future) before it may touch the watermark; strays are
+       counted, never obeyed. */
+    if ((step + 120u < s_wk_steps) ||
+        (step > s_wk_steps + 240u)) { s_wk_wm++; return; }
     if (step <= s_wk_steps) { s_wkf_stale++; return; }   /* past */
     int slot = -1;
     uint32_t oldest = 0xFFFFFFFFu;
@@ -3784,7 +3796,7 @@ static void pat_walker(int64_t t)
                 whm_lts();
                 printf("[W] step=%lu lag=%ld st=%s own=%u%s "
                        "sx=%+.1f cam=%.1f kf ok=%lu snap=%lu "
-                       "stale=%lu%s\n",
+                       "stale=%lu wm=%lu tx=%lu rx=%lu%s\n",
                        (unsigned long)s_wk_steps,
                        (long)((int64_t)want - (int64_t)s_wk_steps),
                        stn[sti],
@@ -3795,12 +3807,10 @@ static void pat_walker(int64_t t)
                        (unsigned long)s_wkf_ok,
                        (unsigned long)s_wkf_snap,
                        (unsigned long)s_wkf_stale,
-                       s_wk_replaying ? " REPLAY" : "");
-                /* wire tallies ride a second short line to keep
-                   the first grep-stable */
-                printf("    [W2] tx=%lu rx=%lu\n",
+                       (unsigned long)s_wk_wm,
                        (unsigned long)s_wk_txn,
-                       (unsigned long)s_wk_rxn);
+                       (unsigned long)s_wk_rxn,
+                       s_wk_replaying ? " REPLAY" : "");
             }
         }
         wk_nye_scene(cam, t);
