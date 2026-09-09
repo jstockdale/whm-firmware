@@ -320,6 +320,17 @@ function drawScope(P9){
  tvx.strokeRect(px2-3*S/2,py2-12*ys,3*S,13*ys);
  tvx.lineWidth=1;
  stLabel(tvx,px2+4*S,py2-10*ys,P9.st,col);
+ {  /* the reticle: crosshairs at the EXACT telemetry point -
+       raw float coords, half-pixel aligned, gapped center so
+       the spot itself stays visible */
+  const cxp=Math.round(px2)+0.5,cyp=Math.round(py2)+0.5;
+  tvx.strokeStyle=col;tvx.beginPath();
+  tvx.moveTo(cxp-9,cyp);tvx.lineTo(cxp-3,cyp);
+  tvx.moveTo(cxp+3,cyp);tvx.lineTo(cxp+9,cyp);
+  tvx.moveTo(cxp,cyp-9);tvx.lineTo(cxp,cyp-3);
+  tvx.moveTo(cxp,cyp+3);tvx.lineTo(cxp,cyp+9);
+  tvx.stroke();
+ }
  tvx.fillStyle="#8b96a8";tvx.font="11px monospace";
  const ar=P9.dir>0?"\u2192":"\u2190";
  tvx.fillText(`x=${P9.x.toFixed(1)}  y=${P9.y.toFixed(1)}  `+
