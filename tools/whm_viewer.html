@@ -306,7 +306,7 @@ function drawScope(P9){
   for(let s2=0;s2<strips;s2++){
    const x0=s2*64*S,w0=64*S,hb=(H-PAD);
    tvx.fillStyle=PC[s2%PC.length];
-   tvx.fillRect(x0,0,w0,2);              /* top, 2 px */
+   tvx.fillRect(x0,0,w0,3);              /* top, 3 px */
    tvx.fillRect(x0,hb-1,w0,1);           /* bottom    */
    tvx.fillRect(x0,0,1,hb);              /* left      */
    tvx.fillRect(x0+w0-1,0,1,hb)}         /* right     */
