@@ -656,7 +656,12 @@ static void recv_task(void *arg)
                 if (ri < 0) { for (int q = 0; q < 4; q++)
                     if (!rt[q].nm[0]) { ri = q;
                         strlcpy(rt[q].nm, cchk.from, 16); break; } }
-                if (ri >= 0 && (nn2 <= rt[ri].last ||
+                if (ri >= 0 && nn2 == rt[ri].last)
+                    continue;        /* our own burst x3: shots 2-3
+                                        are duplicates of the
+                                        accepted nonce - silent, so
+                                        real replays stay visible */
+                if (ri >= 0 && (nn2 < rt[ri].last ||
                     nn2 > nw2 + 10000000LL ||
                     nn2 < nw2 - 10000000LL)) {
                     printf("fleet: REPLAY/EXPIRED cmd from %s - "
@@ -1640,8 +1645,8 @@ esp_err_t whm_sync_fleet_send_to(const char *target, const char *line)
                     shot + 1, n, (int)sizeof(sc), errno);
     }
     if (sent) {
-        printf("fleet: tx %dB cmd v%u SIGNED x%d -> "
-               "broadcast:7777\n", (int)sizeof(sc), c.ver, sent);
+        printf("fleet: tx %dB cmd v3 SIGNED x%d -> "
+               "broadcast:7777\n", (int)sizeof(sc), sent);
         return ESP_OK;
     }
     return ESP_FAIL;

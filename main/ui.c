@@ -3837,6 +3837,12 @@ static void chrome(const char *title, screen_t idx)
  * mid-sentence at a random phase of a global clock. */
 #define MARQ_SLOTS 7   /* slot 6 = overlay */
 typedef enum { MQ_READ, MQ_BOUNCE } marq_mode_t;
+static int64_t whm_marq_clock(void)
+{
+    int64_t t = whm_wifi_tsf_now();      /* the fleet's clock */
+    return t > 0 ? t : esp_timer_get_time();
+}
+
 static void marquee_m(uint8_t slot, marq_mode_t mode, uint16_t x, uint16_t y,
                       uint16_t w, const char *s, uint8_t scale,
                       uint8_t r, uint8_t g, uint8_t b)
@@ -3853,7 +3859,7 @@ static void marquee_m(uint8_t slot, marq_mode_t mode, uint16_t x, uint16_t y,
         st[slot].tw != tw) {
         strlcpy(st[slot].sig, s, sizeof(st[slot].sig));
         st[slot].tw = tw;
-        st[slot].t0 = esp_timer_get_time();
+        st[slot].t0 = (whm_marq_clock() / 500000) * 500000; /* 500ms grid: shared clock + shared slot = identical marquee phase fleet-wide */
     }
     uint32_t over = tw - w;
     const uint32_t hold = 1200, per_px = 45;   /* ~22 px/s reading pace */
@@ -3862,7 +3868,7 @@ static void marquee_m(uint8_t slot, marq_mode_t mode, uint16_t x, uint16_t y,
     if (mode == MQ_BOUNCE) {
         /* start at the beginning, glide left, glide back, repeat */
         uint32_t period = 2 * (hold + run);
-        uint32_t t = (uint32_t)(((esp_timer_get_time() - st[slot].t0)
+        uint32_t t = (uint32_t)(((whm_marq_clock() - st[slot].t0)
                                  / 1000) % period);
         if (t < hold) off = 0;
         else if (t < hold + run) off = (t - hold) / per_px;
@@ -3870,7 +3876,7 @@ static void marquee_m(uint8_t slot, marq_mode_t mode, uint16_t x, uint16_t y,
         else off = over - (t - 2 * hold - run) / per_px;
     } else {
         uint32_t period = hold + run + hold;
-        uint32_t t = (uint32_t)(((esp_timer_get_time() - st[slot].t0)
+        uint32_t t = (uint32_t)(((whm_marq_clock() - st[slot].t0)
                                  / 1000) % period);
         if (t < hold) off = 0;
         else if (t < hold + run) off = (t - hold) / per_px;

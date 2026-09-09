@@ -24,6 +24,7 @@ int64_t   whm_mp3_sync_err_us(void);    /* INT64_MIN when not syncing */        
 esp_err_t whm_mp3_dj_start(int n);      /* Mode B: play + stream */
 void      whm_mp3_dj_stop(void);
 void      whm_mp3_now_title(char *out, size_t n);
+void      whm_mp3_diag(bool on);
 bool      whm_mp3_dj_active(void);
 void      whm_mp3_b_on_pkt(const char *from, uint32_t rate, uint8_t ch,
                            bool playing, const char *title);

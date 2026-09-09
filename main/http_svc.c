@@ -152,6 +152,35 @@ static bool sha256_file(const char *path, char out[65])
     return true;
 }
 
+
+/* ---- sidecar hash cache: /sdcard/.whmhash lines "sha|size|name" -
+   first boot hashes once (30-50s for 5 tracks in the field); every
+   boot after resolves instantly. Size+name keyed; edit a file and
+   it re-hashes. */
+static bool hc_get(const char *nm2, long sz2, char *sha_out)
+{
+    FILE *f = fopen("/sdcard/.whmhash", "r");
+    if (!f) return false;
+    char ln[200]; bool hit = false;
+    while (fgets(ln, sizeof(ln), f)) {
+        char *p1 = strchr(ln, '|'); if (!p1) continue;
+        char *p2 = strchr(p1 + 1, '|'); if (!p2) continue;
+        *p1 = 0; *p2 = 0;
+        char *nl = strchr(p2 + 1, '\n'); if (nl) *nl = 0;
+        if (atol(p1 + 1) == sz2 && strcmp(p2 + 1, nm2) == 0) {
+            strlcpy(sha_out, ln, 65); hit = true; break;
+        }
+    }
+    fclose(f);
+    return hit;
+}
+static void hc_put(const char *nm2, long sz2, const char *sha_in)
+{
+    FILE *f = fopen("/sdcard/.whmhash", "a");
+    if (!f) return;
+    fprintf(f, "%s|%ld|%s\n", sha_in, sz2, nm2);
+    fclose(f);
+}
 static void manifest_build(void)
 {
     if (!s_dirty) return;
@@ -173,8 +202,14 @@ static void manifest_build(void)
         media_ent_t *m = &s_ents[s_ent_n];
         *m = pre;
         m->size = (long)st.st_size;
-        ESP_LOGI(TAG, "hashing %s (%ld bytes)...", m->name, m->size);
-        if (!sha256_file(path, m->sha)) m->sha[0] = 0;
+        if (hc_get(m->name, m->size, m->sha)) {
+            /* sidecar hit: skip the 5-10s hash */
+        } else {
+            ESP_LOGI(TAG, "hashing %s (%ld bytes)...", m->name,
+                     m->size);
+            if (!sha256_file(path, m->sha)) m->sha[0] = 0;
+            else hc_put(m->name, m->size, m->sha);
+        }
         s_ent_n++;
     }
     closedir(d);

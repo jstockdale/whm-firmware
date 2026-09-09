@@ -731,10 +731,22 @@ static int cmd_mp3(int argc, char **argv)
             printf("manifest lookup failed\n");
             return 1;
         }
+        t = whm_wifi_tsf_now();   /* re-sample: first-time hashing
+                                     above can take 30-50s and the
+                                     entry-time t made the downbeat
+                                     ancient history (-49s in the
+                                     field log) */
         int64_t start = t + 750000;
         whm_sync_play_send(name, sha, start, false);
         whm_mp3_fleet_play_m(name, sha, start, false, true, NULL);
         printf("mode A: '%s' fleet-wide, downbeat in 750ms\n", name);
+        return 0;
+    }
+    if (strcmp(argv[1], "diag") == 0) {
+        bool on = !(argc >= 3 && strcmp(argv[2], "off") == 0);
+        whm_mp3_diag(on);
+        printf("mode A diag: %s (1 Hz [A] line while engaged)\n",
+               on ? "on" : "off");
         return 0;
     }
     if (strcmp(argv[1], "play") == 0) {
@@ -1591,7 +1603,7 @@ static const cmd_ent_t k_cmds[] = {
     { "mem",        "mem [tasks]",                    "heap audit (+per-task stack high-water)", cmd_mem },
     { "ble",        "ble [pair [secs]|off]",          "wh-link BLE (pair window/status)", cmd_ble },
     { "life",       "life [pal|next|reset]",          "game-of-life colors",           cmd_life },
-    { "mp3",        "mp3 list|play|fleet|dj [n|stop]|layout|overlay|vol",
+    { "mp3",        "mp3 list|play|fleet|dj|diag [n|stop|off]|layout|overlay|vol",
                                                       "music from /sdcard/media",      cmd_mp3 },
     { "timer",      "timer [start|stop|pause|reset|set|default]",
                                                       "countdown; beeps + grabs screen", cmd_timer },

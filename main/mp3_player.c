@@ -111,6 +111,10 @@ static bool s_fs_master;                   /* I issued this fleet play:
 static char s_fs_master_name[17];          /* whose beacons to trust */
 static volatile int64_t s_ma_ref_tsf, s_ma_ref_idx;
 static int64_t s_ma_last_tx;
+static uint32_t s_ma_bcn_n;              /* beacons heard this run */
+static int64_t s_ma_bcn_us;              /* local rx time of last */
+static volatile bool s_ma_diag = true;   /* 1 Hz [A] ledger */
+void whm_mp3_diag(bool on) { s_ma_diag = on; }
 
 static int64_t ma_beacon_due(int64_t now)
 {
@@ -125,6 +129,8 @@ void whm_mp3_a_on_beacon(const char *from, int64_t tsf, int64_t idx)
         strcasecmp(from, s_fs_master_name) != 0) return;
     s_ma_ref_tsf = tsf;
     s_ma_ref_idx = idx;
+    s_ma_bcn_n++;
+    s_ma_bcn_us = esp_timer_get_time();
     if (s_due_fn != ma_beacon_due && s_due_fn != bf_due) {
         s_due_fn = ma_beacon_due;   /* upgrade: chase the MASTER's
                                        real audio, not the formula */
@@ -455,6 +461,28 @@ static void eng_write(const int16_t *out, int frames)
             s_fs_prime_until = s_fs_start + 400000LL;
         }
         int64_t now = whm_wifi_tsf_now();
+        if (s_ma_diag) {             /* the owner's 1 Hz ledger */
+            static int64_t dgl;
+            if (now - dgl > 1000000) {
+                dgl = now;
+                if (s_fs_master) {
+                    printf("[A] M cont=%lld tx@500ms hz=%d\n",
+                           (long long)s_fs_content, s_hz);
+                } else {
+                    int64_t age = s_ma_bcn_us
+                        ? (esp_timer_get_time() - s_ma_bcn_us)
+                              / 1000 : -1;
+                    printf("[A] F ppm=%+.1f err=%+lldus "
+                           "cont=%lld bcn=%u age=%lldms %s\n",
+                           (double)s_rs_ppm,
+                           (long long)s_fs_err_us,
+                           (long long)s_fs_content,
+                           (unsigned)s_ma_bcn_n,
+                           (long long)age,
+                           s_due_fn ? "LOCKED" : "formula");
+                }
+            }
+        }
         int64_t due = s_due_fn ? s_due_fn(now)
                     : ((now - s_fs_start) * s_hz) / 1000000LL;
         if (!s_fs_primed) {
@@ -1142,6 +1170,15 @@ esp_err_t whm_mp3_fleet_play(const char *name, const char *sha,
         printf("[modeA] '%s' downbeat in %dms\n", name,
                (int)((start_tsf - tn) / 1000));
     }
+    s_ma_ref_tsf = 0;            /* ARM RESET: a stale ref from the
+                                    previous run poisoned the due
+                                    formula until the first new
+                                    beacon - the 65s/120s hard-
+                                    resync pairs in the field log,
+                                    one per replay. Clean slate. */
+    s_ma_ref_idx = 0;
+    s_due_fn = NULL;
+    s_ma_bcn_n = 0;
     s_fs_start = start_tsf;
     strlcpy(s_fs_name, name, sizeof(s_fs_name));
     post(OP_FLEET, idx);
