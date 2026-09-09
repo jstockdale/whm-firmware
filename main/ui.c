@@ -277,7 +277,9 @@ static uint32_t s_wkf_ok, s_wkf_snap, s_wkf_stale;
 static struct { uint32_t step; uint8_t from, to; } s_wkh[8];
 static uint8_t s_wkh_w;
 static bool s_wk_shadowing;      /* shadow steps: no trace writes */
-static bool s_wk_pure;               /* bisection: strip influences */
+static bool s_wk_pure;
+static volatile bool s_wk_replaying;
+bool whm_ui_wk_replaying(void) { return s_wk_replaying; }               /* bisection: strip influences */
 static bool wk_i_own(void)
 {
     return s_w_n <= 1 || s_wko.owner == s_w_idx;
@@ -746,7 +748,12 @@ static void wk_respawn(int64_t t, uint8_t n)
        later the Baton and the Edge Law govern as usual. */
     s_wko.owner = 0;
     s_wko.own_tsf = 1;               /* any real claim outranks */
-    s_wko.rx_us = esp_timer_get_time();
+    s_wko.rx_us = whm_wifi_tsf_now();   /* THE RIGHT CLOCK: the
+        silence compare runs on the TSF timeline (t); seeding this
+        from esp_timer made t - rx_us ~ 1e12 us and tripped "owner
+        silent" on the first check after EVERY respawn - the Cold
+        Open's courtesy window never existed. Field-caught by the
+        UTC stamps: seize at +215 ms against a 2 s window. */
     s_wko.grace_until = 0;
     s_wko.ev_step = 0;
     s_wko.last_tx = 0;
@@ -2110,13 +2117,14 @@ void whm_ui_wkb_rx(uint8_t owner, float x, int8_t y, uint8_t st,
                    uint8_t phase, uint8_t turn_cd, uint8_t fresh)
 {
     if (s_w_n <= 1 || owner >= s_w_n) return;
-    int64_t nowu = esp_timer_get_time();
+    int64_t nowu = whm_wifi_tsf_now();
     s_wko.rx_us = nowu;          /* ANY authentic beacon = owner alive
                                     (liveness before all filtering) */
     /* OWNERSHIP ARBITRATION by step-freshness: a claim is accepted
        only from a NEWER step than the last accepted claim - crossed
        stale beacons can never resurrect a dead owner (the flip-flop
        that turned two correctors loose on each other). */
+    if (s_wk_replaying) return;  /* Quiet Replay: adopt after catch-up */
     if (btsf > s_wko.own_tsf) {
         s_wko.own_tsf = btsf;
         bool was_me = wk_i_own();
@@ -2126,7 +2134,7 @@ void whm_ui_wkb_rx(uint8_t owner, float x, int8_t y, uint8_t st,
                units demoting each other can never form the mutual
                silence that machine-gunned the seizure (33 in a row).
                Silence windows are structurally impossible now. */
-            s_wko.grace_until = esp_timer_get_time() + 2000000;
+            s_wko.grace_until = whm_wifi_tsf_now() + 2000000;
             /* THE BATON, root B: grace now runs until the
                SUCCESSOR is heard (a newer claim for the strip I
                yielded ends it early below) or 2 s - six lost
@@ -3317,10 +3325,21 @@ static void pat_walker(int64_t t)
                                      step debt from this window */
         s_wko.resync = 0;
         s_wk_steps = want;   /* closed-form cam needs no escort */
+        s_wk_replaying = false;
+        s_wko.rx_us = whm_wifi_tsf_now();
     }
     while (s_wk_steps < want) {
         int64_t ts = s_wk_anchor * WK_ANCHOR_US +
                      (int64_t)(s_wk_steps + 1) * WK_TICK_US;
+        /* THE QUIET REPLAY: while fast-forwarding history, wall
+           time races sim time - so every ownership organ (silence,
+           seize, Edge-Law handoff, keyframe TX) fired against a
+           clock the sim hadn't reached, bursting ANCIENT poses the
+           peer then adopted: instant cross-contamination, before
+           either sim reached "now". During replay the book is
+           read-only and the wire is silent. */
+        bool wk_live = (want - s_wk_steps) <= 3;
+        s_wk_replaying = !wk_live;
         if (s_wk.st == WK_SHIMMY) {        /* cling to the left bezel */
             s_wk.x = wk_cam(ts) + 2.0f;
             s_wk.tgt = wk_cam(ts) + (float)n * 64.0f;  /* right edge */
@@ -3434,7 +3453,8 @@ static void pat_walker(int64_t t)
                flipped at walking frequency, every flip opened a
                keyframe gap that tripped "silent". Hand off only
                once he is genuinely INSIDE the new strip. */
-            if (ns >= 0 && ns < (int)s_w_n && ns != (int)s_w_idx
+            if (wk_live &&
+                ns >= 0 && ns < (int)s_w_n && ns != (int)s_w_idx
                 && frh >= 4.0f && frh <= 60.0f) {
                 s_wko.owner = (uint8_t)ns;      /* HANDOFF */
                 s_wko.own_tsf = whm_wifi_tsf_now();
@@ -3662,6 +3682,7 @@ static void pat_walker(int64_t t)
                             (uint8_t)s_w_n);
                     }
                 }
+                if (!s_wk_replaying)
                 whm_sync_wkb_send(s_wko.owner, fx, fy, fst, fdir,
                                   ftm, fstep, ftg, fvx,
                               s_wk.vy, s_wk.spd, s_wk.sdir,
@@ -3669,7 +3690,11 @@ static void pat_walker(int64_t t)
                               s_wk.fresh);
                 }
             }
-            if (!wk_i_own() && t - s_wko.rx_us > 2000000) {
+            if (!s_wk_replaying && !wk_i_own() &&
+                t - s_wko.rx_us > 3500000) {
+                /* seize = guarded LAST resort (owner): live only,
+                   3.5 s of true silence, and geometrically inside
+                   my strip per the deadband below. */
                 float sxz = s_wk.x - cam;
                 int ns = wk_own_strip(s_wk.x, cam, (int)s_w_n);
                 bool inz = sxz >= 0.0f &&
