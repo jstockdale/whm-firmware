@@ -7,6 +7,10 @@ input{background:#141a24;color:#cfd8e3;border:1px solid #2a3446;padding:4px 8px;
 button{background:#1d2736;color:#cfd8e3;border:1px solid #2a3446;padding:4px 12px;cursor:pointer}
 #dot{width:10px;height:10px;border-radius:5px;background:#e5484d}
 #dot.on{background:#46c390}
+#dot.try{background:#e8d84a}
+#cstat{color:#8b96a8}
+#cstat.err{color:#e5484d}
+#cstat.ok{color:#46c390}
 button,input,.hr{touch-action:manipulation}
 #cv,#tv{max-width:100%;height:auto}
 #wrap{flex-wrap:wrap}
@@ -39,6 +43,7 @@ canvas{background:#05070b;border:1px solid #2a3446;display:block;margin-bottom:8
 <input id=url value="ws://localhost:8777" inputmode="url"
  autocapitalize="off" autocorrect="off" spellcheck="false"
  enterkeyhint="go"><button id=go>connect</button>
+<span id=cstat></span>
 <span id=name class=pm></span></div>
 <div id=wrap><div id=left>
 <canvas id=cv width=768 height=384></canvas>
@@ -508,11 +513,28 @@ function loop(){requestAnimationFrame(loop);
  catch(e){if(!loop.e){loop.e=1;
   tick("pm","draw error (loop survives): "+e.message)}}}
 requestAnimationFrame(loop);
+let tryN=0;
+function cstat(msg,cls){const s=$("cstat");
+ s.textContent=msg;s.className=cls||""}
 function connect(){if(ws)try{ws.close()}catch(e){}
- ws=new WebSocket($("url").value);
- ws.onopen=()=>{$("dot").className="on";tick("pm","bridge connected")};
- ws.onclose=()=>{$("dot").className="";
-  tick("pm","disconnected - retrying in 2s");
+ const url=$("url").value;tryN++;
+ $("dot").className="try";
+ cstat(`connecting to ${url} ...`);
+ let opened=false,timedOut=false;
+ try{ws=new WebSocket(url)}
+ catch(e){$("dot").className="";
+  cstat(`bad address: ${e.message}`,"err");return}
+ const guard=setTimeout(()=>{if(!opened){timedOut=true;
+  try{ws.close()}catch(e){}}},6000);
+ ws.onopen=()=>{opened=true;tryN=0;clearTimeout(guard);
+  $("dot").className="on";cstat("connected","ok");
+  tick("pm","bridge connected")};
+ ws.onclose=()=>{clearTimeout(guard);$("dot").className="";
+  const why=opened?"disconnected"
+   :timedOut?"timed out (6s) - bridge up? right LAN IP?"
+   :"failed - is the bridge running at that address?";
+  cstat(`${why} - retrying in 2s (#${tryN})`,"err");
+  tick("pm",why+" - retrying in 2s");
   setTimeout(()=>{if(ws&&ws.readyState===3)connect()},2000)};
  ws.onmessage=e=>{try{onPkt(JSON.parse(e.data))}catch(err){}}}
 $("go").onclick=connect;
