@@ -295,9 +295,17 @@ function drawScope(P9){
  tvx.fillStyle="#05070b";tvx.fillRect(0,0,T.width,H);
  tvx.strokeStyle="#16324a";tvx.beginPath();
  tvx.moveTo(0,57*ys);tvx.lineTo(T.width,57*ys);tvx.stroke();
- tvx.strokeStyle="#22303f";
- for(let s2=1;s2<strips;s2++){const bx=s2*64*S;
-  tvx.beginPath();tvx.moveTo(bx,0);tvx.lineTo(bx,H-PAD);tvx.stroke()}
+ {  /* panel legend: each strip's span framed in its own
+       ownership color - strip 0 cyan, strip 1 magenta - so
+       the border tells you which panel is which, and the
+       bezel seam becomes cyan-against-magenta. */
+  const PC=["#41d0ff","#ff5cc8","#7ce0c9","#e8d84a"];
+  tvx.lineWidth=2;
+  for(let s2=0;s2<strips;s2++){
+   tvx.strokeStyle=PC[s2%PC.length];
+   tvx.strokeRect(s2*64*S+1,1,64*S-2,(H-PAD)-2)}
+  tvx.lineWidth=1;
+ }
  for(let i=1;i<TRAIL.length;i++){const a=TRAIL[i-1],b=TRAIL[i];
   if(INS&&Math.abs(b.step-INS.step)>300)continue;
   if(Math.abs(b.x-a.x)>8||Math.abs(b.y-a.y)>16)continue;
