@@ -1,3 +1,6 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later
+ * Copyright (c) 2026 John Stockdale (jstockdale@gmail.com)
+ */
 /* test_vectors.c — cross-implementation golden wire vectors.
  *
  * Both the watch and the ring compile this against THEIR OWN copy of wh_link.h.

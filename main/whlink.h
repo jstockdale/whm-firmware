@@ -1,3 +1,6 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later
+ * Copyright (c) 2026 John Stockdale (jstockdale@gmail.com)
+ */
 /* wh-link on WHM - public surface (L1: link-up + pairing) */
 #pragma once
 #include <stdbool.h>

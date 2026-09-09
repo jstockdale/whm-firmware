@@ -1,3 +1,6 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later
+ * Copyright (c) 2026 John Stockdale (jstockdale@gmail.com)
+ */
 /*
  * bringup_main.c - WHM Phase 0 staged hardware validation.
  *

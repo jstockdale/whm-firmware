@@ -1,3 +1,6 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later
+ * Copyright (c) 2026 John Stockdale (jstockdale@gmail.com)
+ */
 /*
  * wh_link.h — Whitehat device-to-device link protocol (wh-link) v1
  *

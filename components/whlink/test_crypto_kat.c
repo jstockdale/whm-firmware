@@ -1,3 +1,6 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later
+ * Copyright (c) 2026 John Stockdale (jstockdale@gmail.com)
+ */
 /* test_crypto_kat.c — known-answer tests for wh_link_ref_crypto.h
  *
  * Validates every primitive against published RFC/NIST test vectors:

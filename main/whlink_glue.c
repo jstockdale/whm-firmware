@@ -1,3 +1,6 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later
+ * Copyright (c) 2026 John Stockdale (jstockdale@gmail.com)
+ */
 /* wh-link L1 glue: the WH_LINK_IMPLEMENTATION TU + a NimBLE
  * peripheral wearing the ring's GATT contract VERBATIM
  * (RING-LINK-RESPONSE.md):

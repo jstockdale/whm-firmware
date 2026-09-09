@@ -1,3 +1,6 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later
+ * Copyright (c) 2026 John Stockdale (jstockdale@gmail.com)
+ */
 /* dump_vectors.c — emit computed crypto outputs for cross-checking against a
  * trusted independent implementation (Python pyca/cryptography). Deterministic
  * pseudo-random inputs across a range of lengths, plus edge cases (empty aad,

@@ -1,3 +1,6 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later
+ * Copyright (c) 2026 John Stockdale (jstockdale@gmail.com)
+ */
 /* test_protocol.c — wh-link protocol tests (single TU: includes implementation)
  *
  * Covers: header byte-exactness + validation, message round-trips, replay

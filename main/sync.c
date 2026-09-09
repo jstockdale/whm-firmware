@@ -1,3 +1,6 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later
+ * Copyright (c) 2026 John Stockdale (jstockdale@gmail.com)
+ */
 /*
  * sync.c - WHM-LINK P2a: fleet roles, presence, and the fleet wall clock.
  *

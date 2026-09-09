@@ -1,3 +1,6 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later
+ * Copyright (c) 2026 John Stockdale (jstockdale@gmail.com)
+ */
 /*
  * settings.c - NVS-backed settings store (namespace "whm"), now fronted
  * by an internal-stacked BROKER task so PSRAM-stacked tasks (sync rx,

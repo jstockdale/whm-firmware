@@ -1,3 +1,6 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later
+ * Copyright (c) 2026 John Stockdale (jstockdale@gmail.com)
+ */
 /* A separate TU that only includes declarations and uses the API — proves the
  * stb-style one-impl/many-users split links with no missing/duplicate symbols. */
 #include "wh_link.h"

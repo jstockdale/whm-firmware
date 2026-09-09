@@ -1,3 +1,9 @@
+> **STATUS @ 0.56.1 (2026-09-09):** P0/P0.5, P2a/b/c **and P2d** (Mode-A -
+> discovered already built, better than spec; premiered on the bench),
+> P4-OTA: **done**. Security (Signet+Seal) shipped beyond plan. Open:
+> P1 media pipeline, P2e, P3 DDP/ArtNet, P4 provisioning/EVENT, P5.
+> This file is preserved as the original plan; see git log for the road.
+
 # WHM Roadmap
 
 ## Phases (core system)

@@ -1,3 +1,6 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later
+ * Copyright (c) 2026 John Stockdale (jstockdale@gmail.com)
+ */
 /*
  * mp3_player.c - MP3 playback from /sdcard/media with ID3v2 tags and
  * album art on the panel.

@@ -1,3 +1,6 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later
+ * Copyright (c) 2026 John Stockdale (jstockdale@gmail.com)
+ */
 /*
  * audio_test.c - ES8311 (speaker) + ES7210 (dual mic) bring-up.
  *

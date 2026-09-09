@@ -1,3 +1,6 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later
+ * Copyright (c) 2026 John Stockdale (jstockdale@gmail.com)
+ */
 /* ota.c - over-the-air updates riding the P2c HTTP layer.
  *
  *   ota <url|host>   pull an app image, validate, stage it as the boot

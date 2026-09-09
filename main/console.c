@@ -1,3 +1,6 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later
+ * Copyright (c) 2026 John Stockdale (jstockdale@gmail.com)
+ */
 /*
  * console.c - interactive REPL over USB-Serial-JTAG (this board's only
  * exposed console; UART0's default pins are repurposed for I2S/SD here).

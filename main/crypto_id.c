@@ -1,3 +1,6 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later
+ * Copyright (c) 2026 John Stockdale (jstockdale@gmail.com)
+ */
 /* crypto_id.c - node identity (Ed25519 via vendored Monocypher) +
  * TOFU pin store. SSH-model: first-seen pubkey per name is pinned;
  * a later mismatch is screamed about and REJECTED, never silently

@@ -1,3 +1,6 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later
+ * Copyright (c) 2026 John Stockdale (jstockdale@gmail.com)
+ */
 /* display_hal.h - thin C API over the esp-hub75 C++ driver */
 #pragma once
 #include <stdint.h>
