@@ -1019,10 +1019,17 @@ static int cmd_status(int argc, char **argv)
     {
         char nowp[64];
         whm_mp3_now_title(nowp, sizeof(nowp));
-        printf("audio:  %s | %s | servo %+.1f ppm | err %lld us\n",
-               nowp, whm_mp3_is_master() ? "MASTER" : "follower",
-               (double)whm_mp3_sync_ppm(),
-               (long long)whm_mp3_sync_err_us());
+        int64_t se = whm_mp3_sync_err_us();
+        if (se == INT64_MIN) {
+            printf("audio:  %s | idle\n", nowp);
+        } else {
+            printf("audio:  %s | %s | servo %+.1f ppm | "
+                   "err %lld us\n",
+                   nowp,
+                   whm_mp3_is_master() ? "MASTER" : "follower",
+                   (double)whm_mp3_sync_ppm(),
+                   (long long)se);
+        }
     }
     multi_heap_info_t ii;
     heap_caps_get_info(&ii, MALLOC_CAP_INTERNAL);

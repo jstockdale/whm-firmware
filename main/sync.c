@@ -815,8 +815,12 @@ static void recv_task(void *arg)
         if (rbuf[5] == 14 && n == (int)sizeof(whm_kwrap_t)) {
             whm_kwrap_t wr; memcpy(&wr, rbuf, sizeof(wr));
             wr.from[15] = 0; wr.to[15] = 0;
+            bool from_anchor =
+                (strcasecmp(wr.from, s_anchor_name) == 0);
             if (strcasecmp(wr.to, whm_sync_node_name()) == 0 &&
-                !s_kf_have) {
+                (!s_kf_have || from_anchor)) {
+                /* the ANCHOR's wrap always wins - self-mints and
+                   stale keys yield (belt to the step-down wipe) */
                 uint8_t axpk[32], kp[32];
                 if (whm_pinx_get(wr.from, axpk)) {
                     whm_id_xshared(axpk, kp);
@@ -977,6 +981,17 @@ static void election_tick(void)
             mdns_role_update();
             ESP_LOGI(TAG, "stepping down: '%s' (prio %u) outranks me",
                      bn, (unsigned)bp);
+            if (s_kf_have) {          /* ONE KEY TO BIND THEM: a lonely
+                   boot election let us mint before hearing the real
+                   anchor - two keys split the fleet (field log: every
+                   beacon BAD TAG, servo railed -150 on pure formula).
+                   Step-down = defer: wipe the self-mint and take the
+                   anchor's keywrap (rebroadcast ~15s heals us). */
+                s_kf_have = false;
+                crypto_wipe(s_kf, 32);
+                printf("SEAL: self-minted key discarded - awaiting "
+                       "anchor's keywrap\n");
+            }
         }
         return;
     }
