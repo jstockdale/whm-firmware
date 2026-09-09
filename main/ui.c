@@ -234,11 +234,9 @@ static void pat_wander(int64_t t)
     }
     char tag[8];
     if (s_hud) {
-        if (s_hud) {
         snprintf(tag, sizeof(tag), "%u/%u", (unsigned)(s_w_idx + 1),
-                     (unsigned)s_w_n);
-            gfx_text(2, 57, tag, 1, 55, 55, 80);
-        }
+                 (unsigned)s_w_n);
+        gfx_text(2, 57, tag, 1, 55, 55, 80);
     }
 }
 
@@ -2059,7 +2057,7 @@ void whm_ui_nye_join(const char *from, const char *tz, int year,
     s_show.seed = year ? (uint32_t)year * 2654435761u
                        : (uint32_t)(start_tsf / 86400000000LL) * 977u;
     int64_t el = whm_wifi_tsf_now() - start_tsf;
-    float cam_t0 = wk_cam(esp_timer_get_time()) -
+    float cam_t0 = wk_cam(whm_wifi_tsf_now()) -
                    (float)((double)el / 1e6) * WK_CAM_SPD;
     /* THE STAGE COMES HOME (field: walker exits panel 2 right and
        sits offstage; zero fireworks visible). +148 is NYE geometry:
@@ -2074,6 +2072,7 @@ void whm_ui_nye_join(const char *from, const char *tz, int year,
        keeps its far stage and its long walk. */
     s_show.scene_x0 = (year == 0) ? -1.0f : cam_t0 + 148.0f;
     s_show.banner = 0;
+    if (from[0]) whm_lts();
     if (from[0]) printf("NYE takeover from %s (%s %d) - joining the "
                         "show\n", from, s_show.tz, year);
 }
@@ -3808,10 +3807,23 @@ static void pat_walker(int64_t t)
         fw_tick(t);
         fw_render_all(t);
     }
-    char tag[8];
-    snprintf(tag, sizeof(tag), "%u/%u", (unsigned)(s_w_idx + 1),
-             (unsigned)n);
-    gfx_text(2, 2, tag, 1, 6, 6, 15);
+    if (s_hud) {                     /* 0.59.3's wrap never landed
+                                        here - hud off left this tag
+                                        lit; caught by the view */
+        char tag[8];
+        snprintf(tag, sizeof(tag), "%u/%u", (unsigned)(s_w_idx + 1),
+                 (unsigned)n);
+        gfx_text(2, 2, tag, 1, 6, 6, 15);
+    }
+    if (s_hud && s_show.phase == 0) {          /* HH:MM, top-right */
+        struct tm lt9; suseconds_t us9;
+        if (wall_now(&lt9, &us9)) {
+            char ck[6];
+            snprintf(ck, sizeof(ck), "%02d:%02d",
+                     lt9.tm_hour, lt9.tm_min);
+            gfx_text(64 - 5 * 4 - 1, 2, ck, 1, 8, 8, 16);
+        }
+    }
 }
 
 /* -------- game-of-life palettes -------- */
