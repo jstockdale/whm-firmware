@@ -114,6 +114,8 @@ static bool s_fs_master;                   /* I issued this fleet play:
 static char s_fs_master_name[17];          /* whose beacons to trust */
 static volatile int64_t s_ma_ref_tsf, s_ma_ref_idx;
 static int64_t s_ma_last_tx;
+static int64_t s_fs_cont_tsf;            /* tsf of last content advance
+                                            (master: beacon interp) */
 static uint32_t s_ma_bcn_n;              /* beacons heard this run */
 static int64_t s_ma_bcn_us;              /* local rx time of last */
 static volatile bool s_ma_diag = true;   /* 1 Hz [A] ledger */
@@ -503,27 +505,64 @@ static void eng_write(const int16_t *out, int frames)
             s_fs_err_us = 0;
             if (now - s_ma_last_tx > 500000) {
                 s_ma_last_tx = now;
-                whm_sync_mab_send(now, s_fs_content);
+                /* FLYWHEEL A: interpolate content to the microsecond.
+                   Raw s_fs_content is 24ms-quantized (1152-sample MP3
+                   frames) - the follower's entire +-12ms noise floor
+                   was THIS, at the source. */
+                int64_t ci = s_fs_content + (s_fs_cont_tsf
+                    ? (now - s_fs_cont_tsf) * s_hz / 1000000LL : 0);
+                whm_sync_mab_send(now, ci);
             }
             whm_audio_spk_write(out, (size_t)frames * 2 *
                                          sizeof(int16_t));
             s_fs_content += frames;
+            s_fs_cont_tsf = now;
             return;
         } else {
             int64_t e_us = (s_fs_content - due) * 1000000LL / s_hz;
             s_fs_err_us = e_us;
-            if (e_us > 50000 || e_us < -50000) {
-                s_fs_content = due;      /* wifi stall etc. */
-                s_rs_ppm = 0.0f;
-                ESP_LOGW(TAG, "mode A: hard resync (%lldus) - TSF "
-                         "wobble or stall; follower re-locks",
-                         (long long)e_us);
-            } else if (now - s_rs_srv_t >= 100000) {
+            /* FLYWHEEL B/C: the old law was Kp = 0.35 ppm/us - 350
+               ppm per ms - so +-12ms of beacon quantization railed a
+               +-150 clamp instantly and the 50ms raw-error resync
+               turned noise spikes into rail-to-rail sawtooth (the
+               field ledger's signature). New discipline: median-5
+               error filter, PI with Kp = 3 ppm/ms and a slow Ki that
+               eats the static pipeline bias, and resync only on a
+               SUSTAINED filtered miss (>120ms, 3 servo ticks). */
+            static int64_t eh[5]; static int ehn; static int rsn;
+            static float integ;
+            if (now - s_rs_srv_t >= 100000) {
                 s_rs_srv_t = now;
-                float tgt = -(float)e_us * 0.35f;
-                if (tgt > 150.0f) tgt = 150.0f;
-                if (tgt < -150.0f) tgt = -150.0f;
-                s_rs_ppm += 0.30f * (tgt - s_rs_ppm);   /* slewed */
+                eh[ehn % 5] = e_us; ehn++;
+                int nn = ehn < 5 ? ehn : 5;
+                int64_t t5[5]; memcpy(t5, eh, sizeof(t5));
+                for (int a = 0; a < nn; a++)
+                    for (int b = a + 1; b < nn; b++)
+                        if (t5[b] < t5[a]) {
+                            int64_t sw = t5[a]; t5[a] = t5[b];
+                            t5[b] = sw;
+                        }
+                int64_t med = t5[nn / 2];
+                if (med > 120000 || med < -120000) {
+                    if (++rsn >= 3) {
+                        s_fs_content = due;
+                        s_rs_ppm = 0.0f; integ = 0.0f;
+                        ehn = 0; rsn = 0;
+                        ESP_LOGW(TAG, "mode A: hard resync "
+                                 "(%lldus sustained) - re-locks",
+                                 (long long)med);
+                    }
+                } else {
+                    rsn = 0;
+                    float pk = -(float)med * 0.003f;
+                    integ += -(float)med * 0.00006f;
+                    if (integ > 60.0f) integ = 60.0f;
+                    if (integ < -60.0f) integ = -60.0f;
+                    float tgt = pk + integ;
+                    if (tgt > 150.0f) tgt = 150.0f;
+                    if (tgt < -150.0f) tgt = -150.0f;
+                    s_rs_ppm += 0.30f * (tgt - s_rs_ppm);
+                }
             }
         }
         if (!s_rs_out) {
@@ -1265,7 +1304,15 @@ esp_err_t whm_mp3_track_info(int idx, char *title, size_t tl,
     return ESP_OK;
 }
 
-void whm_mp3_play(int idx) { post(OP_PLAY, idx); }
+void whm_mp3_play(int idx)
+{
+    s_fs_start = 0;                 /* plain play exits mode-A here:
+                                       the field capture showed a
+                                       ghost beacon-chase (+79s err)
+                                       when they overlapped */
+    s_due_fn = NULL;
+    post(OP_PLAY, idx);
+}
 void whm_mp3_stop(void) { post(OP_STOP, 0); }
 void whm_mp3_next(void) { post(OP_NEXT, 0); }
 void whm_mp3_prev(void) { post(OP_PREV, 0); }
