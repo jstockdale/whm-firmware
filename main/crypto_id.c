@@ -10,6 +10,7 @@
 #include <stdio.h>
 
 static uint8_t s_sk[64], s_pk[32];
+static uint8_t s_xsk[32], s_xpk[32];
 static bool s_up;
 
 void whm_id_init(void)
@@ -20,12 +21,18 @@ void whm_id_init(void)
     if (nvs_get_blob(h, "sk", s_sk, &n) == ESP_OK && n == 64) {
         n = sizeof(s_pk);
         nvs_get_blob(h, "pk", s_pk, &n);
+        n = 32; nvs_get_blob(h, "xsk", s_xsk, &n);
+        n = 32; nvs_get_blob(h, "xpk", s_xpk, &n);
     } else {
         uint8_t seed[32];
         esp_fill_random(seed, sizeof(seed));
         crypto_eddsa_key_pair(s_sk, s_pk, seed);
         nvs_set_blob(h, "sk", s_sk, 64);
         nvs_set_blob(h, "pk", s_pk, 32);
+        esp_fill_random(s_xsk, 32);
+        crypto_x25519_public_key(s_xpk, s_xsk);
+        nvs_set_blob(h, "xsk", s_xsk, 32);
+        nvs_set_blob(h, "xpk", s_xpk, 32);
         nvs_commit(h);
         char fp[17]; whm_id_fp(s_pk, fp);
         printf("identity: NEW keypair minted, fp %s\n", fp);
@@ -34,6 +41,27 @@ void whm_id_init(void)
     s_up = true;
 }
 const uint8_t *whm_id_pk(void) { return s_pk; }
+const uint8_t *whm_id_xpk(void) { return s_xpk; }
+void whm_id_xshared(const uint8_t their_xpk[32], uint8_t out[32])
+{
+    crypto_x25519(out, s_xsk, their_xpk);
+}
+bool whm_pinx_get(const char *name, uint8_t xpk[32])
+{
+    char k[16]; snprintf(k, sizeof(k), "x.%s", name);
+    nvs_handle_t h; size_t n = 32; bool okk = false;
+    if (nvs_open("pins", NVS_READONLY, &h) != ESP_OK) return false;
+    okk = nvs_get_blob(h, k, xpk, &n) == ESP_OK && n == 32;
+    nvs_close(h);
+    return okk;
+}
+void whm_pinx_put(const char *name, const uint8_t xpk[32])
+{
+    char k[16]; snprintf(k, sizeof(k), "x.%s", name);
+    nvs_handle_t h;
+    if (nvs_open("pins", NVS_READWRITE, &h) != ESP_OK) return;
+    nvs_set_blob(h, k, xpk, 32); nvs_commit(h); nvs_close(h);
+}
 void whm_id_sign(const uint8_t *m, size_t n, uint8_t sig[64])
 {
     if (!s_up) { memset(sig, 0, 64); return; }

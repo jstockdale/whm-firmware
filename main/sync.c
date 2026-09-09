@@ -15,6 +15,9 @@
  */
 #include "sync.h"
 #include "crypto_id.h"
+#include "monocypher.h"
+#include "nvs.h"
+#include "esp_random.h"
 
 #include <string.h>
 #include <stdio.h>
@@ -148,8 +151,70 @@ typedef struct __attribute__((packed)) {
     uint8_t magic[4], ver, type, rsv[2];
     char    name[16];
     uint8_t pk[32];
-} whm_idt_t;                              /* type-13 IDENT, 56 B */
-_Static_assert(sizeof(whm_idt_t) == 56, "ident wire");
+    uint8_t xpk[32];                      /* x25519 exchange key */
+} whm_idt_t;                              /* type-13 IDENT, 88 B */
+_Static_assert(sizeof(whm_idt_t) == 88, "ident wire");
+
+typedef struct __attribute__((packed)) {
+    uint8_t magic[4], ver, type, rsv[2];
+    char    from[16], to[16];
+    uint8_t nonce[24], ct[32], mac[16];
+} whm_kwrap_t;                            /* type-14 KEYWRAP */
+_Static_assert(sizeof(whm_kwrap_t) == 112, "kwrap wire");
+
+static uint8_t s_kf[32];                  /* fleet group key */
+static bool s_kf_have, s_sec_strict;
+static uint32_t s_seal_grace_warns;
+static void sec_load(void)
+{
+    static bool done; if (done) return; done = true;
+    nvs_handle_t hh; uint8_t v = 0;
+    if (nvs_open("sec", NVS_READONLY, &hh) == ESP_OK) {
+        nvs_get_u8(hh, "strict", &v); nvs_close(hh);
+    }
+    s_sec_strict = v != 0;
+}
+
+static int seal_tx(uint8_t *buf, int len)
+{
+    if (!s_kf_have) return len;
+    crypto_blake2b_keyed(buf + len, 16, s_kf, 32, buf, len);
+    return len + 16;
+}
+static bool seal_rx(const uint8_t *b, int n, int base,
+                    const char *what)
+{
+    sec_load();
+    if (n == base) {
+        if (s_sec_strict) {
+            printf("SEAL: UNSIGNED %s DROPPED (strict)\n", what);
+            return false;
+        }
+        if ((s_seal_grace_warns++ % 64) == 0)
+            printf("SEAL: unsigned %s honored (grace; 'secure "
+                   "strict on' to enforce)\n", what);
+        return true;
+    }
+    if (n == base + 16 && s_kf_have) {
+        uint8_t t[16];
+        crypto_blake2b_keyed(t, 16, s_kf, 32, b, base);
+        if (crypto_verify16(b + base, t) == 0) return true;
+        printf("SEAL: BAD TAG on %s - DROPPED\n", what);
+        return false;
+    }
+    return !s_sec_strict && n == base + 16; /* tagged, no key yet */
+}
+bool whm_sync_secure_status(bool *strict)
+{ sec_load(); *strict = s_sec_strict; return s_kf_have; }
+void whm_sync_secure_strict(bool on)
+{
+    s_sec_strict = on;
+    nvs_handle_t hh;
+    if (nvs_open("sec", NVS_READWRITE, &hh) == ESP_OK) {
+        nvs_set_u8(hh, "strict", on ? 1 : 0);
+        nvs_commit(hh); nvs_close(hh);
+    }
+}
 
 _Static_assert(sizeof(whm_cmd_t) == 212,
                "cmd v2 wire format: 212 bytes on every unit");
@@ -375,8 +440,42 @@ static void announce_task(void *arg)
                                  .ver = 2, .type = 13 };
                 strlcpy(id.name, whm_sync_node_name(), sizeof(id.name));
                 memcpy(id.pk, whm_id_pk(), 32);
+                memcpy(id.xpk, whm_id_xpk(), 32);
                 sendto(s_sock, &id, sizeof(id), 0,
                        (struct sockaddr *)&dst, sizeof(dst));
+            }
+            if (s_role == WHM_SYNC_CONDUCTOR) {
+                if (!s_kf_have) {
+                    esp_fill_random(s_kf, 32);
+                    s_kf_have = true;
+                    printf("SEAL: fleet key minted (anchor)\n");
+                }
+                if (tick % 3 == 1) {      /* wraps ride along */
+                    for (int pi = 0; ; pi++) {
+                        char pn[16]; char pf[8]; uint32_t ag;
+                        uint8_t prole2;
+                        if (!whm_sync_peer_iter(pi, pn, pf, &ag,
+                                                &prole2)) break;
+                        uint8_t pxpk[32];
+                        if (!whm_pinx_get(pn, pxpk)) continue;
+                        whm_kwrap_t w = { .magic = {'W','H','M',
+                                          'L'}, .ver = 2,
+                                          .type = 14 };
+                        strlcpy(w.from, whm_sync_node_name(),
+                                sizeof(w.from));
+                        strlcpy(w.to, pn, sizeof(w.to));
+                        esp_fill_random(w.nonce, 24);
+                        uint8_t kp[32];
+                        whm_id_xshared(pxpk, kp);
+                        crypto_aead_lock(w.ct, w.mac, kp,
+                                         w.nonce, NULL, 0,
+                                         s_kf, 32);
+                        crypto_wipe(kp, 32);
+                        sendto(s_sock, &w, sizeof(w), 0,
+                               (struct sockaddr *)&dst,
+                               sizeof(dst));
+                    }
+                }
             }
         }
         tick++;
@@ -619,19 +718,22 @@ static void recv_task(void *arg)
             whm_sync_defer_line(c.line, c.exec_at);
             continue;
         }
-        if (rbuf[5] == 9 && n == (int)sizeof(whm_wkb_t)) {
+        if (rbuf[5] == 9 && (n == (int)sizeof(whm_wkb_t) || n == (int)sizeof(whm_wkb_t) + 16)) {
+            if (!seal_rx(rbuf, n, (int)sizeof(whm_wkb_t), "keyframe")) continue;
             whm_wkb_t w;
             memcpy(&w, rbuf, sizeof(w));
             char me6[17] = "";
             my_name(me6, sizeof(me6));
             if (strcmp(w.from, me6) != 0) {
-        if (rbuf[5] == 10 && n >= 24) {
+        if (rbuf[5] == 10 && (n == 24 || n == 40)) {
+            if (!seal_rx(rbuf, n, 24, "wkparams")) continue;
             float c10;
             memcpy(&c10, rbuf + 16, 4);    /* cam POSITION (owner
                                               authoritative snap) */
             whm_ui_cam_set(c10);
         }
-        if (rbuf[5] == 11 && n >= (int)sizeof(whm_wki_t)) {
+        if (rbuf[5] == 11 && (n == (int)sizeof(whm_wki_t) || n == (int)sizeof(whm_wki_t) + 16)) {
+            if (!seal_rx(rbuf, n, (int)sizeof(whm_wki_t), "wkinput")) continue;
             whm_wki_t ki;
             memcpy(&ki, rbuf, sizeof(ki));
             char me2[16];
@@ -658,6 +760,26 @@ static void recv_task(void *arg)
             }
             continue;
         }
+        if (rbuf[5] == 14 && n == (int)sizeof(whm_kwrap_t)) {
+            whm_kwrap_t wr; memcpy(&wr, rbuf, sizeof(wr));
+            wr.from[15] = 0; wr.to[15] = 0;
+            if (strcasecmp(wr.to, whm_sync_node_name()) == 0 &&
+                !s_kf_have) {
+                uint8_t axpk[32], kp[32];
+                if (whm_pinx_get(wr.from, axpk)) {
+                    whm_id_xshared(axpk, kp);
+                    if (crypto_aead_unlock(s_kf, wr.mac, kp,
+                                           wr.nonce, NULL, 0,
+                                           wr.ct, 32) == 0) {
+                        s_kf_have = true;
+                        printf("SEAL: fleet key received from "
+                               "%s\n", wr.from);
+                    }
+                    crypto_wipe(kp, 32);
+                }
+            }
+            continue;
+        }
         if (rbuf[5] == 13 && n == (int)sizeof(whm_idt_t)) {
             whm_idt_t idr;
             memcpy(&idr, rbuf, sizeof(idr));
@@ -666,9 +788,12 @@ static void recv_task(void *arg)
             char fp[17];
             if (!whm_pin_get(idr.name, pin)) {
                 whm_pin_put(idr.name, idr.pk);
+                whm_pinx_put(idr.name, idr.xpk);
                 whm_id_fp(idr.pk, fp);
                 printf("identity: PINNED %s fp %s (TOFU)\n",
                        idr.name, fp);
+            } else if (memcmp(pin, idr.pk, 32) == 0) {
+                whm_pinx_put(idr.name, idr.xpk); /* refresh x */
             } else if (memcmp(pin, idr.pk, 32) != 0) {
                 char fpo[17];
                 whm_id_fp(pin, fpo); whm_id_fp(idr.pk, fp);
@@ -679,7 +804,8 @@ static void recv_task(void *arg)
             }
             continue;
         }
-        if (rbuf[5] == 8 && n == (int)sizeof(whm_mab_t)) {
+        if (rbuf[5] == 8 && (n == (int)sizeof(whm_mab_t) || n == (int)sizeof(whm_mab_t) + 16)) {
+            if (!seal_rx(rbuf, n, (int)sizeof(whm_mab_t), "beacon")) continue;
             whm_mab_t mb;
             memcpy(&mb, rbuf, sizeof(mb));
             char me5[17] = "";
@@ -1230,8 +1356,11 @@ esp_err_t whm_sync_walk_input_send(uint8_t act, uint32_t exec_step,
     dst.sin_port = htons(7777);
     dst.sin_addr.s_addr = htonl(INADDR_BROADCAST);
     for (int i = 0; i < 3; i++)
-        sendto(s_sock, &k, sizeof(k), 0, (struct sockaddr *)&dst,
-               sizeof(dst));
+        { uint8_t sb9[sizeof(k) + 16];
+          memcpy(sb9, &k, sizeof(k));
+          int sl9 = seal_tx(sb9, (int)sizeof(k));
+          sendto(s_sock, sb9, (size_t)sl9, 0,
+                 (struct sockaddr *)&dst, sizeof(dst)); }
     sync_tap((const uint8_t *)&k, (int)sizeof(k));
     whm_ui_walk_input_rx(act, exec_step, arg);   /* self-apply */
     return ESP_OK;
@@ -1275,7 +1404,10 @@ esp_err_t whm_sync_wkparams_send(int64_t anchor, float cam_speed,
     dst.sin_family = AF_INET;
     dst.sin_port = htons(7777);
     dst.sin_addr.s_addr = htonl(INADDR_BROADCAST);
-    sendto(s_sock, &k, sizeof(k), 0, (struct sockaddr *)&dst,
+    uint8_t sb[sizeof(k) + 16];
+    memcpy(sb, &k, sizeof(k));
+    int sl = seal_tx(sb, (int)sizeof(k));
+    sendto(s_sock, sb, (size_t)sl, 0, (struct sockaddr *)&dst,
            sizeof(dst));
     sync_tap((const uint8_t *)&k, (int)sizeof(k));
     return ESP_OK;
@@ -1306,8 +1438,11 @@ esp_err_t whm_sync_wkb_send(uint8_t owner, float x, int8_t y,
         .sin_port = htons(WHM_SYNC_PORT),
         .sin_addr.s_addr = htonl(INADDR_BROADCAST),
     };
-    sendto(s_sock, &w, sizeof(w), 0, (struct sockaddr *)&dst,
-           sizeof(dst));                  /* 10Hz stream: no burst */
+    { uint8_t sb9[sizeof(w) + 16];
+             memcpy(sb9, &w, sizeof(w));
+             int sl9 = seal_tx(sb9, (int)sizeof(w));
+             sendto(s_sock, sb9, (size_t)sl9, 0,
+                    (struct sockaddr *)&dst, sizeof(dst)); }                  /* 10Hz stream: no burst */
     return ESP_OK;
 }
 
@@ -1328,8 +1463,12 @@ esp_err_t whm_sync_mab_send(int64_t tsf, int64_t idx)
         .sin_port = htons(WHM_SYNC_PORT),
         .sin_addr.s_addr = htonl(INADDR_BROADCAST),
     };
-    sendto(s_sock, &mb, sizeof(mb), 0, (struct sockaddr *)&dst,
-           sizeof(dst));                  /* 2Hz stream: no burst */
+    { uint8_t sb9[sizeof(mb) + 16];
+      memcpy(sb9, &mb, sizeof(mb));
+      int sl9 = seal_tx(sb9, (int)sizeof(mb));
+      sendto(s_sock, sb9, (size_t)sl9, 0,
+             (struct sockaddr *)&dst, sizeof(dst)); }
+    sync_tap((const uint8_t *)&mb, (int)sizeof(mb));                  /* 2Hz stream: no burst */
     return ESP_OK;
 }
 

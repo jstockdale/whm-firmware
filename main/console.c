@@ -881,6 +881,23 @@ static void keys_cb(const char *n, const uint8_t *pk)
     char fp[17]; whm_id_fp(pk, fp);
     printf("  pin: %-14s fp %s\n", n, fp);
 }
+static int cmd_secure(int argc, char **argv)
+{
+    if (argc >= 3 && strcmp(argv[1], "strict") == 0) {
+        bool on = strcmp(argv[2], "on") == 0;
+        whm_sync_secure_strict(on);
+        printf("secure: strict %s (persisted)\n",
+               on ? "ON - unsigned state DROPPED"
+                  : "off - grace warnings");
+        return 0;
+    }
+    bool st; bool kf = whm_sync_secure_status(&st);
+    printf("secure: fleet key %s | strict %s\n",
+           kf ? "PRESENT" : "absent (anchor mints; wraps ~15s)",
+           st ? "ON" : "off (grace)");
+    return 0;
+}
+
 static int cmd_keys(int argc, char **argv)
 {
     char fp[17]; whm_id_fp(whm_id_pk(), fp);
@@ -943,8 +960,11 @@ static int cmd_status(int argc, char **argv)
     printf("whlink: %s\n", wl);
     {
         char fp2[17]; whm_id_fp(whm_id_pk(), fp2);
-        printf("ident:  fp %s | pins %d\n", fp2,
-               whm_pin_list(NULL) * 0 + whm_pin_count());
+        bool st9; bool kf9 = whm_sync_secure_status(&st9);
+        printf("ident:  fp %s | pins %d | seal %s%s\n", fp2,
+               whm_pin_list(NULL) * 0 + whm_pin_count(),
+               kf9 ? "keyed" : "unkeyed",
+               st9 ? " STRICT" : "");
     }
     {
         char nowp[64];
@@ -1557,6 +1577,7 @@ static const cmd_ent_t k_cmds[] = {
     { "factory",    "factory confirm",                "erase all settings + reboot",   cmd_factory },
     { "oracle",     "oracle",                         "consult the eight ball",        cmd_oracle },
     { "fleet",      "fleet [@node] <console line>",   "run a command fleet-wide or on one node",   cmd_fleet },
+    { "secure",     "secure [strict on|off]",         "state-plane seal status/enforce", cmd_secure },
     { "keys",       "keys [forget <name>]",           "identity + TOFU pins", cmd_keys },
     { "status",     "status",                         "fleet + software state (see sysinfo for hw)", cmd_status },
     { "clock",      "clock label <..> | 12|24",       "clock label / 12-24h display",    cmd_clock },

@@ -3148,6 +3148,11 @@ static void pat_walker(int64_t t)
             }
             if (!wk_i_own() && t - s_wko.rx_us > 1200000) {
                 int ns = (int)floorf((s_wk.x - cam) / 64.0f);
+                float fz = (s_wk.x - cam) - (float)ns * 64.0f;
+                /* symmetric deadband (audit R3): claim only when
+                   genuinely inside - the seam band belongs to the
+                   incumbent. */
+                if (fz < 4.0f || fz > 60.0f) ns = -1;
                 if (ns == (int)s_w_idx) {
                     s_wko.owner = s_w_idx;      /* SEIZE: owner gone */
                     s_wko.own_tsf = whm_wifi_tsf_now();
