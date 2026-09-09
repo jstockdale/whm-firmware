@@ -2179,10 +2179,14 @@ void whm_ui_wkb_rx(uint8_t owner, float x, int8_t y, uint8_t st,
         }
     }
     if (wk_i_own()) return;      /* owner never corrects to itself */
-    /* EVIDENCE WATERMARK: strictly increasing step - burst
-       triplicates and reordered delivery apply exactly once. */
-    if (step <= s_wko.ev_step) { s_wk_wm++; return; }
-    s_wko.ev_step = step;
+    /* THE RETIRED WATERMARK: strictly-increasing demanded monotone
+       clairvoyance from a jittering oracle - the shadow horizon K
+       moves with beacon lead, so frame A at now+8 raised the bar
+       and frame B at now+6 died on it, silently, ~25/s. Dedupe is
+       the ring's same-step slot-reuse; replay is SEAL's; epoch
+       strays are the corridor's. The gate had no job left except
+       starving the referee. */
+    (void)s_wko.ev_step;
     /* THE HONEST WATERMARK: a pre-rollover straggler (step ~18150)
        arriving just after the epoch reset used to ADVANCE ev_step
        into the old era, silently swallowing every legitimate
