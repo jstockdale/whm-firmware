@@ -3846,12 +3846,17 @@ static void pat_walker(int64_t t)
             char ck[6];
             snprintf(ck, sizeof(ck), "%02d:%02d",
                      lt9.tm_hour, lt9.tm_min);
-            gfx_text(64 - 5 * 2 - 1, 2, ck, 1, 8, 8, 16);
-            /* THE RIGHT MARGIN: sized with the 4px fireworks-font
-               assumption; gfx_text advances 2px, so 00:41 ran
-               to x=52 and the last digit fell off the
-               world. Right-aligned by the font's own arithmetic
-               now: x = 64 - 5*2 - 1 = 53. */
+            {
+                int cw9 = (int)gfx_text_width(ck, 1);
+                /* THE RIGHT MARGIN, by the font's own ruler:
+                   gfx5x7 is VARIABLE-width - two guessed advances
+                   in a row clipped the last digit off the world
+                   ('00:4') and then overshot the other way. The
+                   font measures itself now; no advance is ever
+                   assumed again. */
+                gfx_text((int16_t)(64 - cw9 - 2), 2, ck, 1,
+                         8, 8, 16);
+            }
         }
     }
 }
