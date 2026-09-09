@@ -45,6 +45,14 @@ const tvx=$("tv").getContext("2d");
 let BUF=[],TRAIL=[],play={step:0,init:false};
 const STN=["WALK","CLMB","LADR","SLID","FALL","IDLE","CRCH","JUMP",
  "LAND","GOCH","SETP","SIT","PACK","SHIM","POP","BASE"];
+const STC=["#5fd06a","#e0a832","#e0832f","#8fb2d9","#e05d4c","#8b96a8",
+ "#e8d84a","#41d0ff","#e8934a","#c98a5a","#d9b25f","#d9b25f","#c98a5a",
+ "#a877e0","#ff5cc8","#7ce0c9"];
+function stLabel(g,X,Y,st){const nm=STN[st]||""+st;
+ g.font="bold 11px monospace";
+ const w2=g.measureText(nm).width;
+ g.fillStyle="rgba(5,7,11,0.6)";g.fillRect(X-w2/2-2,Y-9,w2+4,11);
+ g.fillStyle=STC[st]||"#cfd8e3";g.fillText(nm,X-w2/2,Y)}
 let CAM={p:null,t:0,v:1.0};    // position snaps + slope EMA; Q8 ramp
                                // scale unverified so slope-EMA + snap
                                // (<0.7 px inter-snap) chosen honestly
@@ -218,6 +226,8 @@ function playPose(now){
  const lead=f2>0.5?B:A;
  while(BUF.length>4&&BUF[1].step<play.step-4)BUF.shift();
  return{x:A.x+(B.x-A.x)*f2,y:A.y+(B.y-A.y)*f2,
+        vx:A.vx+(B.vx-A.vx)*f2,vy:A.vy+(B.vy-A.vy)*f2,
+        spd:A.spd+(B.spd-A.spd)*f2,tgt:lead.tgt,
         st:lead.st,dir:lead.dir,phase:lead.phase,timer:lead.timer,
         sdir:lead.sdir,owner:lead.owner,step:Math.round(play.step),
         t:B.t};
@@ -237,14 +247,33 @@ function drawScope(P9){
   tvx.beginPath();tvx.moveTo((a.x-ox)*S,a.y*ys);
   tvx.lineTo((b.x-ox)*S,b.y*ys);tvx.stroke()}
  const px2=(P9.x-ox)*S,py2=P9.y*ys,col=P9.owner?"#ff5cc8":"#41d0ff";
+ {  /* TGT: the sim's INTENT - dashed steering line + tick */
+  const tx2=(P9.tgt-ox)*S;
+  tvx.strokeStyle="rgba(200,180,69,0.7)";tvx.setLineDash([3,3]);
+  tvx.beginPath();tvx.moveTo(px2,py2-6*ys);
+  tvx.lineTo(tx2,py2-6*ys);tvx.stroke();tvx.setLineDash([]);
+  tvx.strokeStyle="#c8b445";
+  tvx.beginPath();tvx.moveTo(tx2,py2-10*ys);
+  tvx.lineTo(tx2,py2-2*ys);tvx.stroke();
+ }
+ {  /* velocity vector: (vx, vy) as motion, 10x scale */
+  tvx.strokeStyle="#7ce0c9";tvx.lineWidth=2;
+  tvx.beginPath();tvx.moveTo(px2,py2-6*ys);
+  tvx.lineTo(px2+P9.vx*10*S,py2+(P9.vy*10)*ys-6*ys);tvx.stroke();
+  tvx.lineWidth=1;
+ }
  tvx.strokeStyle=col;tvx.lineWidth=2;
  tvx.strokeRect(px2-3*S/2,py2-12*ys,3*S,13*ys);
  tvx.lineWidth=1;
- tvx.fillStyle="#cfd8e3";tvx.font="12px monospace";
- tvx.fillText(STN[P9.st]||P9.st,px2+2*S,py2-10*ys);
+ stLabel(tvx,px2+4*S,py2-10*ys,P9.st);
  tvx.fillStyle="#8b96a8";tvx.font="11px monospace";
+ const ar=P9.dir>0?"\u2192":"\u2190";
  tvx.fillText(`x=${P9.x.toFixed(1)}  y=${P9.y.toFixed(1)}  `+
-  `step=${P9.step}  own=${P9.owner}`,8,H-8);
+  `vx=${P9.vx.toFixed(2)}  vy=${P9.vy.toFixed(2)}  `+
+  `spd=${P9.spd.toFixed(2)}`,8,H-20);
+ tvx.fillText(`tgt=${P9.tgt.toFixed(1)}  \u0394=${
+  (P9.tgt-P9.x).toFixed(1)}  dir=${ar}  tm=${P9.timer}  `+
+  `ph=${P9.phase}  step=${P9.step}  own=${P9.owner}`,8,H-8);
 }
 function drawWorld(now){
  const f=daylight();
@@ -309,6 +338,7 @@ function drawWorld(now){
     ms froze the rainbow to a 9-hour cycle (scarf, sparkles, POP,
     parasol, canopy - one unit bug, five frozen hues). */
  sprite(wlx,wy,now*1000,P9.st,P9.dir,P9.phase,P9.timer,P9.sdir);
+ stLabel(cx,(wlx-ox)*S+S/2,(wy-15)*S,P9.st);
  drawScope(P9)}
 function onPkt(m){const u=hex2u8(m.hex);if(u.length<8)return;
  if(u[0]!==0x57||u[1]!==0x48||u[2]!==0x4d||u[3]!==0x4c)return;
@@ -316,7 +346,9 @@ function onPkt(m){const u=hex2u8(m.hex);if(u.length<8)return;
  if(ty===9&&u.length>=64){
   const K={owner:u[6],st:u[7],dir:d.getInt8(8),y:d.getInt8(9)*0.5,
      timer:d.getUint16(10,true),step:d.getUint32(12,true),
-     x:d.getFloat32(16,true),sdir:d.getInt8(60),phase:u[61],
+     x:d.getFloat32(16,true),tgt:d.getFloat32(44,true),
+     vx:d.getFloat32(48,true),vy:d.getFloat32(52,true),
+     spd:d.getFloat32(56,true),sdir:d.getInt8(60),phase:u[61],
      t:m.t};
   W=K;
   if(BUF.length&&Math.abs(K.step-BUF[BUF.length-1].step)>1000){
