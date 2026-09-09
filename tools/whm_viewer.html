@@ -232,13 +232,15 @@ function playPose(now){
         t:B.t};
 }
 function drawScope(P9){
- const T=$("tv"),H=T.height,ys=H/64;
+ const T=$("tv"),H=T.height,PAD=26,ys=(H-PAD)/64;
+ /* the readout owns the bottom band; the 64-row world maps
+    above it, so the baseline never draws through the text */
  tvx.fillStyle="#05070b";tvx.fillRect(0,0,T.width,H);
  tvx.strokeStyle="#16324a";tvx.beginPath();
  tvx.moveTo(0,57*ys);tvx.lineTo(T.width,57*ys);tvx.stroke();
  tvx.strokeStyle="#22303f";
  for(let s2=1;s2<strips;s2++){const bx=s2*64*S;
-  tvx.beginPath();tvx.moveTo(bx,0);tvx.lineTo(bx,H);tvx.stroke()}
+  tvx.beginPath();tvx.moveTo(bx,0);tvx.lineTo(bx,H-PAD);tvx.stroke()}
  for(let i=1;i<TRAIL.length;i++){const a=TRAIL[i-1],b=TRAIL[i],
   al=0.08+0.5*i/TRAIL.length;
   tvx.strokeStyle=b.o?`rgba(255,92,200,${al})`
