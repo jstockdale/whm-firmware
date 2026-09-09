@@ -665,40 +665,18 @@ static const wsli_t *wk_slide_at(float x, int footy)
  * advancer, ticked once per frame; wk_cam() is a pure reader that
  * ignores its argument, so no caller can corrupt state. */
 static double s_cam_acc = -1.0;
-static double s_cam_base;
-static uint32_t s_cam_base_step;
 static float s_scr_from = 1.0f, s_scr_to = 1.0f;
 static uint32_t s_scr_step;
 static float wk_scroll_at(uint32_t st);
 static void wk_cam_tick(int64_t t)
 {
-    static int64_t lt;
-    if (s_cam_acc < 0.0) {
-        /* SHARED ORIGIN, DOUBLE PRECISION. The 0.29.3 per-unit
-           zero-rebase fixed float rounding but silently destroyed
-           the fleet invariant that made seams work: cam was pure
-           f(TSF), IDENTICAL on every unit each frame - chunks
-           matched at the bezel and the deterministic walker sim
-           agreed on which panel he stood on. Double gives quantum
-           ~1e-10 at TSF magnitude: precision AND shared origin.
-           cam(t) = t*SPD for constant speed, regardless of when a
-           unit booted; 'fleet walk speed' keeps changes lock-step. */
-        s_cam_acc = (double)t / 1e6 * (double)WK_CAM_SPD;
-        s_cam_base = s_cam_acc;
-        s_cam_base_step = s_wk_steps;
-        lt = t;
-    }
-    (void)lt;
-    /* FOURTH CONVICTION (owner: "pixel-perfect seam crossings get
-       rarer with uptime"): this function's own comment preaches
-       cam = pure f(TSF), identical everywhere - and the show-era
-       scroll multiplier quietly turned it into a LOCAL integral
-       fed by LOCAL frame dt. Two integrators, two jitters,
-       divergence forever. Slew + integration now live in the STEP
-       DOMAIN (wk_cam_step, fixed 33ms quanta on the shared step
-       count), and the owner's type-10 cam field carries POSITION
-       as a 5 s authoritative snap. The comment tells the truth
-       again. */
+    (void)t;   /* ONE CAMERA: the frame-side integrator is gone.
+                  The camera is pure f(anchor, step) - origin set
+                  at every (re)anchor, advanced ONLY inside the
+                  step loop by wk_cam_sync. Two integrators once
+                  disagreed by 4.3 px after a rewind reintegrated
+                  history against the NEW window's scroll profile;
+                  now there is nothing left to disagree. */
 }
 static float wk_cam(int64_t t)
 {
@@ -730,13 +708,11 @@ void whm_ui_cam_set(float c)
                                               an ownership flap
                                               cross-clobber it */
     double dx2 = (double)c - s_cam_acc;
-    if (dx2 > 2.0 || dx2 < -2.0) {
+    if (dx2 > 1.5 || dx2 < -1.5) {
         whm_lts(); printf("walker: CAM SNAP dx=%.2f (divergence alarm - "
                "should be ~0 forever)\n", dx2);
     }
-    s_cam_acc = (double)c;                 /* type-10 snap */
-    s_cam_base = s_cam_acc;
-    s_cam_base_step = s_wk_steps;
+    s_cam_acc = (double)c;                 /* type-10 snap (belt) */
 }
 
 static void wk_respawn(int64_t t, uint8_t n)
@@ -825,38 +801,16 @@ static int wk_own_strip(float x, float cam2, int n)
 
 static void wk_cam_sync(void)
 {
-    /* BIDIRECTIONAL-EXACT (the +223 bomb, owner's capture,
-       convicted by arithmetic: 6697 steps x 0.0333 = 223.01.
-       Storm -> respawn zeroed s_wk_steps; the old one-way rebase
-       slid base_step backward with NO sum - arming the bomb -
-       then fast-forward re-integrated the ENTIRE history onto
-       the old base. Rewinds now SUBTRACT the same closed sum
-       they would add: any rewind + replay + fast-forward nets
-       zero by construction, whatever path caused it. */
-    if (s_wk_steps >= s_cam_base_step) {
-        for (uint32_t s = s_cam_base_step; s < s_wk_steps; s++)
-            s_cam_base += 0.0333 * (double)WK_CAM_SPD *
-                          (double)wk_scroll_at(s + 1);
-    } else {
-        double undo = 0.0;
-        for (uint32_t s = s_wk_steps; s < s_cam_base_step; s++)
-            undo += 0.0333 * (double)WK_CAM_SPD *
-                    (double)wk_scroll_at(s + 1);
-        s_cam_base -= undo;
-        s_wko.ev_step = 0;         /* THE BATON, root A: the
-                                      evidence watermark survived
-                                      the rewind and rejected every
-                                      post-respawn keyframe as
-                                      stale - adopt-always starved,
-                                      sims free-ran, clones. The
-                                      one place that KNOWS a rewind
-                                      happened resets it. */
-        whm_lts(); printf("walker: cam rewind %lu->%lu (undo %.2f px)\n",
-               (unsigned long)s_cam_base_step,
-               (unsigned long)s_wk_steps, undo);
-    }
-    s_cam_base_step = s_wk_steps;
-    s_cam_acc = s_cam_base;
+    /* ONE CAMERA, per-step and pure: advance only for steps this
+       sim actually executed, from a per-window progress mark that
+       resets when the step counter does. Every replica adds the
+       identical sum in the identical order - by construction. */
+    static uint32_t cam_done;
+    if (s_wk_steps < cam_done) cam_done = 0;   /* window turned */
+    for (uint32_t s = cam_done; s < s_wk_steps; s++)
+        s_cam_acc += 0.0333 * (double)WK_CAM_SPD *
+                     (double)wk_scroll_at(s + 1);
+    cam_done = s_wk_steps;
     s_wk_scroll = wk_scroll_at(s_wk_steps);
 }
 
@@ -3357,7 +3311,11 @@ static void pat_walker(int64_t t)
             frame's cam rewind stranded him in the wilderness for
             80 s of walking home. Steps first, cam second, spawn
             third. */
-        wk_cam_tick(t);
+        s_cam_acc = (double)anchor *
+                    ((double)WK_ANCHOR_US / 1e6) *
+                    (double)WK_CAM_SPD;   /* ONE CAMERA origin:
+                        pure f(anchor), identical on every unit */
+        wk_cam_sync();                    /* progress mark reset */
         wk_respawn(anchor * WK_ANCHOR_US, n);
         /* ANCHOR ROLLOVER HYGIENE: step numbers restart each window,
            so old-window watermarks would reject every new beacon
@@ -3430,7 +3388,12 @@ static void pat_walker(int64_t t)
                     continue;
                 }
                 s_wk.x = s_wkf[i].x;
-                s_wk.y = (float)s_wkf[i].yq1 * 0.5f;
+                {   /* keep local sub-pixel unless a real gap:
+                       the quantized restore fed dyv oscillation
+                       and storm spam on every arc */
+                    float ny9 = (float)s_wkf[i].yq1 * 0.5f;
+                    if (fabsf(ny9 - s_wk.y) >= 1.0f) s_wk.y = ny9;
+                }
                 s_wk.st = s_wkf[i].st;
                 s_wk.dir = s_wkf[i].dir;
                 s_wk.timer = s_wkf[i].timer;
@@ -3450,8 +3413,8 @@ static void pat_walker(int64_t t)
                    the epoch unilaterally (site 3496, the owner's
                    'right after I said something'). Cosmetics heal
                    in silence now. */
-                if (dx > 0.75f || dx < -0.75f || dyv > 1 ||
-                    dyv < -1 ||
+                if (dx > 0.75f || dx < -0.75f || dyv > 2 ||
+                    dyv < -2 ||
                     s_wkf[i].st != (uint8_t)s_wk.st) {
                     whm_lts(); printf("walker: at-step SNAP @%lu (dx %.2f, "
                            "%u vs %u, ptgt=%.1f cam=%.2f) "

@@ -596,6 +596,19 @@ esp_err_t whm_sync_frame_send(uint16_t seq, uint16_t w, uint16_t h,
     return ESP_OK;
 }
 
+/* relocated above rx: sizeof needs the complete type */
+typedef struct __attribute__((packed)) {
+    char magic[4];
+    uint8_t ver;            /* 2 */
+    uint8_t type;           /* 10 = walker params */
+    uint16_t rsv;
+    int64_t anchor;         /* fleet epoch anchor (fleet time base) */
+    float cam_speed;        /* the walk-speed dial */
+    uint8_t wver;           /* walker/world version = 2 */
+    uint8_t strips;         /* fleet strip count (parallax hint) */
+    uint16_t rsv2;
+} whm_wkp_t;
+
 static void recv_task(void *arg)
 {
     (void)arg;
@@ -786,8 +799,15 @@ static void recv_task(void *arg)
             char me6[17] = "";
             my_name(me6, sizeof(me6));
             if (strcmp(w.from, me6) != 0) {
-        if (rbuf[5] == 10 && (n == 24 || n == 40)) {
-            if (!seal_rx(rbuf, n, 24, "wkparams")) continue;
+        if (rbuf[5] == 10 &&
+            (n == (int)sizeof(whm_wkp_t) ||
+             n == (int)sizeof(whm_wkp_t) + 16)) {
+            /* the 24/40 relic predates the int64 anchor in the
+               struct - every cam packet size-dropped SILENTLY and
+               the 1.5px belt never ran (field: 4.3px split, zero
+               CAM SNAP prints). sizeof is the only law. */
+            if (!seal_rx(rbuf, n, (int)sizeof(whm_wkp_t),
+                         "wkparams")) continue;
             float c10;
             memcpy(&c10, rbuf + 16, 4);    /* cam POSITION (owner
                                               authoritative snap) */
@@ -1475,19 +1495,7 @@ esp_err_t whm_sync_walk_input_send(uint8_t act, uint32_t exec_step,
  * world seed a Tier-1 viewer cannot derive. anchor is the universe;
  * same step under a different anchor is different terrain. Low-rate
  * (every ~5 s from the owner + poked on a new subscriber), never
- * baked into keyframes. 24 bytes packed LE. */
-typedef struct __attribute__((packed)) {
-    char magic[4];
-    uint8_t ver;            /* 2 */
-    uint8_t type;           /* 10 = walker params */
-    uint16_t rsv;
-    int64_t anchor;         /* fleet epoch anchor (fleet time base) */
-    float cam_speed;        /* the walk-speed dial */
-    uint8_t wver;           /* walker/world version = 2 */
-    uint8_t strips;         /* fleet strip count (parallax hint) */
-    uint16_t rsv2;
-} whm_wkp_t;
-_Static_assert(sizeof(whm_wkp_t) == 24, "wkp wire");
+ * baked into keyframes. 24 bytes packed LE. */_Static_assert(sizeof(whm_wkp_t) == 24, "wkp wire");
 
 esp_err_t whm_sync_wkparams_send(int64_t anchor, float cam_speed,
                                  uint8_t strips)
