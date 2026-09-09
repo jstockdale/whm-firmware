@@ -12,7 +12,8 @@ button{background:#1d2736;color:#cfd8e3;border:1px solid #2a3446;padding:4px 12p
 #cstat.err{color:#e5484d}
 #cstat.ok{color:#46c390}
 button,input,.hr{touch-action:manipulation}
-#cv,#tv{max-width:100%;height:auto}
+#cv{width:100%;max-width:768px;height:auto;aspect-ratio:768/384}
+#tv{width:100%;max-width:768px;height:auto;aspect-ratio:768/204}
 #wrap{flex-wrap:wrap}
 #left{min-width:0;flex:1 1 640px}
 @media (pointer:coarse){
@@ -71,6 +72,21 @@ oracle's court. Owner colors the walker: cyan strip 0, magenta 1.</div>
 <script>
 "use strict";
 const $=id=>document.getElementById(id);
+/* PREFILL FIRST: runs before anything that could throw later,
+   so an iOS-only hiccup downstream can never eat it. */
+let AUTO_WS=false;
+try{if(location.protocol.indexOf("http")===0){
+ $("url").value="ws://"+location.hostname+":8777";AUTO_WS=true;}}
+catch(e){}
+function fitCanvases(){
+ /* iOS belt: where WebKit lacks canvas aspect mapping,
+    height:auto collapses to ZERO and the world vanishes -
+    hard-set pixel heights from the laid-out width. */
+ for(const id of["cv","tv"]){const e=$(id);
+  const w=e.clientWidth||e.parentElement.clientWidth||768;
+  e.style.height=(w*e.height/e.width)+"px";}}
+addEventListener("resize",fitCanvases);
+addEventListener("orientationchange",fitCanvases);
 const cv=$("cv"),cx=cv.getContext("2d");
 const S=6, GROUND=57, REACH=21;
 let ws=null,strips=2,wkPrev=null,kfT=[],lastStep=0,lastStepT=0,rate=0;
@@ -538,11 +554,9 @@ function connect(){if(ws)try{ws.close()}catch(e){}
   setTimeout(()=>{if(ws&&ws.readyState===3)connect()},2000)};
  ws.onmessage=e=>{try{onPkt(JSON.parse(e.data))}catch(err){}}}
 $("go").onclick=connect;
-if(location.protocol.indexOf("http")===0){
- /* served by the bridge: same host runs the WS - prefill and
-    auto-connect, so phones need zero typing */
- $("url").value="ws://"+location.hostname+":8777";
- connect();}
+fitCanvases();
+try{if(AUTO_WS)connect();}
+catch(e){cstat("load error: "+e.message,"err")}
 $("url").addEventListener("keydown",
  e=>{if(e.key==="Enter"){e.preventDefault();connect()}});
 </script>
