@@ -726,6 +726,14 @@ static void wk_cam_sync(void)
             undo += 0.0333 * (double)WK_CAM_SPD *
                     (double)wk_scroll_at(s + 1);
         s_cam_base -= undo;
+        s_wko.ev_step = 0;         /* THE BATON, root A: the
+                                      evidence watermark survived
+                                      the rewind and rejected every
+                                      post-respawn keyframe as
+                                      stale - adopt-always starved,
+                                      sims free-ran, clones. The
+                                      one place that KNOWS a rewind
+                                      happened resets it. */
         printf("walker: cam rewind %lu->%lu (undo %.2f px)\n",
                (unsigned long)s_cam_base_step,
                (unsigned long)s_wk_steps, undo);
@@ -1912,8 +1920,15 @@ void whm_ui_wkb_rx(uint8_t owner, float x, int8_t y, uint8_t st,
                units demoting each other can never form the mutual
                silence that machine-gunned the seizure (33 in a row).
                Silence windows are structurally impossible now. */
-            s_wko.grace_until = esp_timer_get_time() + 600000;
+            s_wko.grace_until = esp_timer_get_time() + 2000000;
+            /* THE BATON, root B: grace now runs until the
+               SUCCESSOR is heard (a newer claim for the strip I
+               yielded ends it early below) or 2 s - six lost
+               frames can no longer orphan the walker. */
         }
+        if (!was_me && !wk_i_own())
+            s_wko.grace_until = 0;   /* successor heard: baton
+                                        received, grace ends */
         if (!was_me && wk_i_own()) {
             s_wko.burst = 2;
             printf("walker: adopted - I own strip %u now\n", s_w_idx);
@@ -2934,7 +2949,7 @@ static void pat_walker(int64_t t)
                 s_wko.owner = (uint8_t)ns;      /* HANDOFF */
                 s_wko.own_tsf = whm_wifi_tsf_now();
                 s_wko.burst = 2;
-                s_wko.grace_until = ts + 600000;
+                s_wko.grace_until = ts + 2000000;
                 printf("walker: handoff -> strip %d\n", ns);
             }
         }
@@ -3078,12 +3093,18 @@ static void pat_walker(int64_t t)
         wk_px(chx - 1, (int)s_wk.y - 1, 60, 13, 8);    /* legs */
         wk_px(chx + 1, (int)s_wk.y - 1, 60, 13, 8);
     }
-    if (wlx >= -6 && wlx <= 70) {
+    if (wlx >= -6 && wlx <= 70)
         wk_sprite(wlx, (int)lroundf(s_wk.y), t);
+    {   /* THE BATON, root C: the entire emit block lived inside
+           the sprite's on-screen check - an owner whose LOCAL sim
+           drifted the walker off its own screen went SILENT while
+           still owning. The baton no longer depends on where this
+           replica thinks the walker is standing. Cadence 4 Hz
+           (250 ms - the '10Hz' comment was history) -> 30 Hz. */
         if (s_w_n > 1) {
             bool talk = wk_i_own() || t < s_wko.grace_until;
             if (talk && (s_wko.burst ||
-                         t - s_wko.last_tx > 250000)) {
+                         t - s_wko.last_tx > 33000)) {
                 s_wko.last_tx = t;
                 if (s_wko.burst) s_wko.burst--;
                 /* SHADOW SIM: snapshot the COMPLETE sim state, run K
@@ -3156,7 +3177,7 @@ static void pat_walker(int64_t t)
                                   ftm, fstep, ftg, fvx);
                 }
             }
-            if (!wk_i_own() && t - s_wko.rx_us > 1200000) {
+            if (!wk_i_own() && t - s_wko.rx_us > 2000000) {
                 int ns = (int)floorf((s_wk.x - cam) / 64.0f);
                 float fz = (s_wk.x - cam) - (float)ns * 64.0f;
                 /* symmetric deadband (audit R3): claim only when
@@ -3168,8 +3189,12 @@ static void pat_walker(int64_t t)
                     s_wko.own_tsf = whm_wifi_tsf_now();
                     s_wko.burst = 2;
                     s_wko.resync = 1;
-                    printf("walker: owner silent - seizing (strip "
-                           "%u)\n", s_w_idx);
+                    static int64_t seize_mute;
+                    if (t - seize_mute > 1000000) {
+                        seize_mute = t;
+                        printf("walker: owner silent - seizing "
+                               "(strip %u)\n", s_w_idx);
+                    }
                 }
             }
         }
