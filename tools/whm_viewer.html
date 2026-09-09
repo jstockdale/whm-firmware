@@ -191,8 +191,13 @@ function sprite(lx,y,t,st,dir,phase,timer,sdir){
   px(lx-1,y-5,br,bg,bb);px(lx+1,y-5,br,bg,bb);
   px(lx-1,y-1,br,bg,bb);px(lx+1,y-1,br,bg,bb);
  }else{                                   // WALK/CLMB stride
-  px(lx+(a?dir:-dir),y-1,br,bg,bb);
-  px(lx+(a?-dir:dir),y-2,br,bg,bb)}}
+  const d=dir;                            // verbatim two-frame cycle
+  if(a){px(lx+d,y-2,br,bg,bb);px(lx+2*d,y-1,br,bg,bb);
+        px(lx-d,y-2,br,bg,bb);px(lx-2*d,y-1,br,bg,bb);
+        px(lx-d,y-6,br,bg,bb);px(lx+d,y-5,br,bg,bb)}   // arms swing
+  else {px(lx,y-2,br,bg,bb);px(lx,y-1,br,bg,bb);
+        px(lx+d,y-2,br,bg,bb);
+        px(lx+d,y-6,br,bg,bb);px(lx-d,y-5,br,bg,bb)}}}
 function playPose(now){
  /* FULL-RATE PLAYBACK: every kf buffered; the playhead trails the
     newest frame by 2 steps (66 ms) with proportional follow, and
@@ -300,7 +305,10 @@ function drawWorld(now){
   px(chx+1,wy-3,90,20,12);px(chx-1,wy-5,90,20,12);
   px(chx-1,wy-4,90,20,12);
   px(chx-1,wy-1,60,13,8);px(chx+1,wy-1,60,13,8)}
- sprite(wlx,wy,P9.t*1000,P9.st,P9.dir,P9.phase,P9.timer,P9.sdir);
+ /* hues run on MICROSECONDS like the panels: the bridge clock in
+    ms froze the rainbow to a 9-hour cycle (scarf, sparkles, POP,
+    parasol, canopy - one unit bug, five frozen hues). */
+ sprite(wlx,wy,now*1000,P9.st,P9.dir,P9.phase,P9.timer,P9.sdir);
  drawScope(P9)}
 function onPkt(m){const u=hex2u8(m.hex);if(u.length<8)return;
  if(u[0]!==0x57||u[1]!==0x48||u[2]!==0x4d||u[3]!==0x4c)return;
