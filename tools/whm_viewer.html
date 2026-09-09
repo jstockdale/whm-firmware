@@ -311,6 +311,8 @@ function drawScope(P9){
    tvx.fillRect(x0,0,1,hb);              /* left      */
    tvx.fillRect(x0+w0-1,0,1,hb)}         /* right     */
  }
+ tvx.lineWidth=2;                          /* history, a
+                                              little wider */
  for(let i=1;i<TRAIL.length;i++){const a=TRAIL[i-1],b=TRAIL[i];
   if(INS&&Math.abs(b.step-INS.step)>300)continue;
   if(Math.abs(b.x-a.x)>8||Math.abs(b.y-a.y)>16)continue;
@@ -322,6 +324,7 @@ function drawScope(P9){
                      :`rgba(65,208,255,${al})`;
   tvx.beginPath();tvx.moveTo((a.x-ox)*S,a.y*ys);
   tvx.lineTo((b.x-ox)*S,b.y*ys);tvx.stroke()}
+ tvx.lineWidth=1;
  const px2=(P9.x-ox)*S,py2=P9.y*ys,col=P9.owner?"#ff5cc8":"#41d0ff";
  {  /* velocity vector: (vx, vy) as motion, 10x scale */
   tvx.strokeStyle="#7ce0c9";tvx.lineWidth=2;
