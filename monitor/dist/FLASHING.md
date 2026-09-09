@@ -1,4 +1,4 @@
-# whm-monitor 0.1.0 - headless wire proof
+# whm-monitor 0.2.0 - FIRST LIGHT (display + touch + live data)
 1. Edit main/mon_config.h (SSID/password).
 2. source <esp-idf>/export.sh
 3. idf.py -p /dev/ttyACM0 flash monitor

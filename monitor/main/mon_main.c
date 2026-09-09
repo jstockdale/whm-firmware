@@ -2,6 +2,9 @@
 #include "nvs_flash.h"
 #include "mon_config.h"
 void mon_net_start(void);
+void mon_lcd_init(void);
+void mon_touch_init(void);
+void mon_ui_start(void);
 void app_main(void)
 {
     printf("==== %s ====\n", MON_VERSION);
@@ -12,5 +15,8 @@ void app_main(void)
         ESP_ERROR_CHECK(nvs_flash_erase());
         ESP_ERROR_CHECK(nvs_flash_init());
     }
+    mon_lcd_init();
+    mon_touch_init();
+    mon_ui_start();
     mon_net_start();
 }
