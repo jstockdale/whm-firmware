@@ -71,7 +71,7 @@ match the build.
 | 7 | 44 B   | NYE fleet takeover (tz label, year, start_tsf) |
 | 8 | 44 B   | Mode A master beacon (tsf, content idx) |
 | 9 | 52 B   | walker keyframe / ownership (seq = FUTURE step; pose + tgt + vx; claims ranked by tsf) |
-| 10 | 24 B  | walker WK_PARAMS (anchor i64 + cam_speed + wver + strips) - the world seed for Tier-1 viewers; owner emits ~5 s + on-subscriber poke | [+rsv2=scrollQ8 now|tgt<<8, v0.50.3]
+| 10 | 24 B  | walker WK_PARAMS (anchor i64 + cam f32@16 = CAMERA POSITION (v0.49.0 erratum) + wver + strips) - the world seed for Tier-1 viewers; owner emits ~5 s + on-subscriber poke | [+rsv2=scrollQ8 now|tgt<<8, v0.50.3]
 | 11 | 36 B  | walker INPUT (act: auto/left/right/stop/jump/SEEK(world-x); exec_step; from+seq; x3 burst) - applies at the STAMPED step; the log is replay-consumed |
 
 Type 12 is reserved (OPRSSI). Terrain is anchor-FREE (pure
