@@ -277,7 +277,7 @@ static struct { uint32_t step; float x; int8_t yq1;
                 float tgt, vx;
                 uint8_t valid; } s_wkf[WKF_N];
 static uint32_t s_wkf_ok, s_wkf_snap, s_wkf_stale;
-static uint32_t s_wk_txn, s_wk_rxn, s_wk_wm;  /* wire tallies for [W] */
+static uint32_t s_wk_txn, s_wk_rxn, s_wk_wm, s_wk_ms;  /* wire tallies for [W] */
 static struct { uint32_t step; uint8_t from, to; } s_wkh[8];
 static uint8_t s_wkh_w;
 static bool s_wk_shadowing;      /* shadow steps: no trace writes */
@@ -2181,7 +2181,7 @@ void whm_ui_wkb_rx(uint8_t owner, float x, int8_t y, uint8_t st,
     if (wk_i_own()) return;      /* owner never corrects to itself */
     /* EVIDENCE WATERMARK: strictly increasing step - burst
        triplicates and reordered delivery apply exactly once. */
-    if (step <= s_wko.ev_step) return;
+    if (step <= s_wko.ev_step) { s_wk_wm++; return; }
     s_wko.ev_step = step;
     /* THE HONEST WATERMARK: a pre-rollover straggler (step ~18150)
        arriving just after the epoch reset used to ADVANCE ev_step
@@ -3398,8 +3398,10 @@ static void pat_walker(int64_t t)
         wk_cam_sync();                 /* exact to this step */
         if (s_w_n > 1 && !wk_i_own() && s_show.phase == 0) {
             for (int i = 0; i < WKF_N; i++) {
-                if (s_wkf[i].valid && s_wkf[i].step < s_wk_steps)
+                if (s_wkf[i].valid && s_wkf[i].step < s_wk_steps) {
                     s_wkf[i].valid = 0;      /* expired unverified */
+                    s_wk_ms++;
+                }
                 if (!s_wkf[i].valid || s_wkf[i].step != s_wk_steps)
                     continue;
                 s_wkf[i].valid = 0;
@@ -3796,7 +3798,8 @@ static void pat_walker(int64_t t)
                 whm_lts();
                 printf("[W] step=%lu lag=%ld st=%s own=%u%s "
                        "sx=%+.1f cam=%.1f kf ok=%lu snap=%lu "
-                       "stale=%lu wm=%lu tx=%lu rx=%lu%s\n",
+                       "stale=%lu wm=%lu ms=%lu pr=%d "
+                       "ev=%+ld tx=%lu rx=%lu%s\n",
                        (unsigned long)s_wk_steps,
                        (long)((int64_t)want - (int64_t)s_wk_steps),
                        stn[sti],
@@ -3808,6 +3811,14 @@ static void pat_walker(int64_t t)
                        (unsigned long)s_wkf_snap,
                        (unsigned long)s_wkf_stale,
                        (unsigned long)s_wk_wm,
+                       (unsigned long)s_wk_ms,
+                       ({ int pr9 = 0;
+                          for (int q9 = 0; q9 < WKF_N; q9++)
+                              if (s_wkf[q9].valid &&
+                                  s_wkf[q9].step > s_wk_steps) pr9++;
+                          pr9; }),
+                       (long)((int64_t)s_wko.ev_step -
+                              (int64_t)s_wk_steps),
                        (unsigned long)s_wk_txn,
                        (unsigned long)s_wk_rxn,
                        s_wk_replaying ? " REPLAY" : "");
