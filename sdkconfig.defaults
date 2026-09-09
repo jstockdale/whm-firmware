@@ -27,7 +27,7 @@ CONFIG_FATFS_MAX_LFN=255
 # ---- esp-hub75 driver internals (compile-time knobs not exposed in Hub75Config) ----
 # Pins, panel geometry, shift driver etc. are set IN CODE from whm_board.h; the
 # corresponding CONFIG_HUB75_PIN_* defaults are unused. Only these matter:
-CONFIG_HUB75_BIT_DEPTH_8=y
+CONFIG_HUB75_BIT_DEPTH_7=y
 # Linear gamma for bring-up test patterns (predictable ramps for banding checks).
 # Production media pipeline will revisit (driver also offers CIE1931).
 CONFIG_HUB75_GAMMA_CIE1931=y   # perceptual LED gamma: midtones + gradients gain real depth (was LINEAR)

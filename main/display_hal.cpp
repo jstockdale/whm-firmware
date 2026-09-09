@@ -59,8 +59,12 @@ extern "C" bool whm_display_init(uint8_t initial_brightness)
        short-leads setting. If a panel objects (shimmer/ghost
        columns), the one-line fallback is HZ_27M - which keeps
        T=1, so report it instead if possible. */
-    cfg.output_clock_speed = Hub75ClockSpeed::HZ_32M;
-    cfg.min_refresh_rate   = 120;
+    cfg.output_clock_speed = Hub75ClockSpeed::HZ_27M;
+    cfg.min_refresh_rate   = 95;  /* low enough that the auto-
+                                     picker keeps transitionBit=0
+                                     at 27 MHz (full binary
+                                     weighting survives the
+                                     timing retreat) */
     cfg.latch_blanking     = 1;
     cfg.double_buffer      = true;   /* tear-free flips, core of the sync design */
     cfg.clk_phase_inverted = false;  /* board-validated (Arduino demo: clkphase=false) */
