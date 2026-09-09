@@ -534,6 +534,29 @@ static bool wk_in_open_gap(float x)
     return false;
 }
 
+/* PLATFORM HOPS (owner): scan for a landing platform across the
+   gap in the walking direction. Physics-bounded: with vy0=-1.5
+   and G=0.2, airtime is 15 steps; reach caps at 19 px - he never
+   attempts what he cannot make. Pure f(chunks, x, dir). */
+static int wk_hop_scan(float x, int fy, int dir)
+{
+    int32_t rid = (int32_t)floorf((x + 250.0f) / 64.0f);
+    int best = -1;
+    for (int d = -1; d <= 1; d++) {
+        const wchunk_t *c = wk_chunk(rid + d);
+        for (int k = 0; k < c->np; k++) {
+            int py = (int)c->p[k].y;
+            if (py < fy - 5 || py > fy + 3) continue;
+            float lead = dir > 0 ? (float)c->p[k].x
+                       : (float)(c->p[k].x + c->p[k].w);
+            float gap = dir > 0 ? lead - x : x - lead;
+            if (gap < 5.0f || gap > 19.0f) continue;
+            if (best < 0 || (int)gap < best) best = (int)gap;
+        }
+    }
+    return best;
+}
+
 static bool wk_support(float x, int footy)
 {
     if (footy >= WK_GROUND) return !wk_in_open_gap(x);
@@ -906,8 +929,25 @@ static void wk_step(int64_t t, uint8_t n)
         }
         if (s_wk.st != WK_WALK) break;
         if (!wk_support(s_wk.x, fy)) {
-            s_wk.st = WK_FALL;
-            s_wk.vy = 0;
+            /* PLATFORM EDGE (owner's fun details): sometimes LEAP
+               to a reachable platform across the gap; sometimes a
+               style-hop off the edge instead of the plain step;
+               otherwise fall as ever. All pure f(state, rnd). */
+            int hg = fy < WK_GROUND
+                     ? wk_hop_scan(s_wk.x, fy, s_wk.dir) : -1;
+            if (hg > 0 && (r % 3) != 0) {
+                s_wk.st = WK_JUMP;
+                s_wk.vy = -1.5f;
+                s_wk.vx = (float)s_wk.dir *
+                          ((float)hg + 2.0f) / 15.0f;
+            } else if (fy < WK_GROUND && (r % 5) == 0) {
+                s_wk.st = WK_JUMP;         /* style hop-off */
+                s_wk.vy = -1.0f;
+                s_wk.vx = (float)s_wk.dir * 0.7f;
+            } else {
+                s_wk.st = WK_FALL;
+                s_wk.vy = 0;
+            }
             break;
         }
         float off = s_wk.x - center;
@@ -2601,6 +2641,194 @@ static void wk_tree_pine(int sx, int gy, float li, float sw,
     (void)total;
 }
 
+/* WORLD WONDERS (owner's art pass): occasional timezone-keyed
+   landmarks on the slow-parallax band - the fleet dreams of home.
+   Deterministic per DAY: hash(utc_day, tz_halfhours) decides
+   whether (1-in-4 days), which, and WHERE in the world; visible
+   only in a golden window (17-19h local, or 8-10h on alternate
+   hashes). Mixed-tz fleets show different monuments across the
+   bezel - a feature, not a bug. Render-only, behind flora,
+   never collidable; geo-IP/GPS can replace the tz key later. */
+static void wn_px(int x, int y, uint8_t r, uint8_t g, uint8_t b,
+                  float li)
+{
+    if (y < 2 || y >= WK_GROUND) return;
+    wk_px(x, y, (uint8_t)(r * li), (uint8_t)(g * li),
+          (uint8_t)(b * li));
+}
+static void wn_col(int x, int y0, int y1, uint8_t r, uint8_t g,
+                   uint8_t b, float li)
+{ for (int y = y0; y <= y1; y++) wn_px(x, y, r, g, b, li); }
+
+static void wn_ggbridge(int sx, float li)   /* Golden Gate */
+{
+    wn_col(sx + 2, 20, 31, 214, 78, 40, li);
+    wn_col(sx + 14, 20, 31, 214, 78, 40, li);
+    for (int i = 0; i <= 12; i++) {
+        int dy = (i - 6) * (i - 6) / 6;    /* catenary */
+        wn_px(sx + 2 + i, 22 + dy, 214, 78, 40, li);
+    }
+    for (int i = 0; i <= 16; i++)
+        wn_px(sx + i, 30, 160, 60, 32, li);
+}
+static void wn_hollywood(int sx, float li)
+{
+    for (int i = 0; i < 9; i++) {          /* nine letters, hillside */
+        int y = 26 - (i % 3);
+        wn_col(sx + i * 2, y, y + 2, 235, 235, 240, li);
+    }
+    for (int i = -1; i < 19; i++)
+        wn_px(sx + i, 30, 90, 70, 40, li * 0.8f);
+}
+static void wn_needle(int sx, float li)     /* Space Needle */
+{
+    wn_col(sx + 4, 20, 31, 200, 205, 215, li);
+    for (int i = 0; i < 9; i++)
+        wn_px(sx + i, 19, 220, 225, 235, li);
+    wn_px(sx + 3, 18, 220, 225, 235, li);
+    wn_px(sx + 5, 18, 220, 225, 235, li);
+    wn_px(sx + 4, 17, 255, 120, 120, li);   /* beacon */
+}
+static void wn_liberty(int sx, float li)
+{
+    wn_col(sx + 3, 22, 30, 80, 180, 140, li);   /* verdigris */
+    wn_px(sx + 2, 21, 80, 180, 140, li);
+    wn_px(sx + 4, 21, 80, 180, 140, li);
+    wn_col(sx + 6, 18, 21, 80, 180, 140, li);   /* torch arm */
+    wn_px(sx + 6, 17, 255, 210, 90, li);        /* flame */
+    for (int i = 0; i < 7; i++)
+        wn_px(sx + i, 31, 120, 120, 130, li);
+}
+static void wn_stonehenge(int sx, float li)
+{
+    for (int i = 0; i < 4; i++) {
+        wn_col(sx + i * 4, 25, 30, 150, 150, 155, li);
+        wn_col(sx + i * 4 + 2, 25, 30, 150, 150, 155, li);
+        wn_px(sx + i * 4, 24, 165, 165, 170, li);
+        wn_px(sx + i * 4 + 1, 24, 165, 165, 170, li);
+        wn_px(sx + i * 4 + 2, 24, 165, 165, 170, li);
+    }
+}
+static void wn_bigben(int sx, float li)
+{
+    wn_col(sx + 2, 18, 30, 190, 165, 110, li);
+    wn_col(sx + 3, 18, 30, 190, 165, 110, li);
+    wn_px(sx + 2, 21, 250, 245, 200, li);   /* clock face */
+    wn_px(sx + 3, 21, 250, 245, 200, li);
+    wn_px(sx + 2, 17, 150, 130, 90, li);
+    wn_px(sx + 3, 16, 150, 130, 90, li);    /* spire */
+}
+static void wn_eiffel(int sx, float li)
+{
+    for (int y = 0; y < 13; y++) {          /* taper */
+        int w = 1 + (y * 5) / 12;
+        for (int x = -w; x <= w; x++)
+            if (x == -w || x == w || y == 6 || y == 10)
+                wn_px(sx + 5 + x, 18 + y, 120, 95, 70, li);
+    }
+    wn_px(sx + 5, 17, 120, 95, 70, li);
+}
+static void wn_pyramids(int sx, float li)
+{
+    for (int y = 0; y < 8; y++)
+        for (int x = -y; x <= y; x++)
+            wn_px(sx + 6 + x, 23 + y, 210, 180, 120,
+                  li * (x > y - 3 ? 0.7f : 1.0f));
+    for (int y = 0; y < 5; y++)
+        for (int x = -y; x <= y; x++)
+            wn_px(sx + 15 + x, 26 + y, 200, 170, 112, li);
+}
+static void wn_taj(int sx, float li)
+{
+    for (int i = 0; i < 9; i++)
+        wn_col(sx + 2 + i, 25, 30, 235, 230, 225, li);
+    wn_px(sx + 5, 24, 235, 230, 225, li);
+    wn_px(sx + 6, 23, 235, 230, 225, li);   /* dome */
+    wn_px(sx + 7, 24, 235, 230, 225, li);
+    wn_col(sx, 24, 30, 235, 230, 225, li);  /* minarets */
+    wn_col(sx + 12, 24, 30, 235, 230, 225, li);
+}
+static void wn_greatwall(int sx, float li)
+{
+    for (int i = 0; i < 18; i++) {
+        int y = 27 + (int)(2.2f * sinf((float)i * 0.5f));
+        wn_col(sx + i, y, y + 2, 140, 130, 110, li);
+        if (i % 6 == 0) wn_col(sx + i, y - 2, y, 150, 140, 118, li);
+    }
+}
+static void wn_torii(int sx, float li)      /* + Fuji behind */
+{
+    for (int y = 0; y < 7; y++)
+        for (int x = -y - 2; x <= y + 2; x++)
+            wn_px(sx + 14 + x, 17 + y, 205, 210, 225,
+                  li * (y < 2 ? 1.0f : 0.55f));
+    wn_col(sx + 2, 24, 30, 200, 50, 45, li);
+    wn_col(sx + 7, 24, 30, 200, 50, 45, li);
+    for (int i = 0; i <= 9; i++)
+        wn_px(sx + i, 23, 200, 50, 45, li);
+    for (int i = 1; i <= 8; i++)
+        wn_px(sx + i, 25, 180, 45, 40, li);
+}
+static void wn_opera(int sx, float li)      /* Sydney sails */
+{
+    for (int s2 = 0; s2 < 3; s2++)
+        for (int y = 0; y < 5 - s2; y++)
+            for (int x = 0; x <= y; x++)
+                wn_px(sx + 2 + s2 * 5 + x, 29 - y,
+                      240, 240, 245, li);
+    for (int i = 0; i < 17; i++)
+        wn_px(sx + i, 30, 100, 110, 130, li * 0.8f);
+}
+static void wn_ridge(int sx, float li)      /* fallback mountains */
+{
+    for (int i = 0; i < 20; i++) {
+        int h = 4 + (int)(3.0f * sinf((float)i * 0.7f + 1.0f));
+        wn_col(sx + i, 30 - h, 30, 110, 115, 135, li * 0.8f);
+    }
+}
+
+static void wk_wonders(int64_t t, float cam, int idx, float f)
+{
+    if (f < 0.35f) return;                 /* daylight feature */
+    struct tm lt;
+    if (!wall_now(&lt, NULL)) return;
+    time_t nowT = time(NULL);
+    struct tm gt;
+    gmtime_r(&nowT, &gt);
+    int dd = lt.tm_yday - gt.tm_yday;      /* portable gmtoff */
+    if (dd > 1) dd = -1; else if (dd < -1) dd = 1;
+    int offm = (dd * 24 + lt.tm_hour - gt.tm_hour) * 60 +
+               (lt.tm_min - gt.tm_min);
+    int key = offm / 30;                   /* half-hour tz key */
+    uint32_t day = (uint32_t)((time(NULL)) / 86400);
+    uint32_t h = wk_h(day * 2654435761u ^ (uint32_t)(key * 977));
+    if ((h & 3u) != 0u) return;            /* 1-in-4 days */
+    bool evening = ((h >> 3) & 1u) == 0u;
+    if (evening ? (lt.tm_hour < 17 || lt.tm_hour > 19)
+                : (lt.tm_hour < 8 || lt.tm_hour > 10)) return;
+    float base = cam * 0.04f + 64.0f * (float)idx;
+    float wx = 700.0f + (float)((h >> 16) % 1500u);
+    int sx = (((int)(wx - base)) % 2400 + 2400) % 2400 - 24;
+    if (sx < -24 || sx > 70) return;
+    float li = 0.55f + 0.45f * f;
+    int pick = (int)((h >> 8) & 0xff);
+    switch (key) {
+    case -16: (pick % 3 == 0 ? wn_ggbridge :
+               pick % 3 == 1 ? wn_hollywood : wn_needle)(sx, li);
+        break;
+    case -10: wn_liberty(sx, li); break;
+    case 0:   (pick & 1 ? wn_stonehenge : wn_bigben)(sx, li);
+        break;
+    case 2:   wn_eiffel(sx, li); break;
+    case 4:   wn_pyramids(sx, li); break;
+    case 11:  wn_taj(sx, li); break;
+    case 16:  wn_greatwall(sx, li); break;
+    case 18:  wn_torii(sx, li); break;
+    case 20:  wn_opera(sx, li); break;
+    default:  wn_ridge(sx, li); break;
+    }
+}
+
 static void wk_flora(float cam, int idx, float f, int64_t t)
 {
     (void)t;
@@ -2977,6 +3205,7 @@ static void pat_walker(int64_t t)
     int ox = (int)lroundf(cam) + (int)s_w_idx * 64;
     float f = wk_daylight();
     wk_sky(t, cam, (int)s_w_idx, f);
+    wk_wonders(t, cam, (int)s_w_idx, f); /* home, occasionally */
     wk_flora(cam, (int)s_w_idx, f, t);   /* behind platforms */
     wk_birds(t, cam, (int)s_w_idx, f, wk_synth());
     {   /* fw sparkle: background-only fireworks test */
