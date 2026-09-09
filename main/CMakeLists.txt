@@ -14,7 +14,7 @@ idf_component_register(
         "console.c"
         "settings.c"
         "timesync.c"
-        "mp3_player.c" "crypto_id.c" "monocypher.c"
+        "mp3_player.c" "crypto_id.c" "whm_media.c" "monocypher.c"
         "tz_table.c"
         "sync.c"
         "http_svc.c"

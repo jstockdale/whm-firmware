@@ -54,6 +54,7 @@
 #include "display_hal.h"
 #include "ui.h"
 #include "mp3_player.h"
+#include "whm_media.h"
 #include "tz_table.h"
 #include "sync.h"
 #include "crypto_id.h"
@@ -896,6 +897,40 @@ static void keys_cb(const char *n, const uint8_t *pk)
     char fp[17]; whm_id_fp(pk, fp);
     printf("  pin: %-14s fp %s\n", n, fp);
 }
+static int cmd_media(int argc, char **argv)
+{
+    if (argc < 2 || strcmp(argv[1], "list") == 0) {
+        printf("media (.whm) on /sdcard/media:\n");
+        whm_media_list();
+        return 0;
+    }
+    if (strcmp(argv[1], "stop") == 0) {
+        whm_media_stop();
+        printf("media: stopped\n");
+        return 0;
+    }
+    if (strcmp(argv[1], "live") == 0) {
+        whm_media_live_begin();
+        whm_ui_pattern_media();
+        printf("media: LIVE - open http://<this>.local/live or use "
+               "tools/whmcast.py\n");
+        return 0;
+    }
+    if (strcmp(argv[1], "play") == 0 && argc >= 3) {
+        int64_t t = whm_wifi_tsf_now();
+        if (t <= 0) { printf("no show clock\n"); return 1; }
+        /* 500ms-grid boundary start: 'fleet media play <f>' lands
+           every node in the SAME slot with zero extra wire - the
+           Mode-A trick, pointed at pixels. */
+        int64_t start = ((t / 500000) + 2) * 500000;
+        if (whm_media_play(argv[2], start, -1) == ESP_OK)
+            whm_ui_pattern_media();
+        return 0;
+    }
+    printf("usage: media list|play <f.whm>|stop|live\n");
+    return 1;
+}
+
 static int cmd_secure(int argc, char **argv)
 {
     if (argc >= 3 && strcmp(argv[1], "strict") == 0) {
@@ -1592,6 +1627,7 @@ static const cmd_ent_t k_cmds[] = {
     { "factory",    "factory confirm",                "erase all settings + reboot",   cmd_factory },
     { "oracle",     "oracle",                         "consult the eight ball",        cmd_oracle },
     { "fleet",      "fleet [@node] <console line>",   "run a command fleet-wide or on one node",   cmd_fleet },
+    { "media",      "media list|play <f>|stop|live", "P1: .whm player + live lane", cmd_media },
     { "secure",     "secure [strict on|off]",         "state-plane seal status/enforce", cmd_secure },
     { "keys",       "keys [forget <name>]",           "identity + TOFU pins", cmd_keys },
     { "status",     "status",                         "fleet + software state (see sysinfo for hw)", cmd_status },

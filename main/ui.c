@@ -25,6 +25,7 @@
  *   corners red green blue white gradient gray checker sweep cycle
  */
 #include "ui.h"
+#include "whm_media.h"
 #include "esp_console.h"
 
 #include <string.h>
@@ -3616,6 +3617,7 @@ typedef enum {
 typedef enum {
     P_CORNERS, P_RED, P_GREEN, P_BLUE, P_WHITE,
     P_GRADIENT, P_GRAY, P_CHECKER, P_SWEEP, P_CYCLE, P_WANDER, P_WALKER,
+    P_MEDIA,
     P_COUNT
 } pattern_t;
 
@@ -3657,7 +3659,7 @@ static void (*k_hold[SCR_COUNT])(void) = {
 static const char *k_pat_names[P_COUNT] = {
     "corners", "red", "green", "blue", "white",
     "gradient", "gray", "checker", "sweep", "cycle", "wander", "walker",
-};
+    "media"};
 
 static volatile ui_mode_t s_mode = M_BOOT;      /* boot: Ignition */
 static int64_t s_boot0 = 0;
@@ -3694,6 +3696,14 @@ bool whm_ui_pattern_active(const char **name)
     bool act = (s_mode == M_PAT_HOLD || s_mode == M_PAT_CYCLE);
     if (name) *name = act ? k_pat_names[s_pattern] : NULL;
     return act;
+}
+
+uint8_t whm_ui_strip_idx(void) { return s_w_idx; }
+
+void whm_ui_pattern_media(void)
+{
+    s_pattern = P_MEDIA;
+    /* mode set via console path */
 }
 
 void whm_ui_pattern_off(void)
@@ -5833,6 +5843,12 @@ void whm_ui_task(void *arg)
                 pat_sweep_step(entering);
                 ui_present(0);
                 vTaskDelay(pdMS_TO_TICKS(16));
+                continue;
+            }
+            if (p == P_MEDIA) {
+                int64_t tf = ui_frame_wait_div(1);
+                whm_media_tick(tf);
+                ui_present(tf);
                 continue;
             }
             if (p == P_WANDER || p == P_WALKER) {

@@ -37,6 +37,9 @@
 #include "mp3_player.h"
 #include "esp_ota_ops.h"
 #include "http_svc.h"
+#include "whm_media.h"
+#include "sync.h"
+#include "ui.h"
 
 static const char *TAG = "whm_http";
 
@@ -222,6 +225,76 @@ static void manifest_build(void)
 
 /* ---------------------------------------------------------- handlers */
 
+static const char k_live_page[] =
+"<!doctype html><meta name=viewport content='width=device-width'>"
+"<title>WHM live</title><body style='font-family:monospace;background:#111;color:#eee'>"
+"<h3>WHM live-cast</h3>"
+"<button id=bs>Share screen</button> <button id=bc>Camera</button> "
+"<input type=file id=bf accept='video/*'> "
+"W<input id=iw value=128 size=3> H<input id=ih value=64 size=3> "
+"fps<input id=ifps value=10 size=2> <button id=bx>Stop</button>"
+"<div id=st>idle</div><video id=v autoplay muted playsinline style='width:256px;image-rendering:pixelated'></video>"
+"<canvas id=c style='display:none'></canvas><script>"
+"let run=0,t0=0;const $=i=>document.getElementById(i);"
+"function rle(d,w,h){let o=[];for(let y=0;y<h;y++){let x=0;while(x<w){"
+"let i=(y*w+x)*4,r=d[i],g=d[i+1],b=d[i+2],n=1;"
+"while(x+n<w&&n<255){let j=(y*w+x+n)*4;if(d[j]!=r||d[j+1]!=g||d[j+2]!=b)break;n++}"
+"o.push(n,r,g,b);x+=n}}return new Uint8Array(o)}"
+"async function loop(){if(!run)return;const w=+$('iw').value,hh=+$('ih').value;"
+"const c=$('c');c.width=w;c.height=hh;const x=c.getContext('2d');"
+"x.drawImage($('v'),0,0,w,hh);const d=x.getImageData(0,0,w,hh).data;"
+"const pts=Math.round(performance.now()-t0);"
+"try{await fetch(`/stream/frame?w=${w}&h=${hh}&pts=${pts}`,"
+"{method:'POST',body:rle(d,w,hh)});$('st').textContent='live '+pts+'ms'}"
+"catch(e){$('st').textContent='err '+e}"
+"setTimeout(loop,1000/(+$('ifps').value||10))}"
+"function go(s){$('v').srcObject=s||null;run=1;t0=performance.now();loop()}"
+"$('bs').onclick=async()=>go(await navigator.mediaDevices.getDisplayMedia({video:true}));"
+"$('bc').onclick=async()=>go(await navigator.mediaDevices.getUserMedia({video:true}));"
+"$('bf').onchange=e=>{const v=$('v');v.srcObject=null;"
+"v.src=URL.createObjectURL(e.target.files[0]);v.loop=true;run=1;t0=performance.now();loop()};"
+"$('bx').onclick=()=>{run=0;$('st').textContent='stopped'};"
+"</script>";
+
+static esp_err_t h_live(httpd_req_t *req)
+{
+    httpd_resp_set_type(req, "text/html");
+    return httpd_resp_send(req, k_live_page, HTTPD_RESP_USE_STRLEN);
+}
+
+static esp_err_t h_frame(httpd_req_t *req)
+{
+    char q[96], v[16];
+    uint16_t w = 128, hh = 64; uint32_t pts = 0;
+    if (httpd_req_get_url_query_str(req, q, sizeof(q)) == ESP_OK) {
+        if (httpd_query_key_value(q, "w", v, sizeof(v)) == ESP_OK)
+            w = (uint16_t)atoi(v);
+        if (httpd_query_key_value(q, "h", v, sizeof(v)) == ESP_OK)
+            hh = (uint16_t)atoi(v);
+        if (httpd_query_key_value(q, "pts", v, sizeof(v)) == ESP_OK)
+            pts = (uint32_t)atol(v);
+    }
+    int len = req->content_len;
+    if (len <= 0 || len > 16384) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "size");
+        return ESP_FAIL;
+    }
+    static uint8_t *buf;
+    if (!buf) buf = heap_caps_malloc(16384, MALLOC_CAP_SPIRAM);
+    int got = 0;
+    while (got < len) {
+        int r = httpd_req_recv(req, (char *)buf + got, len - got);
+        if (r <= 0) return ESP_FAIL;
+        got += r;
+    }
+    static uint16_t seq;
+    whm_media_live_local(w, hh, pts, buf, (uint32_t)len);
+    whm_ui_pattern_media();
+    whm_sync_frame_send(++seq, w, hh, pts, buf, (uint32_t)len);
+    httpd_resp_sendstr(req, "ok");
+    return ESP_OK;
+}
+
 static esp_err_t h_root(httpd_req_t *r)
 {
     char node[17] = "whm";
@@ -375,6 +448,12 @@ esp_err_t whm_http_start(void)
                        .handler = h_media };
     httpd_uri_t u4 = { .uri = "/fw", .method = HTTP_GET,
                        .handler = h_fw };
+    httpd_uri_t u5 = { .uri = "/live", .method = HTTP_GET,
+                       .handler = h_live };
+    httpd_uri_t u6 = { .uri = "/stream/frame", .method = HTTP_POST,
+                       .handler = h_frame };
+    httpd_register_uri_handler(s_srv, &u5);
+    httpd_register_uri_handler(s_srv, &u6);
     httpd_register_uri_handler(s_srv, &u4);
     httpd_register_uri_handler(s_srv, &u1);
     httpd_register_uri_handler(s_srv, &u2);

@@ -92,3 +92,6 @@ int64_t  whm_watch_elapsed_us(bool *running);
 #ifdef __cplusplus
 }
 #endif
+
+void whm_ui_pattern_media(void);
+uint8_t whm_ui_strip_idx(void);

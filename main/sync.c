@@ -18,6 +18,7 @@
  */
 #include "sync.h"
 #include "crypto_id.h"
+#include "whm_media.h"
 #include "monocypher.h"
 #include "nvs.h"
 #include "esp_random.h"
@@ -164,6 +165,14 @@ typedef struct __attribute__((packed)) {
     uint8_t nonce[24], ct[32], mac[16];
 } whm_kwrap_t;                            /* type-14 KEYWRAP */
 _Static_assert(sizeof(whm_kwrap_t) == 112, "kwrap wire");
+
+typedef struct __attribute__((packed)) {
+    uint8_t magic[4], ver, type, rsv[2];
+    uint16_t seq; uint8_t frag_i, frag_n;
+    uint16_t w, h; uint32_t pts; uint16_t plen; uint8_t rsv2[2];
+} whm_frame_t;                            /* type-15 LIVE frame frag */
+_Static_assert(sizeof(whm_frame_t) == 24, "frame wire");
+
 
 static uint8_t s_kf[32];                  /* fleet group key */
 static bool s_kf_have, s_sec_strict;
@@ -543,6 +552,31 @@ static void maybe_take_wall_clock(const whm_ann_t *p)
     }
 }
 
+esp_err_t whm_sync_frame_send(uint16_t seq, uint16_t w, uint16_t h,
+                              uint32_t pts, const uint8_t *rle,
+                              uint32_t len)
+{
+    if (s_sock < 0) return ESP_ERR_INVALID_STATE;
+    struct sockaddr_in dst = { .sin_family = AF_INET,
+        .sin_port = htons(WHM_SYNC_PORT),
+        .sin_addr.s_addr = htonl(INADDR_BROADCAST) };
+    uint8_t nfr = (uint8_t)((len + 1099) / 1100);
+    static uint8_t ob[24 + 1100];
+    whm_frame_t *f = (whm_frame_t *)ob;
+    memset(f, 0, sizeof(*f));
+    memcpy(f->magic, "WHML", 4); f->ver = 2; f->type = 15;
+    f->seq = seq; f->frag_n = nfr; f->w = w; f->h = h; f->pts = pts;
+    for (uint8_t i = 0; i < nfr; i++) {
+        uint32_t off = (uint32_t)i * 1100u;
+        uint16_t pl = (uint16_t)(len - off > 1100 ? 1100 : len - off);
+        f->frag_i = i; f->plen = pl;
+        memcpy(ob + 24, rle + off, pl);
+        sendto(s_sock, ob, 24u + pl, 0,
+               (struct sockaddr *)&dst, sizeof(dst));
+    }
+    return ESP_OK;
+}
+
 static void recv_task(void *arg)
 {
     (void)arg;
@@ -766,6 +800,16 @@ static void recv_task(void *arg)
                 whm_ui_wkb_rx(w.owner, w.x, w.y, w.st, w.dir,
                               w.timer, w.seq, w.tsf, w.tgt, w.vx);
             }
+            continue;
+        }
+        if (rbuf[5] == 15 && n >= (int)sizeof(whm_frame_t)) {
+            whm_frame_t fr; memcpy(&fr, rbuf, sizeof(fr));
+            uint16_t pl = fr.plen;
+            if ((int)pl > n - (int)sizeof(fr)) pl = n - sizeof(fr);
+            whm_media_live_rx(fr.seq, fr.frag_i, fr.frag_n,
+                              fr.w, fr.h, fr.pts,
+                              rbuf + sizeof(fr), pl,
+                              whm_wifi_tsf_now());
             continue;
         }
         if (rbuf[5] == 14 && n == (int)sizeof(whm_kwrap_t)) {

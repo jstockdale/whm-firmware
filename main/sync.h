@@ -52,6 +52,9 @@ const char *whm_sync_node_name(void);
 const char *whm_sync_peer_fw(const char *name);
 void whm_sync_status_brief(char *mode16, char *role16,
                            uint8_t *prio, char *anchor16);
+esp_err_t whm_sync_frame_send(uint16_t seq, uint16_t w, uint16_t h,
+                              uint32_t pts, const uint8_t *rle,
+                              uint32_t len);
 bool whm_sync_secure_status(bool *strict);
 void whm_sync_secure_strict(bool on);
 int whm_sync_peer_iter(int i, char n16[16], char f8[8],
