@@ -22,6 +22,7 @@ canvas{background:#05070b;border:1px solid #2a3446;display:block;margin-bottom:8
 .hr:hover{background:#1a2333}
 .hr.sel{background:#22314a}
 #live.on{background:#1f4d3a;border-color:#46c390}
+#live.paused{background:#4d3a1f;border-color:#c8b445;color:#e8d84a}
 </style>
 <div id=bar><span id=dot></span>
 <input id=url value="ws://localhost:8777"><button id=go>connect</button>
@@ -59,14 +60,37 @@ let W={x:0,y:56.5,st:5,dir:1,phase:0,timer:0,sdir:1,step:0,
 const tvx=$("tv").getContext("2d");
 let BUF=[],TRAIL=[],play={step:0,init:false};
 let HIST=[],INS=null,lastSt=null;
+let paused=false,pend=0,domIdx=-1;   /* list pause: recording
+                                        never stops, display does */
 function fmtT(s){const d=new Date(s*1000);
  return d.toISOString().substr(11,12)}
-function inspect(i){INS=HIST[i];$("live").className="";
+function liveBtn(){const b=$("live");
+ if(paused){b.className="paused";
+  b.textContent=pend?`PAUSED +${pend}`:"PAUSED"}
+ else{b.className="on";b.textContent="LIVE"}}
+function addRow(idx){const K=HIST[idx],
+ r=document.createElement("div");
+ r.className="hr";r.onclick=()=>inspect(idx);
+ r.innerHTML=`<span class=pm>${fmtT(K.t)}</span> @${K.step} `+
+  `<b style="color:${K.owner?"#ff5cc8":"#41d0ff"}">`+
+  `${STN[K.st]}</b> x=${K.x.toFixed(0)} y=${K.y.toFixed(0)}`;
+ $("hl").prepend(r);domIdx=idx;
+ if(HIST.length>2000){HIST.shift();
+  $("hl").lastChild.remove();domIdx--;
+  for(let q=0;q<$("hl").children.length;q++)
+   $("hl").children[q].onclick=((j)=>()=>inspect(j))
+    ($("hl").children.length-1-q)}
+ $("hc").textContent=HIST.length}
+function inspect(i){INS=HIST[i];paused=true;liveBtn();
  for(const r of $("hl").children)r.classList.remove("sel");
  const r=$("hl").children[HIST.length-1-i];
  if(r)r.classList.add("sel");
  tick("pm",`inspect @${INS.step} ${STN[INS.st]} - LIVE resumes`)}
-$("live").onclick=()=>{INS=null;$("live").className="on";
+$("live").onclick=()=>{
+ if(!paused&&!INS){paused=true;liveBtn();return}   /* pause */
+ INS=null;paused=false;                            /* resume+flush */
+ for(let i=domIdx+1;i<HIST.length;i++)addRow(i);
+ pend=0;liveBtn();
  for(const r of $("hl").children)r.classList.remove("sel")};
 const STN=["WALK","CLMB","LADR","SLID","FALL","IDLE","CRCH","JUMP",
  "LAND","GOCH","SETP","SIT","PACK","SHIM","POP","BASE"];
@@ -394,18 +418,8 @@ function onPkt(m){const u=hex2u8(m.hex);if(u.length<8)return;
                        :K.x-strips*32;
    const snap=Object.assign({cam:cm2},K);
    HIST.push(snap);
-   const idx=HIST.length-1,r=document.createElement("div");
-   r.className="hr";r.onclick=()=>inspect(idx);
-   r.innerHTML=`<span class=pm>${fmtT(K.t)}</span> @${K.step} `+
-    `<b style="color:${K.owner?"#ff5cc8":"#41d0ff"}">`+
-    `${STN[K.st]}</b> x=${K.x.toFixed(0)} y=${K.y.toFixed(0)}`;
-   $("hl").prepend(r);
-   if(HIST.length>2000){HIST.shift();
-    $("hl").lastChild.remove();
-    for(let q=0;q<$("hl").children.length;q++)
-     $("hl").children[q].onclick=((j)=>()=>inspect(j))
-      ($("hl").children.length-1-q)}
-   $("hc").textContent=HIST.length}
+   if(paused){pend++;liveBtn();$("hc").textContent=HIST.length}
+   else addRow(HIST.length-1)}
   let nm="";for(let i=20;i<36&&u[i];i++)nm+=String.fromCharCode(u[i]);
   const now=performance.now();
   if(lastStepT){const ds=W.step-lastStep,dt=(now-lastStepT)/1000;
