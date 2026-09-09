@@ -279,6 +279,7 @@ static struct { uint32_t step; float x; int8_t yq1;
                 float tgt, vx;
                 uint8_t valid; } s_wkf[WKF_N];
 static uint32_t s_wkf_ok, s_wkf_snap, s_wkf_stale;
+static uint32_t s_wk_txn, s_wk_rxn;   /* wire tallies for [W] */
 static struct { uint32_t step; uint8_t from, to; } s_wkh[8];
 static uint8_t s_wkh_w;
 static bool s_wk_shadowing;      /* shadow steps: no trace writes */
@@ -2132,8 +2133,11 @@ void whm_ui_wkb_rx(uint8_t owner, float x, int8_t y, uint8_t st,
        only from a NEWER step than the last accepted claim - crossed
        stale beacons can never resurrect a dead owner (the flip-flop
        that turned two correctors loose on each other). */
-    if (s_wk_replaying) return;  /* Quiet Replay: adopt after catch-up */
-    if (btsf > s_wko.own_tsf) {
+    s_wk_rxn++;
+    /* Quiet Replay: frames BANK to the ring during replay (verdicts
+       work the moment we catch up) - only the ownership mutation is
+       deferred, so a mid-replay claim can't teleport this sim. */
+    if (!s_wk_replaying && btsf > s_wko.own_tsf) {
         s_wko.own_tsf = btsf;
         bool was_me = wk_i_own();
         s_wko.owner = owner;
@@ -3312,6 +3316,14 @@ static void pat_walker(int64_t t)
                    (double)(anchor - s_wk_anchor) / 1e6);
         }
         s_wk_anchor = anchor;
+        s_wk_steps = 0;            /* THE ORDERED EPOCH: settle the
+            camera into the new window BEFORE respawn computes its
+            spawn-x - last epoch's turn spawned the walker 636 px
+            into the OLD world (ledger-caught), then the next
+            frame's cam rewind stranded him in the wilderness for
+            80 s of walking home. Steps first, cam second, spawn
+            third. */
+        wk_cam_tick(t);
         wk_respawn(anchor * WK_ANCHOR_US, n);
         /* ANCHOR ROLLOVER HYGIENE: step numbers restart each window,
            so old-window watermarks would reject every new beacon
@@ -3374,6 +3386,15 @@ static void pat_walker(int64_t t)
                    now the follower's pose unconditionally; the
                    mismatch test below is pure DIAGNOSTICS. Forks
                    live at most one step (~0.3 px). */
+                if ((uint32_t)(s_wk_steps - s_wkf[i].step)
+                        > 60u &&
+                    s_wkf[i].step < s_wk_steps) {
+                    /* ancient frame (>2 s behind live): a starved
+                       ring must never teleport the present */
+                    s_wkf[i].valid = 0;
+                    s_wkf_stale++;
+                    continue;
+                }
                 s_wk.x = s_wkf[i].x;
                 s_wk.y = (float)s_wkf[i].yq1 * 0.5f;
                 s_wk.st = s_wkf[i].st;
@@ -3690,6 +3711,7 @@ static void pat_walker(int64_t t)
                             (uint8_t)s_w_n);
                     }
                 }
+                if (!s_wk_replaying) { s_wk_txn++; }
                 if (!s_wk_replaying)
                 whm_sync_wkb_send(s_wko.owner, fx, fy, fst, fdir,
                                   ftm, fstep, ftg, fvx,
@@ -3756,6 +3778,11 @@ static void pat_walker(int64_t t)
                        (unsigned long)s_wkf_snap,
                        (unsigned long)s_wkf_stale,
                        s_wk_replaying ? " REPLAY" : "");
+                /* wire tallies ride a second short line to keep
+                   the first grep-stable */
+                printf("    [W2] tx=%lu rx=%lu\n",
+                       (unsigned long)s_wk_txn,
+                       (unsigned long)s_wk_rxn);
             }
         }
         wk_nye_scene(cam, t);
