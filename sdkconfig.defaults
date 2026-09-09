@@ -30,7 +30,7 @@ CONFIG_FATFS_MAX_LFN=255
 CONFIG_HUB75_BIT_DEPTH_8=y
 # Linear gamma for bring-up test patterns (predictable ramps for banding checks).
 # Production media pipeline will revisit (driver also offers CIE1931).
-CONFIG_HUB75_GAMMA_LINEAR=y
+CONFIG_HUB75_GAMMA_CIE1931=y   # perceptual LED gamma: midtones + gradients gain real depth (was LINEAR)
 CONFIG_HUB75_IRAM_OPTIMIZATION=y
 
 # ---- WiFi: no power save (TSF accuracy + streaming latency) is set at runtime ----

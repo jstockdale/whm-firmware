@@ -50,7 +50,16 @@ extern "C" bool whm_display_init(uint8_t initial_brightness)
     pins.clk = WHM_HUB75_CLK;
     cfg.pins = pins;
 
-    cfg.output_clock_speed = Hub75ClockSpeed::HZ_20M;
+    /* FULL DEPTH (owner: "the panel is the whole point"): 32 MHz
+       is the one clock that lets the driver's auto-picker reach
+       lsbMsbTransitionBit=0 at the 120 Hz target - every bit
+       plane correctly binary-weighted, the once-shown-LSB dim
+       flicker class gone at the ROOT (150Hz@20M,T=1 -> 240@32M
+       -> ~120@T=0). FM6126A typ tops 30 MHz; 32 is the proven
+       short-leads setting. If a panel objects (shimmer/ghost
+       columns), the one-line fallback is HZ_27M - which keeps
+       T=1, so report it instead if possible. */
+    cfg.output_clock_speed = Hub75ClockSpeed::HZ_32M;
     cfg.min_refresh_rate   = 120;
     cfg.latch_blanking     = 1;
     cfg.double_buffer      = true;   /* tear-free flips, core of the sync design */
