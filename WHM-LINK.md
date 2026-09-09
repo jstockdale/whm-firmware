@@ -168,3 +168,22 @@ on-subscriber poke. P1 input events take type 11.
 burst) - applies at the stamped step on every replica; the input
 log is replay-consumed. 12 = OPRSSI (reserved: operator-beacon
 resolve reports {epoch, rssi} for nearest-panel election).
+
+## Addendum 2026-09-09 - types as-built (convergence night)
+
+Type 9 walker keyframe is now the 64-byte WHOLE POSE (assert-pinned):
+hdr(6) owner st dir yq1 timer16 step32 x f32 from[16] tsf i64 tgt vx
+vy spd f32 sdir phase turn_cd fresh. Shadow frames promise step now+K
+with K clamped 4..ring-2 (the Near Horizon); receivers judge at equal
+step, adopt always, count material snaps only.
+
+Type 10 wkparams: the f32 at offset 16 is CAM POSITION (name is
+historic); rsv2 carries scroll Q8 now|tgt. RX gates for 10 obey
+sizeof(whm_wkp_t) - the 24/40 relic that silently dropped every cam
+packet is the reference case for the sizeof law.
+
+Type 16 oracle rung (0.62.0): hdr(6) anchor8 rsv step32 core h64
+soft h16 rsv2 = 24B (+16 sealed). Conductor publishes every 32 steps;
+followers judge banked rungs against their own cached rungs at equal
+step, epoch-keyed, replay-silent. Divergence prints a UTC confession
+with both hashes and the full field manifest.

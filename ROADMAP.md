@@ -1,8 +1,28 @@
 # WHM roadmap
 
-Status: v0.37.x - phase 0 long complete; the git era's first arcs
+Status: v0.62.0 - phase 0 long complete; the git era's first arcs
 (walker sync doctrines 13-17, the art suite, the OTA suite) are
 landed. Originals preserved in docs/.
+
+## Done 2026-09-08/09 - the convergence night (0.58.2 -> 0.62.0)
+
+- Determinism trilogy: Pure Stream (stateless keyed rnd), Whole Pose
+  (64B keyframes, six new fields), One Camera (pure f(anchor, step),
+  rewind machinery deleted, type-10 belt resurrected via sizeof law)
+- The court sighted: Near Horizon (K clamped inside the ring),
+  materiality, retired watermark, soft-resync storm breaker, quiet
+  replay + right clock + ordered epoch holding through live turns
+- Gauges: the [W] ledger grew ok/or/snap/stale/wm/ms/pr/pn/tx/rx -
+  and solved four roots in two captures
+- The Oracle: type-16 state-hash ladder (strict core + soft tag),
+  tools/whm_oracle_diff.py harness
+- Fleet viewer v1-v3: UDP bridge + browser twin (verbatim world and
+  sprite port), telemetry scope with reticle and panel legend,
+  flight recorder with time-travel inspect and EXPORT
+- docs/rsk-architecture.md: the library plan (laws, not code),
+  extras adjudicated, milestones M1-M7
+- Field: 10-minute verified run, then the overnight soak - synced by
+  morning, pixel-perfect seam transits, multi-room observers
 
 ## Done since the import (by arc)
 

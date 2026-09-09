@@ -196,9 +196,50 @@ M4  Media-sync ported as client 2 (proves kernel generality).
 M5  rsk_vote primitive on the command plane.
 M6  Host harness + fuzzers gate releases; fireworks as client 3.
 M7  Fleet viewer v2: panel-hosted WS forwarder (post-verification
-    frames; one-client cap for RAM) + terrain twin in-browser from
-    ported pure world functions, golden-hashed against M2.
+    frames; one-client cap for RAM) + golden-hash lock against M2.
+    STATUS: v1-v3 shipped early in tools/ (bridge, terrain twin with
+    verbatim world+sprite port, telemetry scope with reticle, flight
+    recorder with click-to-inspect and EXPORT, full-rate interpolated
+    playback). Remaining: the panel-hosted WS and the golden lock.
 
 ## 6. Non-goals (v1)
 Dynamic membership beyond rejoin; WAN operation; >16 nodes;
 persistence of sim state (derived by design); BFT.
+
+## 7. Field record (2026-09-09)
+
+0.61.1 ran the overnight soak unattended: pixel-perfect seam transits
+by morning across dozens of live epoch turns, with two passive browser
+observers in other rooms riding the broadcast. Divergences observed
+"here and there" and converging - the self-stabilizing claim verified
+in production: bounded detection (steps), one-step convergence
+(adopt-always), soft-resync tail. The contrarian call in 4.2 is now
+empirical: a quorum sim plane would have traded those sub-second blips
+for frozen panels at every AP flap.
+
+## 8. Lineage and prior art
+
+Convergent evolution with 1990s LAN netcode, entered from the
+opposite side of thirty years. Techniques only - all long published
+and standard vocabulary; no proprietary code or assets were
+consulted or reused:
+
+- Deterministic input-lockstep (the early-90s LAN-shooter and RTS
+  foundation): full replicated sim on every node, inputs on the
+  wire. Ours - minus its two diseases: TSF anchoring replaces
+  wait-for-slowest-peer (nobody blocks; steps are scheduled by
+  shared time), and desync-is-death becomes a one-frame wound.
+- Client-side prediction with server reconciliation (the
+  late-90s client/server lineage): predict forward, receive
+  authoritative truth, snap and replay buffered inputs. Structurally
+  our SNAP + Quiet Replay.
+- Snapshot interpolation (render behind real time on a small
+  buffer so sparse updates read as continuous motion): the
+  viewer's 66ms playhead.
+- The deterministic-RTS sync-check tradition (periodic checksums
+  over replicated sim state): the oracle ladder - except a
+  mismatch costs 64 bytes of pose, not a save transfer, because
+  the world re-derives from the clock.
+- Their scarcity was modem bandwidth (hence delta compression);
+  ours is determinism. We carry two things that era never had: a
+  hardware shared clock, and an authenticated wire (SEAL).
