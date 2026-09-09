@@ -827,7 +827,7 @@ static void recv_task(void *arg)
                     /* unlock into a TEMP: never overwrite the live
                        key in place (the seal path reads s_kf from
                        another task), and compare-before-adopt so
-                       the anchor's 1s rebroadcast is silent when
+                       the anchor's 3s rebroadcast is silent when
                        nothing changed (the x18 spam, retired) */
                     if (crypto_aead_unlock(nk, wr.mac, kp,
                                            wr.nonce, NULL, 0,
@@ -999,7 +999,7 @@ static void election_tick(void)
                    anchor - two keys split the fleet (field log: every
                    beacon BAD TAG, servo railed -150 on pure formula).
                    Step-down = defer: wipe the self-mint and take the
-                   anchor's keywrap (rebroadcast every 1s heals us). */
+                   anchor's keywrap (rebroadcast every 3s heals us). */
                 s_kf_have = false;
                 crypto_wipe(s_kf, 32);
                 printf("SEAL: self-minted key discarded - awaiting "

@@ -10,7 +10,7 @@ physical/serial access (the console is root by design).
 Each node mints Ed25519 (sign) + X25519 (exchange) keypairs on first
 boot; persisted via the NVS broker (hex-encoded; see the 0.55.x saga in
 git log for why the broker's front door matters). Public halves ride
-type-13 IDENT beacons (every 1s). **TOFU** exactly like SSH: first-seen
+type-13 IDENT beacons (every 3s). **TOFU** exactly like SSH: first-seen
 pinned with a printed fingerprint; any later mismatch is screamed and
 rejected, never silently re-pinned; `keys forget <name>` is the only
 door. Announces themselves are unsigned by design - TOFU *is* the
