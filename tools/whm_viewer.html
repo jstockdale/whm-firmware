@@ -40,7 +40,8 @@ canvas{background:#05070b;border:1px solid #2a3446;display:block;margin-bottom:8
 <span class=g>lag <b id=lg>-</b><i>ms</i></span></div>
 <div id=tick></div>
 </div><aside id=hist><div id=hh><b>state history</b>
-<button id=live class=on>LIVE</button><span id=hc class=pm>0</span>
+<button id=live class=on>LIVE</button>
+<button id=exp>EXPORT</button><span id=hc class=pm>0</span>
 </div><div id=hl></div></aside></div>
 <div id=foot>whm_viewer v3 - twin + scope. Top: the terrain
 twin. Bottom: telemetry scope - full-rate path history, ownership
@@ -86,6 +87,14 @@ function inspect(i){INS=HIST[i];paused=true;liveBtn();
  const r=$("hl").children[HIST.length-1-i];
  if(r)r.classList.add("sel");
  tick("pm",`inspect @${INS.step} ${STN[INS.st]} - LIVE resumes`)}
+$("exp").onclick=()=>{
+ const blob=new Blob([JSON.stringify(
+  {exported:new Date().toISOString(),transitions:HIST},null,1)],
+  {type:"application/json"});
+ const a=document.createElement("a");
+ a.href=URL.createObjectURL(blob);
+ a.download=`whm-history-${Date.now()}.json`;a.click();
+ tick("pm",`exported ${HIST.length} transitions`)};
 $("live").onclick=()=>{
  if(!paused&&!INS){paused=true;liveBtn();return}   /* pause */
  INS=null;paused=false;                            /* resume+flush */
@@ -298,12 +307,16 @@ function drawScope(P9){
   tvx.beginPath();tvx.moveTo((a.x-ox)*S,a.y*ys);
   tvx.lineTo((b.x-ox)*S,b.y*ys);tvx.stroke()}
  const px2=(P9.x-ox)*S,py2=P9.y*ys,col=P9.owner?"#ff5cc8":"#41d0ff";
- {  /* TGT tick only - the dashed steering line retired
-       at the owner's request; the marker keeps the intent */
-  const tx2=(P9.tgt-ox)*S;
+ {  /* TGT, mixed semantics: values < 64 are ROW targets
+       (ladder/level intent, per the SNAP-tape ptgt range),
+       larger are world-x. Draw each in its own axis. */
   tvx.strokeStyle="#c8b445";
-  tvx.beginPath();tvx.moveTo(tx2,py2-10*ys);
-  tvx.lineTo(tx2,py2-2*ys);tvx.stroke();
+  if(P9.tgt<64){const ty2=P9.tgt*ys;
+   tvx.beginPath();tvx.moveTo(px2-8*S,ty2);
+   tvx.lineTo(px2+8*S,ty2);tvx.stroke();}
+  else{const tx2=(P9.tgt-ox)*S;
+   tvx.beginPath();tvx.moveTo(tx2,py2-10*ys);
+   tvx.lineTo(tx2,py2-2*ys);tvx.stroke();}
  }
  {  /* velocity vector: (vx, vy) as motion, 10x scale */
   tvx.strokeStyle="#7ce0c9";tvx.lineWidth=2;
@@ -320,8 +333,9 @@ function drawScope(P9){
  tvx.fillText(`x=${P9.x.toFixed(1)}  y=${P9.y.toFixed(1)}  `+
   `vx=${P9.vx.toFixed(2)}  vy=${P9.vy.toFixed(2)}  `+
   `spd=${P9.spd.toFixed(2)}`,8,H-20);
- tvx.fillText(`tgt=${P9.tgt.toFixed(1)}  \u0394=${
-  (P9.tgt-P9.x).toFixed(1)}  dir=${ar}  tm=${P9.timer}  `+
+ const dv2=P9.tgt<64?`\u0394y=${(P9.tgt-P9.y).toFixed(1)}`
+                    :`\u0394x=${(P9.tgt-P9.x).toFixed(1)}`;
+ tvx.fillText(`tgt=${P9.tgt.toFixed(1)}  ${dv2}  dir=${ar}  tm=${P9.timer}  `+
   `ph=${P9.phase}  step=${P9.step}  own=${P9.owner}`,8,H-8);
 }
 function drawWorld(now){
@@ -374,10 +388,13 @@ function drawWorld(now){
   cx.beginPath();cx.moveTo(bx,0);cx.lineTo(bx,cv.height);cx.stroke()}
  const P9=INS?INS:playPose(now);
  const wlx=Math.round(P9.x),wy=Math.round(P9.y);
- {  /* the owner halo: his first instinct, painted BEHIND */
-  cx.fillStyle=P9.owner?"rgba(255,92,200,0.22)"
-                       :"rgba(65,208,255,0.22)";
-  cx.fillRect((wlx-3-ox)*S,(wy-13)*S,7*S,14*S);
+ {  /* owner box: OUTLINE behind the sprite - the filled
+       halo read as a purple slab that swallowed his legs */
+  cx.strokeStyle=P9.owner?"rgba(255,92,200,0.55)"
+                         :"rgba(65,208,255,0.55)";
+  cx.lineWidth=2;
+  cx.strokeRect((wlx-3-ox)*S,(wy-13)*S,7*S,14*S);
+  cx.lineWidth=1;
  }
  if(P9.st===10||P9.st===11||P9.st===12){const chx=wlx-P9.dir;
   px(chx-1,wy-3,90,20,12);px(chx,wy-3,90,20,12);
@@ -426,14 +443,14 @@ function onPkt(m){const u=hex2u8(m.hex);if(u.length<8)return;
    if(dt>0.2){rate=rate*0.7+(ds/dt)*0.3;
     lastStep=W.step;lastStepT=now}}
   else{lastStep=W.step;lastStepT=now}
-  kfT.push(now);while(kfT.length&&now-kfT[0]>3000)kfT.shift();
+  kfT.push(now);while(kfT.length&&now-kfT[0]>5000)kfT.shift();
   if(wkPrev!==null&&wkPrev!==W.owner)
    tick("o"+W.owner,`baton -> strip ${W.owner}  (${nm})  @${W.step}`);
   wkPrev=W.owner;
   $("st").textContent=W.step;$("ow").textContent=W.owner;
   $("ow").className=W.owner?"o1":"o0";
   $("rt").textContent=rate.toFixed(1);
-  $("kf").textContent=(kfT.length/3).toFixed(0);
+  $("kf").textContent=(kfT.length/5).toFixed(0);
   $("name").textContent="sender: "+nm+"  ("+m.ip+")";
  }else if(ty===10&&u.length>=24){
   const c=d.getFloat32(16,true),now=performance.now();
