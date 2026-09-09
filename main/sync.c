@@ -821,16 +821,29 @@ static void recv_task(void *arg)
                 (!s_kf_have || from_anchor)) {
                 /* the ANCHOR's wrap always wins - self-mints and
                    stale keys yield (belt to the step-down wipe) */
-                uint8_t axpk[32], kp[32];
+                uint8_t axpk[32], kp[32], nk[32];
                 if (whm_pinx_get(wr.from, axpk)) {
                     whm_id_xshared(axpk, kp);
-                    if (crypto_aead_unlock(s_kf, wr.mac, kp,
+                    /* unlock into a TEMP: never overwrite the live
+                       key in place (the seal path reads s_kf from
+                       another task), and compare-before-adopt so
+                       the anchor's ~15s rebroadcast is silent when
+                       nothing changed (the x18 spam, retired) */
+                    if (crypto_aead_unlock(nk, wr.mac, kp,
                                            wr.nonce, NULL, 0,
                                            wr.ct, 32) == 0) {
-                        s_kf_have = true;
-                        printf("SEAL: fleet key received from "
-                               "%s\n", wr.from);
+                        bool chg = !s_kf_have ||
+                                   memcmp(nk, s_kf, 32) != 0;
+                        if (chg) {
+                            memcpy(s_kf, nk, 32);
+                            printf("SEAL: fleet key %s from %s\n",
+                                   s_kf_have ? "updated"
+                                             : "received",
+                                   wr.from);
+                            s_kf_have = true;
+                        }
                     }
+                    crypto_wipe(nk, 32);
                     crypto_wipe(kp, 32);
                 }
             }

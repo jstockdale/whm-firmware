@@ -1348,6 +1348,10 @@ static int cmd_sync(int argc, char **argv)
     if (argc < 2 || strcmp(argv[1], "status") == 0) {
         whm_sync_status_print();
         if (argc < 2) {
+            if (argc == 1) {
+                printf("        ('sync help' for options)\n");
+                return 0;   /* bare 'sync' = status only */
+            }
             printf("usage: sync auto              join elections\n");
             printf("       sync anchor            claim now (prio>=200)\n");
             printf("       sync follow [name]     member; name = pin\n");
