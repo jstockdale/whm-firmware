@@ -6,6 +6,7 @@
 #include "esp_lcd_panel_io.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
+#include "nvs.h"
 #include "mon_pins.h"
 #include "rm67162_init.h"
 #include "mon_lcd.h"
@@ -78,6 +79,14 @@ void mon_lcd_init(void)
                rm67162_cmd[i].len & 0x80);
     s_bounce = heap_caps_malloc(LCD_W * CHUNK_LINES * 2,
                                 MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
+    {   /* saved brightness, if any */
+        nvs_handle_t h; uint8_t bv;
+        if (nvs_open("mon", NVS_READONLY, &h) == ESP_OK) {
+            if (nvs_get_u8(h, "bright", &bv) == ESP_OK)
+                mon_lcd_brightness(bv);
+            nvs_close(h);
+        }
+    }
     ESP_LOGI(TAG, "RM67162 up: %dx%d QSPI, brightness %d",
              LCD_W, LCD_H, AMOLED_DEFAULT_BRIGHTNESS);
 }

@@ -5,6 +5,7 @@ void mon_net_start(void);
 void mon_lcd_init(void);
 void mon_touch_init(void);
 void mon_ui_start(void);
+void mon_con_start(void);
 void app_main(void)
 {
     printf("==== %s ====\n", MON_VERSION);
@@ -19,4 +20,5 @@ void app_main(void)
     mon_touch_init();
     mon_ui_start();
     mon_net_start();
+    mon_con_start();
 }

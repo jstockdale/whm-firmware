@@ -1,7 +1,5 @@
 #pragma once
-/* ===================== EDIT ME FIRST ===================== */
-#define MON_WIFI_SSID   "Sloth Country Manor"
-#define MON_WIFI_PASS   "EDIT-ME-PASSWORD"
-/* ========================================================= */
+/* wifi creds live in NVS - 'wifi join <ssid> [pw]' on the
+   console; nothing baked in this file anymore. */
 #define MON_UDP_PORT    7777
-#define MON_VERSION     "whm-monitor 0.2.0"
+#define MON_VERSION     "whm-monitor 0.3.0"
