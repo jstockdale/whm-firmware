@@ -300,6 +300,9 @@ function drawScope(P9){
   tvx.beginPath();tvx.moveTo(bx,0);tvx.lineTo(bx,H-PAD);tvx.stroke()}
  for(let i=1;i<TRAIL.length;i++){const a=TRAIL[i-1],b=TRAIL[i];
   if(INS&&Math.abs(b.step-INS.step)>300)continue;
+  if(Math.abs(b.x-a.x)>8||Math.abs(b.y-a.y)>16)continue;
+  /* teleport chords: SNAPs and respawns jump the pose - a
+     gap tells the truth better than a straight line */
   const
  al=0.08+0.5*i/TRAIL.length;
   tvx.strokeStyle=b.o?`rgba(255,92,200,${al})`
@@ -307,17 +310,6 @@ function drawScope(P9){
   tvx.beginPath();tvx.moveTo((a.x-ox)*S,a.y*ys);
   tvx.lineTo((b.x-ox)*S,b.y*ys);tvx.stroke()}
  const px2=(P9.x-ox)*S,py2=P9.y*ys,col=P9.owner?"#ff5cc8":"#41d0ff";
- {  /* TGT, mixed semantics: values < 64 are ROW targets
-       (ladder/level intent, per the SNAP-tape ptgt range),
-       larger are world-x. Draw each in its own axis. */
-  tvx.strokeStyle="#c8b445";
-  if(P9.tgt<64){const ty2=P9.tgt*ys;
-   tvx.beginPath();tvx.moveTo(px2-8*S,ty2);
-   tvx.lineTo(px2+8*S,ty2);tvx.stroke();}
-  else{const tx2=(P9.tgt-ox)*S;
-   tvx.beginPath();tvx.moveTo(tx2,py2-10*ys);
-   tvx.lineTo(tx2,py2-2*ys);tvx.stroke();}
- }
  {  /* velocity vector: (vx, vy) as motion, 10x scale */
   tvx.strokeStyle="#7ce0c9";tvx.lineWidth=2;
   tvx.beginPath();tvx.moveTo(px2,py2-6*ys);
@@ -423,6 +415,11 @@ function onPkt(m){const u=hex2u8(m.hex);if(u.length<8)return;
      spd:d.getFloat32(56,true),sdir:d.getInt8(60),phase:u[61],
      t:m.t};
   W=K;
+  if(BUF.length&&K.step<=BUF[BUF.length-1].step&&
+     BUF[BUF.length-1].step-K.step<1000)return;
+  /* step-monotonic ingest: during handoff grace BOTH units
+     broadcast - interleaved twin streams zigzagged the trail
+     and jittered the playhead. First frame per step wins. */
   if(BUF.length&&Math.abs(K.step-BUF[BUF.length-1].step)>1000){
    BUF=[];TRAIL=[];play.init=false;      /* epoch turn */
    tick("pm","epoch turn - playback reset")}
