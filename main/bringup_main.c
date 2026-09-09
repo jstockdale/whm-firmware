@@ -37,6 +37,7 @@
 #include "console.h"
 #include "mp3_player.h"
 #include "sync.h"
+#include "crypto_id.h"
 #include "whlink.h"
 #include "http_svc.h"
 #include "esp_heap_caps.h"
@@ -155,6 +156,7 @@ void app_main(void)
                                       on-demand (a slow card once cost 17s
                                       of boot here) */
     whm_storage_start_watcher();   /* hot-swap: mounts on insert, no reboot */
+    whm_id_init();
     whm_sync_init();
     whm_http_start();                   /* fleet link resumes its role */
     /* chime now fires from Ignition (ui task) for A/V phase lock */

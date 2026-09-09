@@ -14,6 +14,7 @@
  * STA rejoin rides the wifi module's own saved credentials).
  */
 #include "sync.h"
+#include "crypto_id.h"
 
 #include <string.h>
 #include <stdio.h>
@@ -142,6 +143,13 @@ typedef struct __attribute__((packed)) {
                          /* chasing its own target               */
 } whm_wkb_t;
 _Static_assert(sizeof(whm_wkb_t) == 52, "wkb wire");
+
+typedef struct __attribute__((packed)) {
+    uint8_t magic[4], ver, type, rsv[2];
+    char    name[16];
+    uint8_t pk[32];
+} whm_idt_t;                              /* type-13 IDENT, 56 B */
+_Static_assert(sizeof(whm_idt_t) == 56, "ident wire");
 
 _Static_assert(sizeof(whm_cmd_t) == 212,
                "cmd v2 wire format: 212 bytes on every unit");
@@ -362,6 +370,14 @@ static void announce_task(void *arg)
             sendto(s_sock, &p, sizeof(p), 0,
                    (struct sockaddr *)&dst, sizeof(dst));
         sync_tap((const uint8_t *)&p, (int)sizeof(p));
+            if (tick % 3 == 0) {          /* IDENT rides along */
+                whm_idt_t id = { .magic = { 'W','H','M','L' },
+                                 .ver = 2, .type = 13 };
+                strlcpy(id.name, whm_sync_node_name(), sizeof(id.name));
+                memcpy(id.pk, whm_id_pk(), 32);
+                sendto(s_sock, &id, sizeof(id), 0,
+                       (struct sockaddr *)&dst, sizeof(dst));
+            }
         }
         tick++;
         vTaskDelay(pdMS_TO_TICKS(1000));
@@ -444,7 +460,7 @@ static void recv_task(void *arg)
        the family - recvfrom truncated every fleet command and Mode A
        PLAY to a 76-byte stump. Sized for the whole family now, with
        slack for the next member. */
-    uint8_t rbuf[256];
+    uint8_t rbuf[320]   /* signed cmds: 284B */;
     _Static_assert(sizeof(whm_cmd_t) <= 256, "grow rbuf");
     _Static_assert(sizeof(whm_play_t) <= 256, "grow rbuf");
     for (;;) {
@@ -463,14 +479,14 @@ static void recv_task(void *arg)
             continue;
         }
         /* version-skew becomes a log line, not a mystery */
-        if (rbuf[5] == 3 && n != (int)sizeof(whm_cmd_t)) {
+        if (rbuf[5] == 3 && n != (int)sizeof(whm_cmd_t) && n != 284) {
             s_ctr_drop_size++;
             printf("fleet: DROP bad cmd size %d (want %d) - "
                    "mixed firmware? flash all units\n",
                    n, (int)sizeof(whm_cmd_t));
             continue;
         }
-        if ((rbuf[5] == 3 && n != (int)sizeof(whm_cmd_t)) ||
+        if ((rbuf[5] == 3 && n != (int)sizeof(whm_cmd_t) && n != 284) ||
             (rbuf[5] == 4 && n != (int)sizeof(whm_play_t)) ||
             (rbuf[5] == 2 && n != (int)sizeof(whm_life_edge_t))) {
             s_ctr_rx_play++;
@@ -516,7 +532,43 @@ static void recv_task(void *arg)
                                (pl.flags & 1) != 0);
             continue;
         }
-        if (rbuf[5] == 3 && n == (int)sizeof(whm_cmd_t)) {
+        if (rbuf[5] == 3 && (n == (int)sizeof(whm_cmd_t) || n == 284)) {
+            if (n == 284) {
+                uint8_t ppk[32]; int64_t nn2;
+                memcpy(&nn2, rbuf + 212, 8);
+                whm_cmd_t cchk; memcpy(&cchk, rbuf, sizeof(cchk));
+                cchk.from[15] = 0;
+                static struct { char nm[16]; int64_t last; } rt[4];
+                if (!whm_pin_get(cchk.from, ppk)) {
+                    printf("fleet: cmd from %s DROPPED - no pinned "
+                           "identity yet (idents beacon ~15 s)\n",
+                           cchk.from);
+                    continue;
+                }
+                if (!whm_id_verify(ppk, rbuf, 220, rbuf + 220)) {
+                    printf("fleet: BAD SIGNATURE from %s - "
+                           "DROPPED\n", cchk.from);
+                    continue;
+                }
+                int64_t nw2 = whm_wifi_tsf_now();
+                int ri = -1;
+                for (int q = 0; q < 4; q++)
+                    if (!strncmp(rt[q].nm, cchk.from, 16)) ri = q;
+                if (ri < 0) { for (int q = 0; q < 4; q++)
+                    if (!rt[q].nm[0]) { ri = q;
+                        strlcpy(rt[q].nm, cchk.from, 16); break; } }
+                if (ri >= 0 && (nn2 <= rt[ri].last ||
+                    nn2 > nw2 + 10000000LL ||
+                    nn2 < nw2 - 10000000LL)) {
+                    printf("fleet: REPLAY/EXPIRED cmd from %s - "
+                           "DROPPED\n", cchk.from);
+                    continue;
+                }
+                if (ri >= 0) rt[ri].last = nn2;
+            } else {
+                printf("fleet: UNSIGNED cmd honored (legacy grace "
+                       "- signing enforced next release)\n");
+            }
             whm_cmd_t c;
             memcpy(&c, rbuf, sizeof(c));
             c.from[15] = 0;
@@ -603,6 +655,27 @@ static void recv_task(void *arg)
         }
                 whm_ui_wkb_rx(w.owner, w.x, w.y, w.st, w.dir,
                               w.timer, w.seq, w.tsf, w.tgt, w.vx);
+            }
+            continue;
+        }
+        if (rbuf[5] == 13 && n == (int)sizeof(whm_idt_t)) {
+            whm_idt_t idr;
+            memcpy(&idr, rbuf, sizeof(idr));
+            idr.name[15] = 0;
+            uint8_t pin[32];
+            char fp[17];
+            if (!whm_pin_get(idr.name, pin)) {
+                whm_pin_put(idr.name, idr.pk);
+                whm_id_fp(idr.pk, fp);
+                printf("identity: PINNED %s fp %s (TOFU)\n",
+                       idr.name, fp);
+            } else if (memcmp(pin, idr.pk, 32) != 0) {
+                char fpo[17];
+                whm_id_fp(pin, fpo); whm_id_fp(idr.pk, fp);
+                printf("identity: MISMATCH for %s! pinned %s got "
+                       "%s - REJECTED ('keys forget %s' only if "
+                       "you re-keyed it on purpose)\n",
+                       idr.name, fpo, fp, idr.name);
             }
             continue;
         }
@@ -1398,23 +1471,34 @@ esp_err_t whm_sync_fleet_send_to(const char *target, const char *line)
        rate; the dedupe ring makes repeats free, so redundancy buys
        real delivery. ENOMEM (lwIP pbufs, seen on bench) gets a
        backoff-retry per shot. */
+    /* SIGNED ENVELOPE (owner: "sign all our messages"): sign ONCE,
+       burst the same 284 B [payload212][nonce8=tsf][Ed25519 sig64];
+       type unchanged, receivers distinguish by SIZE. TOFU + replay
+       window enforce at rx. Burst/ENOMEM behavior preserved. */
+    uint8_t sc[284];
+    memcpy(sc, &c, sizeof(c));
+    {
+        int64_t nn = whm_wifi_tsf_now();
+        memcpy(sc + 212, &nn, 8);
+        whm_id_sign(sc, 220, sc + 220);
+    }
     int sent = 0;
     for (int shot = 0; shot < 3; shot++) {
         if (shot) vTaskDelay(pdMS_TO_TICKS(60));
         int n = -1;
         for (int a = 0; a < 3; a++) {
-            n = sendto(s_sock, &c, sizeof(c), 0,
+            n = sendto(s_sock, sc, sizeof(sc), 0,
                        (struct sockaddr *)&dst, sizeof(dst));
-            if (n == (int)sizeof(c) || errno != ENOMEM) break;
+            if (n == (int)sizeof(sc) || errno != ENOMEM) break;
             vTaskDelay(pdMS_TO_TICKS(20));
         }
-        if (n == (int)sizeof(c)) sent++;
+        if (n == (int)sizeof(sc)) sent++;
         else printf("fleet: tx shot %d FAILED (%d/%d, errno %d)\n",
-                    shot + 1, n, (int)sizeof(c), errno);
+                    shot + 1, n, (int)sizeof(sc), errno);
     }
     if (sent) {
-        printf("fleet: tx %dB cmd v%u x%d -> broadcast:7777\n",
-               (int)sizeof(c), c.ver, sent);
+        printf("fleet: tx %dB cmd v%u SIGNED x%d -> "
+               "broadcast:7777\n", (int)sizeof(sc), c.ver, sent);
         return ESP_OK;
     }
     return ESP_FAIL;

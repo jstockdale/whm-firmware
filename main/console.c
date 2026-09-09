@@ -53,6 +53,7 @@
 #include "mp3_player.h"
 #include "tz_table.h"
 #include "sync.h"
+#include "crypto_id.h"
 #include "esp_app_desc.h"
 #include "whlink.h"
 #include "nvs_flash.h"
@@ -874,6 +875,26 @@ static int cmd_fleet(int argc, char **argv)
 
 /* ---------------------------------------------------------------- clock */
 
+
+static void keys_cb(const char *n, const uint8_t *pk)
+{
+    char fp[17]; whm_id_fp(pk, fp);
+    printf("  pin: %-14s fp %s\n", n, fp);
+}
+static int cmd_keys(int argc, char **argv)
+{
+    char fp[17]; whm_id_fp(whm_id_pk(), fp);
+    if (argc >= 3 && strcmp(argv[1], "forget") == 0) {
+        printf(whm_pin_del(argv[2]) ? "forgotten: %s\n"
+                                    : "no pin: %s\n", argv[2]);
+        return 0;
+    }
+    printf("me: fp %s\npk: ", fp);
+    for (int i = 0; i < 32; i++) printf("%02x", whm_id_pk()[i]);
+    printf("\npinned (%d):\n", 0 * 0 + whm_pin_list(keys_cb));
+    return 0;
+}
+
 static int cmd_status(int argc, char **argv)
 {
     (void)argc; (void)argv;
@@ -920,6 +941,19 @@ static int cmd_status(int argc, char **argv)
     char wl[96];
     whm_whlink_status_line(wl, sizeof(wl));
     printf("whlink: %s\n", wl);
+    {
+        char fp2[17]; whm_id_fp(whm_id_pk(), fp2);
+        printf("ident:  fp %s | pins %d\n", fp2,
+               whm_pin_list(NULL) * 0 + whm_pin_count());
+    }
+    {
+        char nowp[64];
+        whm_mp3_now_title(nowp, sizeof(nowp));
+        printf("audio:  %s | %s | servo %+.1f ppm | err %lld us\n",
+               nowp, whm_mp3_is_master() ? "MASTER" : "follower",
+               (double)whm_mp3_sync_ppm(),
+               (long long)whm_mp3_sync_err_us());
+    }
     multi_heap_info_t ii;
     heap_caps_get_info(&ii, MALLOC_CAP_INTERNAL);
     printf("mem:    int %uK free (min %uK, largest %uK)\n",
@@ -1523,6 +1557,7 @@ static const cmd_ent_t k_cmds[] = {
     { "factory",    "factory confirm",                "erase all settings + reboot",   cmd_factory },
     { "oracle",     "oracle",                         "consult the eight ball",        cmd_oracle },
     { "fleet",      "fleet [@node] <console line>",   "run a command fleet-wide or on one node",   cmd_fleet },
+    { "keys",       "keys [forget <name>]",           "identity + TOFU pins", cmd_keys },
     { "status",     "status",                         "fleet + software state (see sysinfo for hw)", cmd_status },
     { "clock",      "clock label <..> | 12|24",       "clock label / 12-24h display",    cmd_clock },
     { "vol",        "vol [1-100]",                    "beep/chime/tone volume",        cmd_vol },
