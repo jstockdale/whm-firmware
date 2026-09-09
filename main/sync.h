@@ -42,7 +42,10 @@ esp_err_t whm_sync_wkparams_send(int64_t anchor, float cam_speed,
                                  uint8_t strips);
 esp_err_t whm_sync_wkb_send(uint8_t owner, float x, int8_t y,
                             uint8_t st, int8_t dir, uint16_t timer,
-                            uint32_t step, float tgt, float vx);
+                            uint32_t step, float tgt, float vx,
+                            float vy, float spd, int8_t sdir,
+                            uint8_t phase, uint8_t turn_cd,
+                            uint8_t fresh);
 esp_err_t whm_sync_mab_send(int64_t tsf, int64_t idx);
 esp_err_t whm_sync_nye_send(const char *tz, uint16_t year,
                             int64_t start_tsf);

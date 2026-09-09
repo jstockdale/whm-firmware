@@ -29,7 +29,9 @@ void        whm_ui_walk_stats(uint32_t *ok, uint32_t *snap,
 void        whm_ui_wkb_rx(uint8_t owner, float x, int8_t y,
                           uint8_t st, int8_t dir, uint16_t timer,
                           uint32_t step, int64_t btsf, float tgt,
-                          float vx);
+                          float vx,
+                   float vy, float spd, int8_t sdir,
+                   uint8_t phase, uint8_t turn_cd, uint8_t fresh);
 void        whm_ui_walk_speed(float v);
 void        whm_ui_walk_speed_get(float *cur, float *tgt);
 void        whm_ui_nye_join(const char *from, const char *tz,

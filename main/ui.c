@@ -268,6 +268,8 @@ static struct {
  * telemetry and its 660ms judgment ring are retired. */
 #define WKF_N 8
 static struct { uint32_t step; float x; int8_t yq1;
+                float vy, spd; int8_t sdir;
+                uint8_t phase, turn_cd, fresh;
                 uint8_t st; int8_t dir; uint16_t timer;
                 float tgt, vx;
                 uint8_t valid; } s_wkf[WKF_N];
@@ -2003,7 +2005,9 @@ float whm_ui_walk_cam(void) { return s_cam_acc; }
 
 void whm_ui_wkb_rx(uint8_t owner, float x, int8_t y, uint8_t st,
                    int8_t dir, uint16_t timer, uint32_t step,
-                   int64_t btsf, float tgt, float vx)
+                   int64_t btsf, float tgt, float vx,
+                   float vy, float spd, int8_t sdir,
+                   uint8_t phase, uint8_t turn_cd, uint8_t fresh)
 {
     if (s_w_n <= 1 || owner >= s_w_n) return;
     int64_t nowu = esp_timer_get_time();
@@ -2062,6 +2066,9 @@ void whm_ui_wkb_rx(uint8_t owner, float x, int8_t y, uint8_t st,
     s_wkf[slot].timer = timer;
     s_wkf[slot].tgt = tgt;
     s_wkf[slot].vx = vx;
+    s_wkf[slot].vy = vy; s_wkf[slot].spd = spd;
+    s_wkf[slot].sdir = sdir; s_wkf[slot].phase = phase;
+    s_wkf[slot].turn_cd = turn_cd; s_wkf[slot].fresh = fresh;
     s_wkf[slot].valid = 1;
     return;
     /* EQUAL-STEP comparison: find MY pose at the beacon's step and
@@ -3180,12 +3187,25 @@ static void pat_walker(int64_t t)
                 s_wk.timer = s_wkf[i].timer;
                 s_wk.tgt = s_wkf[i].tgt;
                 s_wk.vx = s_wkf[i].vx;
+                float dvy2 = s_wk.vy - s_wkf[i].vy;
+                float dsp = s_wk.spd - s_wkf[i].spd;
+                s_wk.vy = s_wkf[i].vy;
+                s_wk.spd = s_wkf[i].spd;
+                s_wk.sdir = s_wkf[i].sdir;
+                s_wk.phase = s_wkf[i].phase;
+                s_wk.turn_cd = s_wkf[i].turn_cd;
+                s_wk.fresh = s_wkf[i].fresh;
                 if (dx > 0.75f || dx < -0.75f || dyv > 1 ||
                     dyv < -1 || s_wkf[i].st != (uint8_t)s_wk.st ||
                     s_wkf[i].dir != (int8_t)s_wk.dir ||
                     s_wkf[i].timer != (uint16_t)s_wk.timer ||
                     dtg > 0.5f || dtg < -0.5f ||
-                    dvx > 0.05f || dvx < -0.05f) {
+                    dvx > 0.05f || dvx < -0.05f ||
+                    dvy2 > 0.2f || dvy2 < -0.2f ||
+                    dsp > 0.01f || dsp < -0.01f ||
+                    s_wkf[i].fresh != s_wk.fresh ||
+                    s_wkf[i].turn_cd != (uint8_t)s_wk.turn_cd ||
+                    s_wkf[i].sdir != (int8_t)s_wk.sdir) {
                     whm_lts(); printf("walker: at-step SNAP @%lu (dx %.2f, "
                            "%u vs %u, ptgt=%.1f cam=%.2f) "
                            "mine{x=%.2f "
@@ -3476,7 +3496,10 @@ static void pat_walker(int64_t t)
                     }
                 }
                 whm_sync_wkb_send(s_wko.owner, fx, fy, fst, fdir,
-                                  ftm, fstep, ftg, fvx);
+                                  ftm, fstep, ftg, fvx,
+                              s_wk.vy, s_wk.spd, s_wk.sdir,
+                              s_wk.phase, s_wk.turn_cd,
+                              s_wk.fresh);
                 }
             }
             if (!wk_i_own() && t - s_wko.rx_us > 2000000) {

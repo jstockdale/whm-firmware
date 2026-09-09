@@ -159,8 +159,14 @@ typedef struct __attribute__((packed)) {
     float tgt;           /* complete-promise fields: a snap that */
     float vx;            /* omits these leaves the replica       */
                          /* chasing its own target               */
+    float vy, spd;               /* THE WHOLE POSE: the partial
+                                    keyframe re-injected divergence
+                                    at every adopt (spd 0.75 vs
+                                    0.55 alone = 12 px/s) */
+    int8_t sdir;
+    uint8_t phase, turn_cd, fresh;
 } whm_wkb_t;
-_Static_assert(sizeof(whm_wkb_t) == 52, "wkb wire");
+_Static_assert(sizeof(whm_wkb_t) == 64, "wkb wire");
 
 typedef struct __attribute__((packed)) {
     uint8_t magic[4], ver, type, rsv[2];
@@ -811,7 +817,9 @@ static void recv_task(void *arg)
             continue;
         }
                 whm_ui_wkb_rx(w.owner, w.x, w.y, w.st, w.dir,
-                              w.timer, w.seq, w.tsf, w.tgt, w.vx);
+                              w.timer, w.seq, w.tsf, w.tgt, w.vx,
+                              w.vy, w.spd, w.sdir,
+                              w.phase, w.turn_cd, w.fresh);
             }
             continue;
         }
@@ -1512,7 +1520,10 @@ esp_err_t whm_sync_wkparams_send(int64_t anchor, float cam_speed,
 
 esp_err_t whm_sync_wkb_send(uint8_t owner, float x, int8_t y,
                             uint8_t st, int8_t dir, uint16_t timer,
-                            uint32_t step, float tgt, float vx)
+                            uint32_t step, float tgt, float vx,
+                            float vy, float spd, int8_t sdir,
+                            uint8_t phase, uint8_t turn_cd,
+                            uint8_t fresh)
 {
     if (s_sock < 0) return ESP_ERR_INVALID_STATE;
     whm_wkb_t w = { 0 };
@@ -1528,6 +1539,8 @@ esp_err_t whm_sync_wkb_send(uint8_t owner, float x, int8_t y,
     w.vx = vx;
     w.seq = step;                 /* seq REPURPOSED: step number */
     w.x = x;
+    w.vy = vy; w.spd = spd; w.sdir = sdir;
+    w.phase = phase; w.turn_cd = turn_cd; w.fresh = fresh;
     my_name(w.from, sizeof(w.from));
     w.tsf = whm_wifi_tsf_now();
     struct sockaddr_in dst = {
