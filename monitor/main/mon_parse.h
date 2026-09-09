@@ -34,6 +34,8 @@ typedef struct {
     uint32_t rung_step; uint64_t rung_h; uint16_t rung_hs;
     /* counters */
     uint32_t n_kf, n_wkp, n_org, n_drop;
+    struct { uint32_t step; uint8_t st, owner; } tr[5];
+    uint8_t tr_n, last_st;
     int64_t last_kf_us;
 } mon_state_t;
 extern mon_state_t g_mon;

@@ -27,51 +27,19 @@ void whm_display_fill_rect(uint16_t x, uint16_t y,
         for (uint16_t xx = 0; xx < w; xx++) p[xx] = c;
     }
 }
+void mon_render(uint32_t kfs);
 static void ui_task(void *arg)
 {
-    char ln[64];
-    uint32_t pk = 0, kfs = 0; int tick = 0, flash = 0;
-    uint32_t tseq = 0;
+    uint32_t pk = 0, kfs = 0; int tick = 0;
+    printf("world twin online - second native consumer\n");
     for (;;) {
-        vTaskDelay(pdMS_TO_TICKS(50));     /* 20 fps first light */
-        if (++tick >= 20) { tick = 0;
+        vTaskDelay(pdMS_TO_TICKS(33));
+        if (++tick >= 30) { tick = 0;
             kfs = g_mon.n_kf - pk; pk = g_mon.n_kf; }
-        if (g_touch.seq != tseq) { tseq = g_touch.seq; flash = 4;
-            printf("touch: x=%u y=%u\n", g_touch.x, g_touch.y); }
         memset(s_fb, 0, LCD_W * LCD_H * 2);
-        uint8_t hr = flash ? 255 : 65,
-                hg = flash ? 255 : 208,
-                hb = flash ? 255 : 255;
-        if (flash) flash--;
-        gfx_text(8, 6, "WHM MONITOR 0.2.0 - FIRST LIGHT", 2,
-                 hr, hg, hb);
-        snprintf(ln, sizeof ln, "step %lu   %s   own %u",
-                 (unsigned long)g_mon.step,
-                 mon_st_name(g_mon.st), g_mon.owner);
-        gfx_text(8, 40, ln, 2, 232, 232, 240);
-        snprintf(ln, sizeof ln, "x %.1f  y %.1f", g_mon.x, g_mon.y);
-        gfx_text(8, 66, ln, 2, 180, 190, 205);
-        snprintf(ln, sizeof ln, "cam %.1f", g_mon.cam);
-        gfx_text(8, 92, ln, 2, 180, 190, 205);
-        snprintf(ln, sizeof ln, "kf/s %lu   drop %lu",
-                 (unsigned long)kfs, (unsigned long)g_mon.n_drop);
-        gfx_text(8, 118, ln, 2, 140, 150, 168);
-        snprintf(ln, sizeof ln, "rung @%lu",
-                 (unsigned long)g_mon.rung_step);
-        gfx_text(8, 144, ln, 2, 200, 180, 69);
-        snprintf(ln, sizeof ln, "from %s", g_mon.from);
-        gfx_text(8, 170, ln, 2, 140, 150, 168);
-        /* owner bar, right edge - the fleet's color language */
-        if (g_mon.owner)
-            whm_display_fill_rect(LCD_W - 10, 0, 10, LCD_H,
-                                  255, 92, 200);
-        else
-            whm_display_fill_rect(LCD_W - 10, 0, 10, LCD_H,
-                                  65, 208, 255);
+        mon_render(kfs);
         if (g_touch.pressed)
-            whm_display_fill_rect(g_touch.x > 6 ? g_touch.x - 6 : 0,
-                                  g_touch.y > 6 ? g_touch.y - 6 : 0,
-                                  13, 13, 124, 224, 201);
+            printf("touch: x=%u y=%u\n", g_touch.x, g_touch.y);
         mon_lcd_push_full(s_fb);
     }
 }

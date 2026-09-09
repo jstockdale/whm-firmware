@@ -30,6 +30,13 @@ void mon_parse_pkt(const uint8_t *b, int n)
             g_mon.dir = k.dir; g_mon.sdir = k.sdir;
             g_mon.phase = k.phase; g_mon.timer = k.timer;
             memcpy(g_mon.from, k.from, 16); g_mon.from[15] = 0;
+            if (k.st != g_mon.last_st) {
+                g_mon.last_st = k.st;
+                g_mon.tr[g_mon.tr_n].step = k.step;
+                g_mon.tr[g_mon.tr_n].st = k.st;
+                g_mon.tr[g_mon.tr_n].owner = k.owner;
+                g_mon.tr_n = (uint8_t)((g_mon.tr_n + 1) % 5);
+            }
             g_mon.n_kf++; g_mon.last_kf_us = esp_timer_get_time();
         }
         break;

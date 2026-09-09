@@ -1,4 +1,4 @@
-# whm-monitor 0.3.0 - console + NVS wifi (flash-and-go)
+# whm-monitor 0.4.0 - THE WORLD (x3 twin + telemetry column)
 1. idf.py -p /dev/ttyACM0 flash monitor      (no source edits!)
 2. On the console:  wifi join "<ssid>" <password>
    (creds persist; the monitor rejoins on every boot)
