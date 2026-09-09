@@ -646,7 +646,7 @@ void whm_ui_scroll_q8(uint8_t *now8, uint8_t *tgt8)
 
 void whm_ui_cam_set(float c)
 {
-    if (s_wko.owner) return;                 /* the owner's cam IS
+    if (wk_i_own()) return;                  /* the owner's cam IS
                                               the truth; never let
                                               an ownership flap
                                               cross-clobber it */
@@ -708,9 +708,28 @@ static void wk_scroll_target(float v)
 
 static void wk_cam_sync(void)
 {
-    for (uint32_t s = s_cam_base_step; s < s_wk_steps; s++)
-        s_cam_base += 0.0333 * (double)WK_CAM_SPD *
-                      (double)wk_scroll_at(s + 1);
+    /* BIDIRECTIONAL-EXACT (the +223 bomb, owner's capture,
+       convicted by arithmetic: 6697 steps x 0.0333 = 223.01.
+       Storm -> respawn zeroed s_wk_steps; the old one-way rebase
+       slid base_step backward with NO sum - arming the bomb -
+       then fast-forward re-integrated the ENTIRE history onto
+       the old base. Rewinds now SUBTRACT the same closed sum
+       they would add: any rewind + replay + fast-forward nets
+       zero by construction, whatever path caused it. */
+    if (s_wk_steps >= s_cam_base_step) {
+        for (uint32_t s = s_cam_base_step; s < s_wk_steps; s++)
+            s_cam_base += 0.0333 * (double)WK_CAM_SPD *
+                          (double)wk_scroll_at(s + 1);
+    } else {
+        double undo = 0.0;
+        for (uint32_t s = s_wk_steps; s < s_cam_base_step; s++)
+            undo += 0.0333 * (double)WK_CAM_SPD *
+                    (double)wk_scroll_at(s + 1);
+        s_cam_base -= undo;
+        printf("walker: cam rewind %lu->%lu (undo %.2f px)\n",
+               (unsigned long)s_cam_base_step,
+               (unsigned long)s_wk_steps, undo);
+    }
     s_cam_base_step = s_wk_steps;
     s_cam_acc = s_cam_base;
     s_wk_scroll = wk_scroll_at(s_wk_steps);
@@ -2862,7 +2881,14 @@ static void pat_walker(int64_t t)
         }
         if (s_w_n > 1 && wk_i_own()) {
             int ns = (int)floorf((s_wk.x - wk_cam(ts)) / 64.0f);
-            if (ns >= 0 && ns < (int)s_w_n && ns != (int)s_w_idx) {
+            float frh = (s_wk.x - wk_cam(ts)) - (float)ns * 64.0f;
+            /* DEADBAND (owner's flap): for n=2 the leash center
+               IS the bezel - he lives at the seam, ownership
+               flipped at walking frequency, every flip opened a
+               keyframe gap that tripped "silent". Hand off only
+               once he is genuinely INSIDE the new strip. */
+            if (ns >= 0 && ns < (int)s_w_n && ns != (int)s_w_idx
+                && frh >= 4.0f && frh <= 60.0f) {
                 s_wko.owner = (uint8_t)ns;      /* HANDOFF */
                 s_wko.own_tsf = whm_wifi_tsf_now();
                 s_wko.burst = 2;
