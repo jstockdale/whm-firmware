@@ -1089,6 +1089,16 @@ static int cmd_clock(int argc, char **argv)
 
 /* ------------------------------------------------------------------ vol */
 
+static int cmd_hud(int argc, char **argv)
+{
+    bool on = !(argc >= 2 && strcmp(argv[1], "off") == 0);
+    whm_ui_hud(on);
+    whm_settings_set_u8("hud", on ? 1 : 0);
+    printf("hud: %s (strip-identity corner tags; persisted)\n",
+           on ? "on" : "off");
+    return 0;
+}
+
 static int cmd_walk(int argc, char **argv)
 {
     if (argc >= 2 && strcmp(argv[1], "diag") == 0) {
@@ -1651,7 +1661,8 @@ static const cmd_ent_t k_cmds[] = {
     { "status",     "status",                         "fleet + software state (see sysinfo for hw)", cmd_status },
     { "clock",      "clock label <..> | 12|24",       "clock label / 12-24h display",    cmd_clock },
     { "vol",        "vol [1-100]",                    "beep/chime/tone volume",        cmd_vol },
-        { "walk",       "walk [l|r|stop|jump|to <x>|auto|speed|diag [off]]", "drive the walker (P1) / scroll", cmd_walk },
+                { "hud",        "hud [on|off]", "strip corner tags 1/2 2/2", cmd_hud },
+{ "walk",       "walk [l|r|stop|jump|to <x>|auto|speed|diag [off]]", "drive the walker (P1) / scroll", cmd_walk },
 { "fw",         "",                               "",                                  cmd_fw },  /* hidden */
     { "chime",      "chime",                          "play the boot chime",           cmd_chime },
     { "tone",       "tone <hz> [ms]",                 "play one note",                 cmd_tone },

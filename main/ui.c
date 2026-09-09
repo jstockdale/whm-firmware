@@ -151,6 +151,7 @@ static void hsv_rgb(uint16_t h, uint8_t s, uint8_t v,
                     uint8_t *r, uint8_t *g, uint8_t *b);
 
 static uint8_t s_w_idx = 0, s_w_n = 1;
+static volatile bool s_hud = true;   /* strip-identity tags */
 static uint16_t s_w_speed = 40;
 static bool s_w_loaded = false;
 
@@ -232,9 +233,13 @@ static void pat_wander(int64_t t)
         }
     }
     char tag[8];
-    snprintf(tag, sizeof(tag), "%u/%u", (unsigned)(s_w_idx + 1),
-             (unsigned)s_w_n);
-    gfx_text(2, 57, tag, 1, 55, 55, 80);
+    if (s_hud) {
+        if (s_hud) {
+        snprintf(tag, sizeof(tag), "%u/%u", (unsigned)(s_w_idx + 1),
+                     (unsigned)s_w_n);
+            gfx_text(2, 57, tag, 1, 55, 55, 80);
+        }
+    }
 }
 
 static bool wall_now(struct tm *lt, suseconds_t *usec);
@@ -279,7 +284,8 @@ static uint8_t s_wkh_w;
 static bool s_wk_shadowing;      /* shadow steps: no trace writes */
 static bool s_wk_pure;
 static volatile bool s_wk_replaying;
-static volatile bool s_walk_diag = true;     /* 1Hz [W] ledger */
+static volatile bool s_walk_diag = true;
+void whm_ui_hud(bool on) { s_hud = on; }     /* 1Hz [W] ledger */
 void whm_ui_walk_diag(bool on) { s_walk_diag = on; }
 bool whm_ui_wk_replaying(void) { return s_wk_replaying; }               /* bisection: strip influences */
 static bool wk_i_own(void)
@@ -6078,7 +6084,9 @@ void whm_ui_task(void *arg)
 
         if (mode == M_BOOT) {
             if (!s_boot0) {
-                printf("ui: alive (Ignition)\n");
+                { uint8_t hv = 1; whm_settings_get_u8("hud", &hv);
+      s_hud = hv != 0; }
+    printf("ui: alive (Ignition)\n");
                 s_boot0 = esp_timer_get_time();
                 whm_audio_chime_async();     /* relocated: phase lock */
             }

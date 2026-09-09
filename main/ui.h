@@ -99,3 +99,4 @@ void whm_ui_pattern_media(void);
 uint8_t whm_ui_strip_idx(void);
 bool whm_ui_wk_replaying(void);
 void whm_ui_walk_diag(bool on);
+void whm_ui_hud(bool on);
