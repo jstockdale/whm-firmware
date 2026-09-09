@@ -3846,7 +3846,12 @@ static void pat_walker(int64_t t)
             char ck[6];
             snprintf(ck, sizeof(ck), "%02d:%02d",
                      lt9.tm_hour, lt9.tm_min);
-            gfx_text(64 - 5 * 4 - 1, 2, ck, 1, 8, 8, 16);
+            gfx_text(64 - 5 * 2 - 1, 2, ck, 1, 8, 8, 16);
+            /* THE RIGHT MARGIN: sized with the 4px fireworks-font
+               assumption; gfx_text advances 2px, so 00:41 ran
+               to x=52 and the last digit fell off the
+               world. Right-aligned by the font's own arithmetic
+               now: x = 64 - 5*2 - 1 = 53. */
         }
     }
 }
