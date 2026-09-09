@@ -1091,6 +1091,13 @@ static int cmd_clock(int argc, char **argv)
 
 static int cmd_walk(int argc, char **argv)
 {
+    if (argc >= 2 && strcmp(argv[1], "diag") == 0) {
+        bool on = !(argc >= 3 && strcmp(argv[2], "off") == 0);
+        whm_ui_walk_diag(on);
+        printf("walker diag: %s (1Hz [W] line while pattern "
+               "active)\n", on ? "on" : "off");
+        return 0;
+    }
     if (argc >= 2) {
         uint8_t act = 255;
         if (!strcmp(argv[1], "auto")) act = 0;
@@ -1644,7 +1651,7 @@ static const cmd_ent_t k_cmds[] = {
     { "status",     "status",                         "fleet + software state (see sysinfo for hw)", cmd_status },
     { "clock",      "clock label <..> | 12|24",       "clock label / 12-24h display",    cmd_clock },
     { "vol",        "vol [1-100]",                    "beep/chime/tone volume",        cmd_vol },
-        { "walk",       "walk [left|right|stop|jump|to <x>|auto|speed <r>]", "drive the walker (P1) / scroll", cmd_walk },
+        { "walk",       "walk [l|r|stop|jump|to <x>|auto|speed|diag [off]]", "drive the walker (P1) / scroll", cmd_walk },
 { "fw",         "",                               "",                                  cmd_fw },  /* hidden */
     { "chime",      "chime",                          "play the boot chime",           cmd_chime },
     { "tone",       "tone <hz> [ms]",                 "play one note",                 cmd_tone },

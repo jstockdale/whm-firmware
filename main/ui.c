@@ -279,6 +279,8 @@ static uint8_t s_wkh_w;
 static bool s_wk_shadowing;      /* shadow steps: no trace writes */
 static bool s_wk_pure;
 static volatile bool s_wk_replaying;
+static volatile bool s_walk_diag = true;     /* 1Hz [W] ledger */
+void whm_ui_walk_diag(bool on) { s_walk_diag = on; }
 bool whm_ui_wk_replaying(void) { return s_wk_replaying; }               /* bisection: strip influences */
 static bool wk_i_own(void)
 {
@@ -3716,6 +3718,38 @@ static void pat_walker(int64_t t)
                                "(strip %u)\n", s_w_idx);
                     }
                 }
+            }
+        }
+        if (s_walk_diag) {           /* THE WALKER'S LEDGER: after
+               the Quiet Replay, a healthy walker is SNAP-silent -
+               and silence is indistinguishable from a dead
+               diagnostic. One line per second says "quiet because
+               correct": step, lag (want-steps; >0 only mid-replay),
+               who owns, pose vs cam, and the lifetime keyframe
+               verdict counters. 'walk diag off' to hush. */
+            static int64_t wl_last;
+            if (t - wl_last > 1000000) {
+                wl_last = t;
+                static const char *stn[] = { "WALK","CLMB","LADR",
+                    "SLID","FALL","IDLE","CRCH","JUMP","LAND",
+                    "GOCH","SETP","SIT ","PACK","SHIM","POP ",
+                    "BASE" };
+                uint8_t sti = s_wk.st < 16 ? s_wk.st : 0;
+                whm_lts();
+                printf("[W] step=%lu lag=%ld st=%s own=%u%s "
+                       "sx=%+.1f cam=%.1f kf ok=%lu snap=%lu "
+                       "stale=%lu%s\n",
+                       (unsigned long)s_wk_steps,
+                       (long)((int64_t)want - (int64_t)s_wk_steps),
+                       stn[sti],
+                       (unsigned)s_wko.owner,
+                       wk_i_own() ? "/ME" : "",
+                       (double)(s_wk.x - cam),
+                       (double)cam,
+                       (unsigned long)s_wkf_ok,
+                       (unsigned long)s_wkf_snap,
+                       (unsigned long)s_wkf_stale,
+                       s_wk_replaying ? " REPLAY" : "");
             }
         }
         wk_nye_scene(cam, t);
