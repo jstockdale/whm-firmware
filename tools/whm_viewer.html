@@ -300,11 +300,11 @@ function drawScope(P9){
        the border tells you which panel is which, and the
        bezel seam becomes cyan-against-magenta. */
   const PC=["#41d0ff","#ff5cc8","#7ce0c9","#e8d84a"];
-  tvx.lineWidth=2;
   for(let s2=0;s2<strips;s2++){
    tvx.strokeStyle=PC[s2%PC.length];
-   tvx.strokeRect(s2*64*S+1,1,64*S-2,(H-PAD)-2)}
-  tvx.lineWidth=1;
+   tvx.strokeRect(s2*64*S+0.5,0.5,64*S-1,(H-PAD)-1);
+   tvx.fillStyle=PC[s2%PC.length];        /* top edge +1 */
+   tvx.fillRect(s2*64*S+1,0,64*S-2,2)}
  }
  for(let i=1;i<TRAIL.length;i++){const a=TRAIL[i-1],b=TRAIL[i];
   if(INS&&Math.abs(b.step-INS.step)>300)continue;
