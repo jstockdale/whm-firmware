@@ -1,0 +1,116 @@
+<!doctype html><meta charset="utf-8"><title>WHM Fleet Viewer</title>
+<style>
+body{background:#0b0e14;color:#cfd8e3;font:13px/1.4 ui-monospace,monospace;margin:0;padding:12px}
+#bar{display:flex;gap:8px;align-items:center;margin-bottom:8px}
+input{background:#141a24;color:#cfd8e3;border:1px solid #2a3446;padding:4px 8px;width:260px}
+button{background:#1d2736;color:#cfd8e3;border:1px solid #2a3446;padding:4px 12px;cursor:pointer}
+#dot{width:10px;height:10px;border-radius:5px;background:#e5484d}
+#dot.on{background:#46c390}
+canvas{background:#05070b;border:1px solid #2a3446;display:block;margin-bottom:8px;image-rendering:pixelated}
+#hud{display:flex;gap:24px;flex-wrap:wrap;margin-bottom:6px}
+.g b{color:#7cc4ff}.g i{color:#8b96a8;font-style:normal}
+#tick{height:150px;overflow-y:auto;background:#0d1119;border:1px solid #22303f;padding:6px;white-space:pre}
+.o0{color:#41d0ff}.o1{color:#ff5cc8}.rg{color:#c8b445}.pm{color:#8b96a8}
+#foot{color:#5b6675;margin-top:6px}
+</style>
+<div id=bar><span id=dot></span>
+<input id=url value="ws://localhost:8777"><button id=go>connect</button>
+<span id=name class=pm></span></div>
+<canvas id=cv width=800 height=140></canvas>
+<div id=hud>
+<span class=g>step <b id=st>-</b></span>
+<span class=g>rate <b id=rt>-</b><i>/s</i></span>
+<span class=g>kf <b id=kf>-</b><i>/s</i></span>
+<span class=g>owner <b id=ow>-</b></span>
+<span class=g>cam <b id=cm>-</b></span>
+<span class=g>rung <b id=rg>-</b></span>
+<span class=g>lag <b id=lg>-</b><i>ms</i></span></div>
+<div id=tick></div>
+<div id=foot>whm_viewer v1 - the fleet's official reality (owner
+keyframes, type 9/10/16). Follower-private sims are audited by the
+oracle and serial, not visible here. Baton passes = color flips.</div>
+<script>
+"use strict";
+const $=id=>document.getElementById(id);
+const cv=$("cv"),cx=cv.getContext("2d");
+let ws=null,strips=2,cam=null,camV=0,camT=0,wkPrev=null;
+let trail=[],kfT=[],lastStep=0,lastStepT=0,rate=0;
+function hex2u8(h){const a=new Uint8Array(h.length/2);
+ for(let i=0;i<a.length;i++)a[i]=parseInt(h.substr(i*2,2),16);return a}
+function dv(u){return new DataView(u.buffer,u.byteOffset,u.byteLength)}
+function tick(cls,txt){const t=$("tick");
+ const d=document.createElement("div");d.className=cls;
+ d.textContent=new Date().toISOString().substr(11,12)+"  "+txt;
+ t.prepend(d);while(t.childElementCount>200)t.lastChild.remove()}
+function onPkt(m){
+ const u=hex2u8(m.hex);if(u.length<8)return;
+ if(u[0]!==0x57||u[1]!==0x48||u[2]!==0x4d||u[3]!==0x4c)return; // WHML
+ const ver=u[4],ty=u[5],d=dv(u);
+ if(ver!==2&&(ty===9||ty===10||ty===16))return;
+ if(ty===9&&u.length>=64){                 // walker pose beacon
+  const owner=u[6],st=u[7],dir=d.getInt8(8),y=d.getInt8(9)*0.5;
+  const step=d.getUint32(12,true),x=d.getFloat32(16,true);
+  let nm="";for(let i=20;i<36&&u[i];i++)nm+=String.fromCharCode(u[i]);
+  const now=performance.now();
+  if(lastStepT){const ds=step-lastStep,dt=(now-lastStepT)/1000;
+   if(dt>0.2){rate=rate*0.7+(ds/dt)*0.3;lastStep=step;lastStepT=now}}
+  else{lastStep=step;lastStepT=now}
+  kfT.push(now);while(kfT.length&&now-kfT[0]>3000)kfT.shift();
+  if(wkPrev!==null&&wkPrev!==owner)
+   tick("o"+owner,`baton -> strip ${owner}  (${nm})  @${step}`);
+  wkPrev=owner;
+  trail.push({x,y,o:owner});if(trail.length>400)trail.shift();
+  $("st").textContent=step;$("ow").textContent=owner;
+  $("ow").className=owner?"o1":"o0";
+  $("rt").textContent=rate.toFixed(1);
+  $("kf").textContent=(kfT.length/3).toFixed(0);
+  $("name").textContent="sender: "+nm+"  ("+m.ip+")";
+  draw(x,y,st,dir,owner);
+ }else if(ty===10&&u.length>=24){          // walker params (cam)
+  const c=d.getFloat32(16,true),now=performance.now();
+  if(cam!==null&&camT){const v=(c-cam)/((now-camT)/1000);
+   if(isFinite(v))camV=camV*0.6+v*0.4}
+  cam=c;camT=now;strips=u[21]||strips;
+  $("cm").textContent=c.toFixed(1);
+ }else if(ty===16&&u.length>=24){          // oracle rung
+  const step=d.getUint32(8,true);
+  const h=d.getBigUint64(12,true).toString(16).padStart(16,"0");
+  const hs=d.getUint16(20,true).toString(16).padStart(4,"0");
+  $("rg").textContent="@"+step;
+  tick("rg",`rung @${step}  core ${h.substr(0,8)}..  soft ${hs}`);
+  if(lastStepT)$("lg").textContent=
+   Math.max(0,((lastStep-step)/30*1000)).toFixed(0);
+ }}
+function draw(wx,wy,st,dir,owner){
+ const W=cv.width,H=cv.height,fw=strips*64;
+ let c=cam;if(c!==null&&camT)c+= camV*(performance.now()-camT)/1000;
+ if(c===null)c=wx-fw/2;
+ const sx=w=> (w-c)/fw*W, sy=y=>y/64*H;
+ cx.fillStyle="#05070b";cx.fillRect(0,0,W,H);
+ cx.strokeStyle="#22303f";
+ for(let s=1;s<strips;s++){const bx=s/strips*W;
+  cx.beginPath();cx.moveTo(bx,0);cx.lineTo(bx,H);cx.stroke()}
+ cx.strokeStyle="#16324a";cx.beginPath();
+ cx.moveTo(0,sy(57));cx.lineTo(W,sy(57));cx.stroke(); // ground line
+ for(let i=1;i<trail.length;i++){const a=trail[i-1],b=trail[i];
+  cx.strokeStyle=b.o?"rgba(255,92,200,.35)":"rgba(65,208,255,.35)";
+  cx.beginPath();cx.moveTo(sx(a.x),sy(a.y));
+  cx.lineTo(sx(b.x),sy(b.y));cx.stroke()}
+ const px=sx(wx),py=sy(wy);
+ cx.fillStyle=owner?"#ff5cc8":"#41d0ff";
+ cx.fillRect(px-3,py-8,6,10);
+ cx.fillStyle="#0b0e14";cx.fillRect(px-3+(dir>0?3:0),py-6,1,2);
+ const stn=["WALK","CLMB","LADR","SLID","FALL","IDLE","CRCH","JUMP",
+            "LAND","GOCH","SETP","SIT","PACK","SHIM","POP","BASE"];
+ cx.fillStyle="#8b96a8";cx.font="10px monospace";
+ cx.fillText(stn[st]||st,px+6,py-2)}
+function connect(){
+ if(ws)try{ws.close()}catch(e){}
+ ws=new WebSocket($("url").value);
+ ws.onopen=()=>{$("dot").className="on";tick("pm","bridge connected")};
+ ws.onclose=()=>{$("dot").className="";
+  tick("pm","disconnected - retrying in 2s");
+  setTimeout(()=>{if(ws&&ws.readyState===3)connect()},2000)};
+ ws.onmessage=e=>{try{onPkt(JSON.parse(e.data))}catch(err){}}}
+$("go").onclick=connect;
+</script>

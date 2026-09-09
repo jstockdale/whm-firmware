@@ -195,6 +195,9 @@ M3  Config broker (NVS-backed, conductor-serialized, hash-audited).
 M4  Media-sync ported as client 2 (proves kernel generality).
 M5  rsk_vote primitive on the command plane.
 M6  Host harness + fuzzers gate releases; fireworks as client 3.
+M7  Fleet viewer v2: panel-hosted WS forwarder (post-verification
+    frames; one-client cap for RAM) + terrain twin in-browser from
+    ported pure world functions, golden-hashed against M2.
 
 ## 6. Non-goals (v1)
 Dynamic membership beyond rejoin; WAN operation; >16 nodes;
