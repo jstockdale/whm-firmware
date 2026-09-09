@@ -2812,19 +2812,26 @@ static void wk_wonders(int64_t t, float cam, int idx, float f)
     if (sx < -24 || sx > 70) return;
     float li = 0.55f + 0.45f * f;
     int pick = (int)((h >> 8) & 0xff);
-    switch (key) {
-    case -16: (pick % 3 == 0 ? wn_ggbridge :
-               pick % 3 == 1 ? wn_hollywood : wn_needle)(sx, li);
+    switch (key) {                         /* DST-tolerant pairs */
+    case -16: case -14:
+        (pick % 3 == 0 ? wn_ggbridge :
+         pick % 3 == 1 ? wn_hollywood : wn_needle)(sx, li);
         break;
-    case -10: wn_liberty(sx, li); break;
+    case -10: case -8: wn_liberty(sx, li); break;
     case 0:   (pick & 1 ? wn_stonehenge : wn_bigben)(sx, li);
         break;
-    case 2:   wn_eiffel(sx, li); break;
-    case 4:   wn_pyramids(sx, li); break;
+    case 2:   /* BST-summer meets CET-winter here: the tz key's
+                 one true ambiguity, shrugged at whimsy tier -
+                 the hash deals London or Paris; geo-IP settles
+                 it someday. */
+        (pick % 3 == 0 ? wn_stonehenge :
+         pick % 3 == 1 ? wn_bigben : wn_eiffel)(sx, li);
+        break;
+    case 3: case 4: wn_pyramids(sx, li); break;
     case 11:  wn_taj(sx, li); break;
     case 16:  wn_greatwall(sx, li); break;
     case 18:  wn_torii(sx, li); break;
-    case 20:  wn_opera(sx, li); break;
+    case 20: case 22: wn_opera(sx, li); break;
     default:  wn_ridge(sx, li); break;
     }
 }
