@@ -27,13 +27,16 @@
 
 static const char *TAG = "whm_set";
 #define NS "whm"
-#define VAL_MAX 64
+#define VAL_MAX 144   /* 0.55.2: identity hex strings (sk=128) must
+                         ride the broker - undersizing this silently
+                         sent them down the DIRECT path from the sync
+                         rx task and asserted the cache guard */
 
 enum { OP_GSTR, OP_SSTR, OP_GU8, OP_SU8, OP_GU32, OP_SU32, OP_ERASE };
 
 typedef struct {
     uint8_t op;
-    char key[16];
+    char key[24];
     char sval[VAL_MAX];
     uint32_t uval;
     char *out;
@@ -255,6 +258,10 @@ esp_err_t whm_settings_set_str(const char *key, const char *val)
 {
     esp_err_t rc;
     if (use_direct() || strlen(val) >= VAL_MAX) {
+        if (!use_direct())
+            printf("settings: OVERSIZE set_str('%s', %u chars) "
+                   "took the DIRECT path from a non-broker task - "
+                   "raise VAL_MAX\n", key, (unsigned)strlen(val));
         rc = d_set_str(key, val);
     } else {
         nvsreq_t r = { .op = OP_SSTR };
