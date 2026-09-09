@@ -3412,8 +3412,6 @@ static void pat_walker(int64_t t)
                 float dx = s_wkf[i].x - s_wk.x;
                 int dyv = (int)s_wkf[i].yq1 -
                           (int)lroundf(s_wk.y * 2.0f);
-                float dtg = s_wkf[i].tgt - s_wk.tgt;
-                float dvx = s_wkf[i].vx - s_wk.vx;
                 /* ADOPT ALWAYS (owner's clones): the old gate
                    adopted only past-threshold, so between
                    adoptions each follower's sim wandered its own
@@ -3438,25 +3436,23 @@ static void pat_walker(int64_t t)
                 s_wk.timer = s_wkf[i].timer;
                 s_wk.tgt = s_wkf[i].tgt;
                 s_wk.vx = s_wkf[i].vx;
-                float dvy2 = s_wk.vy - s_wkf[i].vy;
-                float dsp = s_wk.spd - s_wkf[i].spd;
                 s_wk.vy = s_wkf[i].vy;
                 s_wk.spd = s_wkf[i].spd;
                 s_wk.sdir = s_wkf[i].sdir;
                 s_wk.phase = s_wkf[i].phase;
                 s_wk.turn_cd = s_wkf[i].turn_cd;
                 s_wk.fresh = s_wkf[i].fresh;
+                /* MATERIALITY: adopt-always still restores every
+                   field silently, but only POSITION or STATE
+                   divergence is worth a tape, a snap count, or a
+                   storm vote - timer/dir one-offs on legit frames
+                   fired six dx=0.00 SNAPs and the breaker nuked
+                   the epoch unilaterally (site 3496, the owner's
+                   'right after I said something'). Cosmetics heal
+                   in silence now. */
                 if (dx > 0.75f || dx < -0.75f || dyv > 1 ||
-                    dyv < -1 || s_wkf[i].st != (uint8_t)s_wk.st ||
-                    s_wkf[i].dir != (int8_t)s_wk.dir ||
-                    s_wkf[i].timer != (uint16_t)s_wk.timer ||
-                    dtg > 0.5f || dtg < -0.5f ||
-                    dvx > 0.05f || dvx < -0.05f ||
-                    dvy2 > 0.2f || dvy2 < -0.2f ||
-                    dsp > 0.01f || dsp < -0.01f ||
-                    s_wkf[i].fresh != s_wk.fresh ||
-                    s_wkf[i].turn_cd != (uint8_t)s_wk.turn_cd ||
-                    s_wkf[i].sdir != (int8_t)s_wk.sdir) {
+                    dyv < -1 ||
+                    s_wkf[i].st != (uint8_t)s_wk.st) {
                     whm_lts(); printf("walker: at-step SNAP @%lu (dx %.2f, "
                            "%u vs %u, ptgt=%.1f cam=%.2f) "
                            "mine{x=%.2f "
@@ -3493,10 +3489,15 @@ static void pat_walker(int64_t t)
                     }
                     if (++s_wko.storms > 5) {
                         s_wko.storms = 0;
-                        whm_lts(); printf("walker: anchor INVALIDATED (site %d)\n", __LINE__);
-        s_wk_anchor = INT64_MIN;
-                        whm_lts(); printf("walker: snap storm - replay-resync"
-                               "\n");
+                        /* SOFT RESYNC: five MATERIAL snaps in 3 s
+                           means this replica is genuinely off the
+                           owner's line - re-seat on the next
+                           keyframe. The epoch is fleet property;
+                           one replica never nukes it again. */
+                        s_wko.resync = 1;
+                        whm_lts();
+                        printf("walker: snap storm - soft resync "
+                               "(epoch kept)\n");
                     }
                 } else {
                     s_wkf_ok++;
@@ -3690,8 +3691,15 @@ static void pat_walker(int64_t t)
                    Determinism makes clairvoyance free. */
                 uint32_t K = (whm_sync_lead_ms() * 3 * 1000)
                              / (uint32_t)WK_TICK_US;
-                if (K < 6) K = 6;
-                if (K > 120) K = 120;
+                /* THE NEAR HORIZON: the ring is WKF_N deep with
+                   evict-oldest at ~30 frames/s, so a promise for
+                   now+K is evicted K-(WKF_N-2) steps BEFORE its
+                   appointment - at the old K~45, every clairvoyant
+                   frame died ~1.2 s early, ok froze at zero, and
+                   pr pinned at 8 forever. The horizon now fits
+                   inside the ring: promises keep their dates. */
+                if (K < 4) K = 4;
+                if (K > (uint32_t)(WKF_N - 2)) K = WKF_N - 2;
                 /* never promise past the window: the live world
                    respawns at the anchor boundary, the shadow
                    would not - clamp K inside this window */
@@ -3747,13 +3755,14 @@ static void pat_walker(int64_t t)
                             (uint8_t)s_w_n);
                     }
                 }
-                if (!s_wk_replaying) { s_wk_txn++; }
-                if (!s_wk_replaying)
+                if (!s_wk_replaying) {
+                    s_wk_txn++;
                 whm_sync_wkb_send(s_wko.owner, fx, fy, fst, fdir,
                                   ftm, fstep, ftg, fvx,
                               s_wk.vy, s_wk.spd, s_wk.sdir,
                               s_wk.phase, s_wk.turn_cd,
                               s_wk.fresh);
+                }
                 }
             }
             if (!s_wk_replaying && !wk_i_own() &&
@@ -3802,8 +3811,8 @@ static void pat_walker(int64_t t)
                 whm_lts();
                 printf("[W] step=%lu lag=%ld st=%s own=%u%s "
                        "sx=%+.1f cam=%.1f kf ok=%lu snap=%lu "
-                       "stale=%lu wm=%lu ms=%lu pr=%d "
-                       "ev=%+ld tx=%lu rx=%lu%s\n",
+                       "stale=%lu wm=%lu ms=%lu pr=%d pn=%ld "
+                       "tx=%lu rx=%lu%s\n",
                        (unsigned long)s_wk_steps,
                        (long)((int64_t)want - (int64_t)s_wk_steps),
                        stn[sti],
@@ -3821,8 +3830,15 @@ static void pat_walker(int64_t t)
                               if (s_wkf[q9].valid &&
                                   s_wkf[q9].step > s_wk_steps) pr9++;
                           pr9; }),
-                       (long)((int64_t)s_wko.ev_step -
-                              (int64_t)s_wk_steps),
+                       ({ long pn9 = -1;
+                          for (int q9 = 0; q9 < WKF_N; q9++)
+                              if (s_wkf[q9].valid &&
+                                  s_wkf[q9].step > s_wk_steps) {
+                                  long d9 = (long)(s_wkf[q9].step
+                                            - s_wk_steps);
+                                  if (pn9 < 0 || d9 < pn9) pn9 = d9;
+                              }
+                          pn9; }),
                        (unsigned long)s_wk_txn,
                        (unsigned long)s_wk_rxn,
                        s_wk_replaying ? " REPLAY" : "");
