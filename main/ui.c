@@ -1637,11 +1637,16 @@ static void fw_step(int dt_ms)
 
 static void fw_render(void)
 {
+    /* THE GRAND FINALE: particles live in WORLD space; each unit
+       renders its 64px window. One fleet-wide sky - bursts cross
+       the seam - and the coordinate schism that fired the nightly
+       a million px off-screen is closed for every caller. */
+    int ox9 = (int)lround(s_cam_acc) + (int)s_w_idx * 64;
     for (int i = 0; i < s_fwn; i++) {
         fwp_t *p = &s_fw[i];
         float k = 1.0f - (float)p->age / (float)p->life;
         if (k < 0) k = 0;
-        int x = (int)p->x, y = (int)p->y;
+        int x = (int)p->x - ox9, y = (int)p->y;
         wk_px(x, y, (uint8_t)(p->r * k), (uint8_t)(p->g * k),
               (uint8_t)(p->b * k));
         if ((p->kind & 15) == 1) {
@@ -1686,7 +1691,10 @@ static void fw_dots_render(int32_t ms, int64_t t, float fade)
         if (a < 500) {
             k = (float)a / 500.0f;             /* bloom */
             if (a < 120 && s_fwn < FW_MAX - 4) {
-                fw_burst((float)s_fwd[i].x, (float)s_fwd[i].y, 6, 0,
+                fw_burst((float)s_fwd[i].x +
+                             (float)lround(s_cam_acc) +
+                             (float)(s_w_idx * 64),
+                         (float)s_fwd[i].y, 6, 0,
                          s_fwd[i].r, s_fwd[i].g, s_fwd[i].b);
                 s_fwd[i].born_ms -= 1;          /* burst once trick */
             }
@@ -1779,7 +1787,8 @@ static void fw_tick(int64_t t)
             s_show.last_launch_ms = s_show.ms_in;
             uint8_t r, g, b;
             fw_pal(&st, &r, &g, &b);
-            fw_launch(8.0f + (float)(fw_rnd(&st) % 48u),
+            fw_launch(s_show.scene_x0 - 8.0f +
+                          (float)(fw_rnd(&st) % (64u * (s_w_n ? s_w_n : 1))),
                       (int)(fw_rnd(&st) % 3u), r, g, b,
                       (float)(fw_rnd(&st) % 8u));
         }
@@ -1839,9 +1848,10 @@ static void fw_tick(int64_t t)
                 s_wk.st = WK_GOCHAIR;
             }
             uint32_t st2 = s_show.seed + (uint32_t)(ms / 1400);
-            if (ms >= 8000 && ms < 18000 &&
+            if (ms >= 8000 && ms < 8000 + 30000 &&
                 ms - s_show.last_launch_ms >
-                    (int32_t)(900 + fw_rnd(&st2) % 700)) {
+                    (int32_t)((ms < 9500 ? 350 : 550) +
+                              fw_rnd(&st2) % 450)) {
                 s_show.last_launch_ms = ms;
                 uint8_t r, g, b;
                 fw_pal(&st2, &r, &g, &b);
@@ -1862,7 +1872,7 @@ static void fw_tick(int64_t t)
                 whm_sync_nye_send("", 0, s_show.start_tsf);
             }
             fw_step(dt);
-            if (ms > 25000) {
+            if (ms > 44000) {
                 s_show.phase = 3;
                 s_show.ms_in = 0;
             }
@@ -1882,6 +1892,8 @@ static void fw_tick(int64_t t)
                     : 1.0f);
         if (ms >= 170000 && s_wk.st < WK_GOCHAIR) {
             s_fw_hold = true;
+            if (s_show.scene_x0 < 0.0f)
+                s_show.scene_x0 = wk_cam(whm_wifi_tsf_now()) + 8.0f;
             s_wk.st = WK_GOCHAIR;
         }
         /* countdown: 23:59:50..:59, ember digits */
@@ -1943,8 +1955,9 @@ static void fw_choreo_nye(int32_t ms)
             s_show.last_launch_ms = ms;
             uint8_t r, g, b;
             fw_pal(&st, &r, &g, &b);
-            fw_launch(10.0f + (float)(fw_rnd(&st) % 44u), 0, r, g, b,
-                      2.0f);
+            fw_launch(s_show.scene_x0 - 8.0f +
+                          (float)(fw_rnd(&st) % (64u * (s_w_n ? s_w_n : 1))),
+                      0, r, g, b, 2.0f);
         }
         return;
     }
@@ -1960,17 +1973,21 @@ static void fw_choreo_nye(int32_t ms)
         int n = act == 2 ? 1 + (int)(fw_rnd(&st) % 2u) : 1;
         for (int i = 0; i < n; i++) {
             fw_pal(&st, &r, &g, &b);
-            fw_launch(6.0f + (float)(fw_rnd(&st) % 52u),
+            fw_launch(s_show.scene_x0 - 8.0f +
+                          (float)(fw_rnd(&st) % (64u * (s_w_n ? s_w_n : 1))),
                       (int)(fw_rnd(&st) % 3u), r, g, b,
                       (float)(fw_rnd(&st) % 10u));
         }
     }
-    if (ms >= 300000 && ms < 302000 &&
-        ms - s_show.last_launch_ms > 320) {    /* midnight salvo */
+    if (ms >= 300000 && ms < 330000 &&
+        ms - s_show.last_launch_ms > 300 +
+            (int32_t)(fw_rnd(&st) % 200)) {    /* midnight: 30 s */
         s_show.last_launch_ms = ms;
         uint8_t r, g, b;
         fw_pal(&st, &r, &g, &b);
-        fw_launch(8.0f + (float)(fw_rnd(&st) % 48u), 2, r, g, b, 8.0f);
+        fw_launch(s_show.scene_x0 - 8.0f +
+                      (float)(fw_rnd(&st) % (64u * (s_w_n ? s_w_n : 1))),
+                  2, r, g, b, 8.0f);
     }
     if (ms >= 312000 && s_fwdn == 0 &&
         s_show.cd_last == 0) {                 /* opening statement */
@@ -1989,7 +2006,9 @@ static void fw_choreo_nye(int32_t ms)
         s_show.last_launch_ms = ms;
         uint8_t r, g, b;
         fw_pal(&st, &r, &g, &b);
-        fw_launch(6.0f + (float)(fw_rnd(&st) % 52u), 2, r, g, b, 7.0f);
+        fw_launch(s_show.scene_x0 - 8.0f +
+                      (float)(fw_rnd(&st) % (64u * (s_w_n ? s_w_n : 1))),
+                  2, r, g, b, 7.0f);
     }
 }
 
@@ -2103,7 +2122,7 @@ static void wk_nye_scene(float cam, int64_t t)
         s_wk_alt_scarf = false;
         s_wk.dir = sd;
     }
-    fw_draw_text(s_show.tz, 63 - (int)strlen(s_show.tz) * 4, 1,
+    fw_draw_text(s_show.tz, 63 - (int)strlen(s_show.tz) * 4, 8,
                  210, 170, 60);                      /* whose midnight */
 }
 

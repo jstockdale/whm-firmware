@@ -1169,6 +1169,7 @@ static int cmd_fw(int argc, char **argv)   /* hidden: fireworks test */
     }
     if (strcmp(argv[1], "test") == 0) {
         whm_ui_fw_test(1, 0);
+        whm_lts();
         printf("fw: nightly show armed (walker stages in ~4s, "
                "midnight in ~12s)\n");
     } else if (strcmp(argv[1], "nye") == 0) {
