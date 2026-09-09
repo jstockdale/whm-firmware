@@ -977,12 +977,24 @@ static void wk_step(int64_t t, uint8_t n)
         if (s_wk.timer) s_wk.timer--;
         else {
             s_wk.st = WK_SIT;
-            s_wk.timer = (uint16_t)(300 + wk_rnd() % 240);
+            /* SIT LONGER (owner): real contemplation, ~23-40 s. */
+            s_wk.timer = (uint16_t)(700 + wk_rnd() % 500);
             s_wk.dir = -1;                 /* face the oncoming world */
         }
         break;
     case WK_SIT:
         if (s_fw_hold) break;                 /* the show must go on */
+        {   /* PACK UP BEFORE THE VIEW LEAVES HIM (owner): as the
+               world scrolls he drifts toward the trailing edge -
+               stand and pack while still on screen. Pure
+               f(x, cam): shared, fork-free. */
+            float sx9 = s_wk.x - wk_cam(t);
+            if (sx9 < 10.0f) {
+                s_wk.st = WK_PACK;
+                s_wk.timer = 8;
+                break;
+            }
+        }
         if (s_wk.timer) s_wk.timer--;
         else { s_wk.st = WK_PACK; s_wk.timer = 8; }
         break;
@@ -2781,6 +2793,12 @@ static void pat_walker(int64_t t)
     uint8_t n = s_w_n;
     int64_t anchor = t / WK_ANCHOR_US;
     if (anchor != s_wk_anchor) {
+        if (s_wk_anchor > 0 &&
+            (anchor - s_wk_anchor > 1000000 ||
+             s_wk_anchor - anchor > 1000000))
+            printf("walker: RE-ANCHOR delta %+.1fs (epoch moved - "
+                   "world will rebase)\n",
+                   (double)(anchor - s_wk_anchor) / 1e6);
         s_wk_anchor = anchor;
         wk_respawn(anchor * WK_ANCHOR_US, n);
         /* ANCHOR ROLLOVER HYGIENE: step numbers restart each window,
@@ -2825,6 +2843,21 @@ static void pat_walker(int64_t t)
                           (int)lroundf(s_wk.y * 2.0f);
                 float dtg = s_wkf[i].tgt - s_wk.tgt;
                 float dvx = s_wkf[i].vx - s_wk.vx;
+                /* ADOPT ALWAYS (owner's clones): the old gate
+                   adopted only past-threshold, so between
+                   adoptions each follower's sim wandered its own
+                   path and both panels drew their own walker -
+                   two men at the bezel. The owner's keyframe is
+                   now the follower's pose unconditionally; the
+                   mismatch test below is pure DIAGNOSTICS. Forks
+                   live at most one step (~0.3 px). */
+                s_wk.x = s_wkf[i].x;
+                s_wk.y = (float)s_wkf[i].yq1 * 0.5f;
+                s_wk.st = s_wkf[i].st;
+                s_wk.dir = s_wkf[i].dir;
+                s_wk.timer = s_wkf[i].timer;
+                s_wk.tgt = s_wkf[i].tgt;
+                s_wk.vx = s_wkf[i].vx;
                 if (dx > 0.75f || dx < -0.75f || dyv > 1 ||
                     dyv < -1 || s_wkf[i].st != (uint8_t)s_wk.st ||
                     s_wkf[i].dir != (int8_t)s_wk.dir ||
@@ -2867,7 +2900,8 @@ static void pat_walker(int64_t t)
                     }
                     if (++s_wko.storms > 5) {
                         s_wko.storms = 0;
-                        s_wk_anchor = INT64_MIN;
+                        printf("walker: anchor INVALIDATED (site %d)\n", __LINE__);
+        s_wk_anchor = INT64_MIN;
                         printf("walker: snap storm - replay-resync"
                                "\n");
                     }
@@ -3474,6 +3508,7 @@ bool whm_ui_pattern_set(const char *name)
         /* ENTRY = REPLAY POINT (doctrine 14): a resuming unit and a
            fresh one must rebuild identically. Force respawn + full
            catch-up from the shared anchor on every entry. */
+        printf("walker: anchor INVALIDATED (site %d)\n", __LINE__);
         s_wk_anchor = INT64_MIN;
     }
             return true;
