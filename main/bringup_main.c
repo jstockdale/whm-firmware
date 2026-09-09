@@ -178,7 +178,11 @@ void app_main(void)
                  (unsigned)(hi.total_free_bytes / 1024),
                  (unsigned)(hi.largest_free_block / 1024));
     }
-    xTaskCreatePinnedToCore(whm_ui_task, "whm_ui", 5120, NULL, 4, NULL, 1);
+    xTaskCreatePinnedToCore(whm_ui_task, "whm_ui", 5120, NULL,
+                            11 /* THE FLOOR (owner): render above every
+                                  app task (mp3 6, dj 7, broker 9,
+                                  chime 10); below wifi 23 so TSF
+                                  never starves */, NULL, 1);
 
     while (1) {
         vTaskDelay(pdMS_TO_TICKS(5000));

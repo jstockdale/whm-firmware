@@ -2424,47 +2424,55 @@ static void wk_birds(int64_t t, float cam, int idx, float f,
     bool syn = sw > 0.3f;
     if (!day && !syn) return;
     float base = cam * 0.10f + 64.0f * (float)idx;
-    uint32_t ep = (uint32_t)(t / 15000000LL);
-    for (int i = 0; i < 2; i++) {
-        uint32_t h = wk_h(ep * 2654435761u ^ (uint32_t)i * 977u);
-        uint32_t gate = h % 100u;
-        if (day && gate >= 30u) continue;
-        if (syn && (gate >= 18u || i > 0)) continue;
-        float spd = syn ? -2.2f : -4.5f;
-        float wx = (float)(h % 640u) +
-                   (float)((double)(t % 15000000LL) / 1e6) * spd;
-        int sx = (((int)(wx - base)) % 640 + 640) % 640 - 20;
-        if (sx < -6 || sx > 70) continue;
-        int sy = 7 + (int)((h >> 10) % 14u);
-        int flap = (int)(t / (syn ? 620000 : 380000) +
-                         (int64_t)(h & 7)) & 1;
-        if (day) {
+    /* CONTINUOUS SKIES (owner: birds vanished mid-flight - the
+       15 s epoch reseeded the hash and reset elapsed, teleporting
+       any bird on-screen; a crossing takes ~67 s of world-wrap and
+       the epoch guillotined it four times over). Flight is now
+       pure f(t): each formation circles the 640 px sky forever,
+       no reseed, no vanish - and the owner's FLOCK ships free:
+       three gulls staggered 9 px with alternating rows, plus a
+       distant loner half a sky behind. */
+    double ts9 = (double)t / 1e6;
+    if (day) {
+        static const struct { float off; int dy; } F9[4] = {
+            { 0.0f, 0 }, { 9.0f, 1 }, { 18.0f, 0 }, { 330.0f, 1 }
+        };
+        float head = 610.0f - (float)fmod(ts9 * 4.5, 640.0);
+        for (int i = 0; i < 4; i++) {
+            float wx = head + F9[i].off;
+            int sx = (((int)(wx - base)) % 640 + 640) % 640 - 20;
+            if (sx < -6 || sx > 70) continue;
+            int sy = 9 + ((i * 5) % 11) + F9[i].dy;
+            int flap = (int)(t / 380000 + i * 3) & 1;
             uint8_t v = 205, g2 = 205, b2 = 210;
-            /* V-BEAT (owner's note: three peaks = noise, one
-               vertex = bird). Shallow V glide, deep V flap with
-               wingtips swept up-and-out - the child's-drawing gull. */
-            if (flap) {                    /* deep V: tips up a row */
+            if (flap) {
                 wk_px(sx, sy - 1, v, g2, b2);
                 wk_px(sx + 1, sy, v, g2, b2);
                 wk_px(sx + 2, sy + 1, 160, 160, 170);
                 wk_px(sx + 3, sy, v, g2, b2);
                 wk_px(sx + 4, sy - 1, v, g2, b2);
-            } else {                       /* shallow V glide */
+            } else {
                 wk_px(sx, sy, v, g2, b2);
                 wk_px(sx + 1, sy, v, g2, b2);
                 wk_px(sx + 2, sy + 1, 160, 160, 170);
                 wk_px(sx + 3, sy, v, g2, b2);
                 wk_px(sx + 4, sy, v, g2, b2);
             }
-        } else {                           /* synthwave pigeon */
+        }
+    } else {                               /* synthwave pigeon */
+        float wx = 300.0f - (float)fmod(ts9 * 2.2, 640.0);
+        int sx = (((int)(wx - base)) % 640 + 640) % 640 - 20;
+        if (sx >= -6 && sx <= 70) {
+            int sy = 12;
+            int flap = (int)(t / 620000) & 1;
             uint8_t pr = 200, pg = 60, pb = 170;
             wk_px(sx + 1, sy + 1, 30, 8, 44);
             wk_px(sx + 2, sy + 1, 30, 8, 44);
             wk_px(sx + 3, sy + 1, 30, 8, 44);
-            wk_px(sx + 4, sy, 40, 12, 56);     /* head */
-            wk_px(sx + 1, sy + 2, pr, pg, pb); /* underlight */
+            wk_px(sx + 4, sy, 40, 12, 56);
+            wk_px(sx + 1, sy + 2, pr, pg, pb);
             wk_px(sx + 2, sy + 2, pr, pg, pb);
-            if (flap) {                    /* V over the body */
+            if (flap) {
                 wk_px(sx + 1, sy - 1, 60, 200, 220);
                 wk_px(sx + 3, sy - 1, 60, 200, 220);
             } else {
@@ -3024,7 +3032,7 @@ static void pat_walker(int64_t t)
                         wk_px(lx, py - 1, 150, 152, 165);
                 } else if (py <= 19) {       /* treetop canopy */
                     wk_px(lx, py, 34, 150, 44);
-                    wk_px(lx, py + 1, 18, 92, 26);
+                    wk_px(lx, py + 1, 24, 92, 34);
                     wk_px(lx, py + 2, 8, 44, 14);
                     if (rel == c->p[k].w / 2) {  /* trunk hint */
                         wk_px(lx, py + 3, 52, 28, 8);
@@ -3032,7 +3040,9 @@ static void pat_walker(int64_t t)
                     }
                 } else {                     /* mossy slab */
                     wk_px(lx, py, 29, 133, 36);
-                    wk_px(lx, py + 1, 17, 20, 35);
+                    wk_px(lx, py + 1, 26, 30, 48);   /* floored above the
+                       once-shown LSB planes (lsbMsbTransitionBit=1):
+                       dim rows shimmered under load */
                     wk_px(lx, py + 2, 10, 12, 22);
                     wk_px(lx, py + 3, 5, 6, 12);
                 }
