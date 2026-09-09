@@ -368,6 +368,98 @@ static int64_t s_wk_anchor = -1;
 static struct { int32_t key; uint8_t visits; } s_wk_seen[WK_SEEN_N];
 static uint8_t s_wk_seen_wr;
 
+/* ============= THE ORACLE: state-hash ladder =============
+   O(1) detection of ANY sim divergence at exact-step
+   granularity - it audits the fields nobody promises. The
+   hash walks a CANONICAL FIELD MANIFEST (never raw struct
+   bytes: padding is nondeterminism bait). core = full pose +
+   One-Camera double, STRICT; soft = the seen/visits ring,
+   documented-unsynced, reported inside confessions only so
+   the oracle never cries wolf. Rungs every 32 steps; the
+   fleet conductor publishes as reference model; followers
+   judge banked rungs against their own cached rungs at EQUAL
+   step, epoch-keyed by anchor byte, silent during replay. */
+static double s_cam_acc;      /* tentative: defined with the
+                                 camera statics below; the oracle
+                                 reads it from up here */
+static uint64_t s_or_h[8]; static uint16_t s_or_hs[8];
+static uint32_t s_or_step[8]; static uint8_t s_or_a8[8];
+static int s_or_wr; static uint32_t s_or_ok;
+static struct { uint32_t step; uint64_t h; uint16_t hs;
+                uint8_t a8; uint8_t valid; } s_orx[4];
+static uint64_t or_fnv(const void *p, int n, uint64_t h)
+{
+    const uint8_t *b = (const uint8_t *)p;
+    while (n--) { h ^= *b++; h *= 0x100000001b3ULL; }
+    return h;
+}
+static void wk_oracle_hash(uint64_t *core, uint16_t *soft)
+{
+    uint64_t h = 0xcbf29ce484222325ULL; uint32_t t;
+    memcpy(&t, &s_wk.x, 4);   h = or_fnv(&t, 4, h);
+    memcpy(&t, &s_wk.y, 4);   h = or_fnv(&t, 4, h);
+    memcpy(&t, &s_wk.vx, 4);  h = or_fnv(&t, 4, h);
+    memcpy(&t, &s_wk.vy, 4);  h = or_fnv(&t, 4, h);
+    memcpy(&t, &s_wk.spd, 4); h = or_fnv(&t, 4, h);
+    memcpy(&t, &s_wk.tgt, 4); h = or_fnv(&t, 4, h);
+    uint8_t s8[8] = { (uint8_t)s_wk.st, (uint8_t)s_wk.dir,
+                      (uint8_t)s_wk.sdir, (uint8_t)s_wk.phase,
+                      s_wk.turn_cd, s_wk.fresh,
+                      (uint8_t)(s_wk.timer & 0xFF),
+                      (uint8_t)(s_wk.timer >> 8) };
+    h = or_fnv(s8, 8, h);
+    uint64_t cb; memcpy(&cb, &s_cam_acc, 8);
+    h = or_fnv(&cb, 8, h);
+    *core = h;
+    uint64_t hh = or_fnv(s_wk_seen, (int)sizeof(s_wk_seen),
+                         0xcbf29ce484222325ULL);
+    hh = or_fnv(&s_wk_seen_wr, 1, hh);
+    *soft = (uint16_t)(hh ^ (hh >> 16) ^ (hh >> 32) ^ (hh >> 48));
+}
+static void wk_oracle_judge(int i)
+{
+    for (int q = 0; q < 8; q++) {
+        if (s_or_step[q] != s_orx[i].step ||
+            s_or_a8[q] != s_orx[i].a8) continue;
+        if (s_or_h[q] == s_orx[i].h) { s_or_ok++; }
+        else {
+            whm_lts();
+            printf("walker: ORACLE DIVERGENCE @%lu core "
+                   "%016llx vs %016llx soft %04x vs %04x "
+                   "now{x=%.2f y=%.2f vx=%.2f vy=%.2f "
+                   "spd=%.2f tgt=%.1f st=%d dir=%d sd=%d "
+                   "ph=%d cd=%d fr=%d tm=%d cam=%.2f}\n",
+                   (unsigned long)s_orx[i].step,
+                   (unsigned long long)s_or_h[q],
+                   (unsigned long long)s_orx[i].h,
+                   (unsigned)s_or_hs[q], (unsigned)s_orx[i].hs,
+                   s_wk.x, s_wk.y, s_wk.vx, s_wk.vy, s_wk.spd,
+                   s_wk.tgt, (int)s_wk.st, (int)s_wk.dir,
+                   (int)s_wk.sdir, (int)s_wk.phase,
+                   (int)s_wk.turn_cd, (int)s_wk.fresh,
+                   (int)s_wk.timer, (float)s_cam_acc);
+        }
+        s_orx[i].valid = 0; return;
+    }
+}
+void whm_ui_oracle_rx(uint32_t step, uint8_t a8, uint64_t h,
+                      uint16_t hs)
+{
+    if (s_w_n <= 1) return;
+    int sl2 = -1; uint32_t old2 = 0xFFFFFFFFu; int oi2 = 0;
+    for (int i = 0; i < 4; i++) {
+        if (s_orx[i].valid && s_orx[i].step == step &&
+            s_orx[i].a8 == a8) { sl2 = i; break; }
+        if (sl2 < 0 && !s_orx[i].valid) sl2 = i;
+        if (s_orx[i].valid && s_orx[i].step < old2) {
+            old2 = s_orx[i].step; oi2 = i;
+        }
+    }
+    if (sl2 < 0) sl2 = oi2;
+    s_orx[sl2].step = step; s_orx[sl2].a8 = a8;
+    s_orx[sl2].h = h; s_orx[sl2].hs = hs; s_orx[sl2].valid = 1;
+    wk_oracle_judge(sl2);
+}
 static uint8_t wk_visits(int32_t key)
 {
     for (int i = 0; i < WK_SEEN_N; i++) {
@@ -3358,6 +3450,19 @@ static void pat_walker(int64_t t)
         }
         wk_step(ts, n);
         wk_cam_sync();                 /* exact to this step */
+        if ((s_wk_steps % 32u) == 0u && s_w_n > 1) {
+            int w9 = s_or_wr & 7;      /* the ladder's rung */
+            wk_oracle_hash(&s_or_h[w9], &s_or_hs[w9]);
+            s_or_step[w9] = s_wk_steps;
+            s_or_a8[w9] = (uint8_t)s_wk_anchor;
+            s_or_wr++;
+            for (int i2 = 0; i2 < 4; i2++)
+                if (s_orx[i2].valid) wk_oracle_judge(i2);
+            if (!s_wk_replaying && whm_sync_is_conductor())
+                whm_sync_oracle_send((uint8_t)s_wk_anchor,
+                                     s_wk_steps,
+                                     s_or_h[w9], s_or_hs[w9]);
+        }
         if (s_w_n > 1 && !wk_i_own() && s_show.phase == 0) {
             for (int i = 0; i < WKF_N; i++) {
                 if (s_wkf[i].valid && s_wkf[i].step < s_wk_steps) {
@@ -3773,7 +3878,7 @@ static void pat_walker(int64_t t)
                 uint8_t sti = s_wk.st < 16 ? s_wk.st : 0;
                 whm_lts();
                 printf("[W] step=%lu lag=%ld st=%s own=%u%s "
-                       "sx=%+.1f cam=%.1f kf ok=%lu snap=%lu "
+                       "sx=%+.1f cam=%.1f kf ok=%lu or=%lu snap=%lu "
                        "stale=%lu wm=%lu ms=%lu pr=%d pn=%ld "
                        "tx=%lu rx=%lu%s\n",
                        (unsigned long)s_wk_steps,
@@ -3784,6 +3889,7 @@ static void pat_walker(int64_t t)
                        (double)(s_wk.x - cam),
                        (double)cam,
                        (unsigned long)s_wkf_ok,
+                       (unsigned long)s_or_ok,
                        (unsigned long)s_wkf_snap,
                        (unsigned long)s_wkf_stale,
                        (unsigned long)s_wk_wm,

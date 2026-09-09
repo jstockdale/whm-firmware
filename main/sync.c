@@ -288,6 +288,10 @@ static uint8_t s_prio = 100;
 static char s_anchor_name[16] = "";      /* current winner we follow */
 static int64_t s_promote_at = 0;         /* jittered election deadline */
 static whm_sync_role_t s_role = WHM_SYNC_OFF;
+bool whm_sync_is_conductor(void)
+{
+    return s_role == WHM_SYNC_CONDUCTOR;
+}
 static char s_peer_name[16] = "";
 
 typedef struct __attribute__((packed)) {
@@ -608,6 +612,29 @@ typedef struct __attribute__((packed)) {
     uint8_t strips;         /* fleet strip count (parallax hint) */
     uint16_t rsv2;
 } whm_wkp_t;
+typedef struct __attribute__((packed)) {
+    char magic[4]; uint8_t ver; uint8_t type;   /* 16 */
+    uint8_t a8; uint8_t rsv;
+    uint32_t step; uint64_t h; uint16_t hs; uint16_t rsv2;
+} whm_org_t;
+esp_err_t whm_sync_oracle_send(uint8_t a8, uint32_t step,
+                               uint64_t h, uint16_t hs)
+{
+    if (s_sock < 0) return ESP_ERR_INVALID_STATE;
+    whm_org_t k = { .magic = { 'W', 'H', 'M', 'L' }, .ver = 2,
+                    .type = 16, .a8 = a8, .rsv = 0,
+                    .step = step, .h = h, .hs = hs, .rsv2 = 0 };
+    struct sockaddr_in dst = { 0 };
+    dst.sin_family = AF_INET;
+    dst.sin_port = htons(7777);
+    dst.sin_addr.s_addr = htonl(INADDR_BROADCAST);
+    uint8_t sb[sizeof(k) + 16];
+    memcpy(sb, &k, sizeof(k));
+    int sl = seal_tx(sb, (int)sizeof(k));
+    sendto(s_sock, sb, sl, 0, (struct sockaddr *)&dst,
+           sizeof(dst));
+    return ESP_OK;
+}
 
 static void recv_task(void *arg)
 {
@@ -851,6 +878,16 @@ static void recv_task(void *arg)
                               fr.w, fr.h, fr.pts,
                               rbuf + sizeof(fr), pl,
                               whm_wifi_tsf_now());
+            continue;
+        }
+        if (rbuf[5] == 16 &&
+            (n == (int)sizeof(whm_org_t) ||
+             n == (int)sizeof(whm_org_t) + 16)) {
+            /* sizeof is the only law - born obeying it */
+            if (!seal_rx(rbuf, n, (int)sizeof(whm_org_t),
+                         "oracle")) continue;
+            const whm_org_t *o9 = (const whm_org_t *)rbuf;
+            whm_ui_oracle_rx(o9->step, o9->a8, o9->h, o9->hs);
             continue;
         }
         if (rbuf[5] == 14 && n == (int)sizeof(whm_kwrap_t)) {
