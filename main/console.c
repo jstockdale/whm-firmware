@@ -943,7 +943,7 @@ static int cmd_secure(int argc, char **argv)
     }
     bool st; bool kf = whm_sync_secure_status(&st);
     printf("secure: fleet key %s | strict %s\n",
-           kf ? "PRESENT" : "absent (anchor mints; wraps ~15s)",
+           kf ? "PRESENT" : "absent (anchor mints; wraps every 1s)",
            st ? "ON" : "off (grace)");
     return 0;
 }
