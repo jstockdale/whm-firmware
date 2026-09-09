@@ -1637,7 +1637,11 @@ static void fw_tick(int64_t t)
             s_show.ms_in = 0;
         }
         break;
-    case 2: {                                  /* nightly: 10s */
+    case 2: {                                  /* nightly: 10s
+        TOMBSTONE: unreachable legacy (no path sets phase=1/2 since
+        the unified year-0 script in case 4). Its absolute 8..56
+        launch x is the pre-unification relic - if ever revived,
+        anchor to scene_x0 first. */
         s_show.ms_in += dt;
         uint32_t st = s_show.seed + (uint32_t)(s_show.ms_in / 1400);
         if (s_show.ms_in - s_show.last_launch_ms >
@@ -1909,7 +1913,18 @@ void whm_ui_nye_join(const char *from, const char *tz, int year,
     int64_t el = whm_wifi_tsf_now() - start_tsf;
     float cam_t0 = wk_cam(esp_timer_get_time()) -
                    (float)((double)el / 1e6) * WK_CAM_SPD;
-    s_show.scene_x0 = cam_t0 + 148.0f;
+    /* THE STAGE COMES HOME (field: walker exits panel 2 right and
+       sits offstage; zero fireworks visible). +148 is NYE geometry:
+       a stage 2.3 screens ahead that the SAILING camera reaches
+       over 175s. The nightly FREEZES the camera at ms~2000 - and
+       then used the NYE stage anyway: chair at fleet-x +178 (50px
+       past panel 2), every burst at +140..+268. All offstage right,
+       forever. The mini-script has always carried the correct
+       anchor (live cam + 8, guarded by scene_x0 < 0) - dead-coded
+       by this pre-set. Year 0 now leaves the stage unset so the
+       script anchors where the frozen camera actually is; NYE
+       keeps its far stage and its long walk. */
+    s_show.scene_x0 = (year == 0) ? -1.0f : cam_t0 + 148.0f;
     s_show.banner = 0;
     if (from[0]) printf("NYE takeover from %s (%s %d) - joining the "
                         "show\n", from, s_show.tz, year);
