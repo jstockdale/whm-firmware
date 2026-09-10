@@ -595,6 +595,13 @@ CONFIG_PARTITION_TABLE_MD5=y
 # end of Partition Table
 
 #
+# WHM Monitor
+#
+CONFIG_MON_BOARD_AMOLED191=y
+# CONFIG_MON_BOARD_S3PRO is not set
+# end of WHM Monitor
+
+#
 # Compiler options
 #
 CONFIG_COMPILER_OPTIMIZATION_DEBUG=y

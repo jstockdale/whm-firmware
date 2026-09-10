@@ -1,0 +1,2 @@
+source /home/claude/whm-firmware/monitor/build_pro/bootloader/gdbinit/symbols
+source /home/claude/whm-firmware/monitor/build_pro/bootloader/gdbinit/connect

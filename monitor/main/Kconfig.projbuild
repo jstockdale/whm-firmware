@@ -1,0 +1,10 @@
+menu "WHM Monitor"
+choice MON_BOARD
+    prompt "Monitor board"
+    default MON_BOARD_AMOLED191
+config MON_BOARD_AMOLED191
+    bool "LilyGO T-Display-S3 AMOLED (touch, RM67162)"
+config MON_BOARD_S3PRO
+    bool "LilyGO T-Display-S3 Pro / MVSRLora (ST7796 + LR1121)"
+endchoice
+endmenu

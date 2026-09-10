@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include "nvs_flash.h"
 #include "mon_config.h"
+#include "mon_pins.h"
 void mon_net_start(void);
 void mon_lcd_init(void);
 void mon_touch_init(void);
@@ -13,6 +14,7 @@ void mon_sky_init(void);
 void app_main(void)
 {
     printf("==== %s ====\n", MON_VERSION);
+    printf("board: %s\n", MON_BOARD_NAME);
     printf("passive fleet monitor - wire proof first, display next\n");
     esp_err_t r = nvs_flash_init();
     if (r == ESP_ERR_NVS_NO_FREE_PAGES ||

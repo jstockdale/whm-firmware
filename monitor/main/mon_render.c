@@ -350,9 +350,16 @@ void mon_render(uint32_t kfs)
     gfx_text(cx0, 36, ln, 2, 200, 208, 220);
     snprintf(ln, sizeof ln, "y %.1f", g_mon.y);
     gfx_text(cx0, 58, ln, 1, 160, 170, 185);
+#if MON_COL_COMPACT
+    snprintf(ln, sizeof ln, "vx %+.2f", g_mon.vx);
+    gfx_text(cx0, 70, ln, 1, 160, 170, 185);
+    snprintf(ln, sizeof ln, "vy %+.2f", g_mon.vy);
+    gfx_text(cx0, 80, ln, 1, 160, 170, 185);
+#else
     snprintf(ln, sizeof ln, "vx %+.2f vy %+.2f",
              g_mon.vx, g_mon.vy);
     gfx_text(cx0, 70, ln, 1, 160, 170, 185);
+#endif
     snprintf(ln, sizeof ln, "rung @%lu",
              (unsigned long)g_mon.rung_step);
     gfx_text(cx0, 84, ln, 1, 200, 180, 69);
@@ -397,12 +404,24 @@ void mon_render_full(void)
     else cam = M.x - 64.0f;
     int32_t ox = (int32_t)lroundf(cam);
     /* local x4 plotter with row crop */
+#if LCD_W >= 536
     #define FX0 12
     #define FSC 4
+    #define FY0 0
+    #define FROWCROP 2
+    #define FROWS 60
+#else
+    #define FX0 ((LCD_W - 128 * 3) / 2)
+    #define FSC 3
+    #define FY0 ((LCD_H - 64 * 3) / 2)
+    #define FROWCROP 0
+    #define FROWS 64
+#endif
     #define FPX(sx, sy, r9, g9, b9) do { \
-        int _y = (sy) - 2; \
-        if ((sx) >= 0 && (sx) < 128 && _y >= 0 && _y < 60) \
-            whm_display_fill_rect(FX0 + (sx) * FSC, _y * FSC, \
+        int _y = (sy) - FROWCROP; \
+        if ((sx) >= 0 && (sx) < 128 && _y >= 0 && _y < FROWS) \
+            whm_display_fill_rect(FX0 + (sx) * FSC, \
+                                  FY0 + _y * FSC, \
                                   FSC, FSC, r9, g9, b9); \
     } while (0)
     int32_t id0 = (int32_t)floorf((float)ox / 64.0f);
@@ -480,4 +499,9 @@ void mon_render_full(void)
         FPX(wlx + 1, wy - 1, 213, 194, 167);
     }
     #undef FPX
+    #undef FX0
+    #undef FSC
+    #undef FY0
+    #undef FROWCROP
+    #undef FROWS
 }

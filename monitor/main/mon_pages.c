@@ -53,8 +53,8 @@ void mon_page_stats(uint32_t kfs)
              (unsigned long)kfs,
              (unsigned long long)(esp_timer_get_time() / 1000000));
     gfx_text(10, 194, ln, 2, 140, 150, 168);
-    gfx_text(300, 150, "kf/s (2 min)", 1, 110, 120, 138);
-    spark(300, 162, 230, 56, g_mon.kfs_ring, g_mon.ring_i,
+    gfx_text(LCD_W - 236, 150, "kf/s (2 min)", 1, 110, 120, 138);
+    spark(LCD_W - 236, 162, 230, 56, g_mon.kfs_ring, g_mon.ring_i,
           oc_r, oc_g, oc_b);
 }
 void mon_page_wire(void)
@@ -76,7 +76,7 @@ void mon_page_wire(void)
     gfx_text(10, 104, "rx/s (2 min)", 1, 110, 120, 138);
     spark(10, 116, 230, 44, g_mon.rxs_ring, g_mon.ring_i,
           65, 208, 255);
-    gfx_text(300, 8, "rung history", 1, 200, 180, 69);
+    gfx_text(LCD_W - 180, 8, "rung history", 1, 200, 180, 69);
     int shown = 0;
     for (int i = 0; i < 8; i++) {
         int idx = (g_mon.rung_n + 7 - i) % 8;
@@ -84,11 +84,11 @@ void mon_page_wire(void)
         snprintf(ln, sizeof ln, "@%lu  %04x",
                  (unsigned long)g_mon.rung[idx].step,
                  g_mon.rung[idx].h16);
-        gfx_text(300, 22 + shown * 14, ln, 1, 200, 180, 69);
+        gfx_text(LCD_W - 180, 22 + shown * 14, ln, 1, 200, 180, 69);
         shown++;
     }
     if (!shown)
-        gfx_text(300, 22, "none heard (0.62+?)", 1,
+        gfx_text(LCD_W - 180, 22, "none heard (0.62+?)", 1,
                  110, 120, 138);
     snprintf(ln, sizeof ln, "the eye: /  /fb.png  /viewer");
     gfx_text(10, 190, ln, 1, 110, 120, 138);
