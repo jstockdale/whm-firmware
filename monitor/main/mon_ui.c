@@ -41,6 +41,7 @@ void mon_render_full(void);
 void mon_page_stats(uint32_t kfs);
 void mon_page_wire(void);
 static const char *PGN[4] = { "WORLD", "FULL", "STATS", "WIRE" };
+uint32_t s_upds;                    /* distinct steps drawn /s */
 static void boot_flourish(void)
 {
     /* POP sparkle -> scarf-rainbow wipe -> version card.
@@ -112,6 +113,20 @@ static void ui_task(void *arg)
             tseq = g_touch.seq;
             page = (uint8_t)((page + 1) % 4);
             toast_until = esp_timer_get_time() + 1500000;
+        }
+        {   /* RENDER-SIDE truth (owner: counters watch the
+               door, not the stage): count DISTINCT steps the
+               ui actually observes, ring the last 8 drawn. */
+            static uint32_t pstep; static uint32_t updc;
+            static uint8_t sec9;
+            if (g_mon.step != pstep) {
+                pstep = g_mon.step; updc++;
+                g_mon.drawn8[g_mon.drawn8_i] = g_mon.step;
+                g_mon.drawn8_i =
+                    (uint8_t)((g_mon.drawn8_i + 1) % 8);
+            }
+            if (++sec9 >= MP_UI_FPS) { sec9 = 0;
+                s_upds = updc; updc = 0; }
         }
         memset(s_fb, 0, LCD_W * LCD_H * 2);
         if (page == 0) mon_render(kfs);

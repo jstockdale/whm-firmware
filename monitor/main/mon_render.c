@@ -354,9 +354,13 @@ void mon_render(uint32_t kfs)
     int32_t ox = (int32_t)lroundf(cam);
     /* top + bottom bands */
     char ln[56];
-    snprintf(ln, sizeof ln, "step %lu  %s  kf/s %lu",
-             (unsigned long)g_mon.step, mon_st_name(g_mon.st),
-             (unsigned long)kfs);
+    {
+        extern uint32_t s_upds;
+        snprintf(ln, sizeof ln,
+                 "step %lu  %s  kf/s %lu  upd/s %lu",
+                 (unsigned long)g_mon.step, mon_st_name(g_mon.st),
+                 (unsigned long)kfs, (unsigned long)s_upds);
+    }
     gfx_text(4, 4, ln, 2, 124, 196, 255);
     {   /* AGE: ms since the last ACCEPTED keyframe - the
            tree-splitter. Sawtooth to 300-800 ms = acceptance

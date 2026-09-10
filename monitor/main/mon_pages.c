@@ -84,6 +84,15 @@ void mon_page_wire(void)
                 (g_mon.raw8[(g_mon.raw8_i + i) % 8] % 1000));
         gfx_text(10, 160, r2, 1, 232, 180, 100);
     }
+    {
+        char r2[52]; int o2 = 0;
+        o2 += snprintf(r2 + o2, sizeof r2 - o2, "drw ");
+        for (int i = 0; i < 8; i++)
+            o2 += snprintf(r2 + o2, (size_t)(sizeof r2 - o2),
+                "%lu ", (unsigned long)
+                (g_mon.drawn8[(g_mon.drawn8_i + i) % 8] % 1000));
+        gfx_text(10, 172, r2, 1, 124, 224, 201);
+    }
     snprintf(ln, sizeof ln, "kf %lu   wkp %lu",
              (unsigned long)g_mon.n_kf,
              (unsigned long)g_mon.n_wkp);
