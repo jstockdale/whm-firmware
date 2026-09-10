@@ -12,8 +12,11 @@ button{background:#1d2736;color:#cfd8e3;border:1px solid #2a3446;padding:4px 12p
 #cstat.err{color:#e5484d}
 #cstat.ok{color:#46c390}
 button,input,.hr{touch-action:manipulation}
-#cv{width:100%;max-width:768px;height:auto;aspect-ratio:768/384}
-#tv{width:100%;max-width:768px;height:auto;aspect-ratio:768/204}
+#cv{width:100%;height:auto;aspect-ratio:768/384}
+#tv{width:100%;height:auto;aspect-ratio:768/204}
+/* the canvases claim the width the history doesn't - no dead
+   gutter, and the HUD (with the scenery button floated right)
+   inherits the same width, landing flush on the panel edge */
 #wrap{flex-wrap:wrap}
 #left{min-width:0;flex:1 1 640px}
 @media (pointer:coarse){
@@ -29,7 +32,7 @@ canvas{background:#05070b;border:1px solid #2a3446;display:block;margin-bottom:8
 .o0{color:#41d0ff}.o1{color:#ff5cc8}.rg{color:#c8b445}.pm{color:#8b96a8}
 #foot{color:#5b6675;margin-top:6px}
 #wrap{display:flex;gap:12px;align-items:flex-start}
-#hist{width:300px;background:#0d1119;border:1px solid #22303f}
+#hist{width:340px;flex:0 0 340px;background:#0d1119;border:1px solid #22303f}
 #hh{position:sticky;top:0;background:#141a24;padding:6px 8px;
  border-bottom:1px solid #22303f;display:flex;gap:8px;
  align-items:center}
