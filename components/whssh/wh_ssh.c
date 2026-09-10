@@ -975,23 +975,6 @@ void wh_ssh_cmd(wh_out_fn out, void *ctx, char **av, int n)
     out(ctx, "         host: ssh newkey (regenerate per-device host key)\n");
 }
 
-static int cmd_ssh_wrap(int argc, char **argv)
-{
-    void out9(void *c, const char *s) { (void)c; fputs(s, stdout); }
-    wh_ssh_cmd(out9, NULL, argv, argc);
-    return 0;
-}
-
-void whssh_register_console(void)
-{
-    const esp_console_cmd_t cc = {
-        .command = "ssh",
-        .help = "ssh [keys|addkey <t> <b64>|rmkey <n>|newkey] - SSH server",
-        .func = cmd_ssh_wrap,
-    };
-    esp_console_cmd_register(&cc);
-}
-
 #else /* !WH_HAVE_WOLFSSH — host gate / builds without the wolfSSL+wolfSSH components */
 
 void wh_ssh_start(void) {}
@@ -1000,6 +983,6 @@ void wh_ssh_cmd(wh_out_fn out, void *ctx, char **av, int n)
     (void)av; (void)n;
     out(ctx, "ssh    : not built (no wolfSSH)\n");
 }
-void whssh_register_console(void) {}
+
 
 #endif

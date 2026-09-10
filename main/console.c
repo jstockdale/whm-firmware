@@ -21,6 +21,7 @@
  *   log <error|warn|info|debug> background log verbosity
  *   reboot
  */
+#include "whssh.h"
 #include "console.h"
 
 #include <stdio.h>
@@ -1634,6 +1635,16 @@ typedef struct {
 
 static int cmd_help(int argc, char **argv);
 
+static int cmd_ssh_row(int argc, char **argv)
+{
+    /* one help system, one dispatch: the ssh verb is a first-class
+       k_cmds row (the side-door esp_console registration made
+       `help ssh` a liar - dispatch saw it, help didn't). */
+    void row_out(void *x, const char *s) { (void)x; fputs(s, stdout); }
+    wh_ssh_cmd(row_out, NULL, argv, argc);
+    return 0;
+}
+
 static const cmd_ent_t k_cmds[] = {
     { "help",       "help [cmd]",                     "this list",                     cmd_help },
     { "wifi",       "wifi status|scan|join <ssid> [pw]|ap [ssid] [pw]|clear",
@@ -1671,6 +1682,8 @@ static const cmd_ent_t k_cmds[] = {
     { "wander",     "wander <idx> <n> [spd] | go",    "cross-panel sprite (P2b)",      cmd_wander },
     { "sync",       "sync [auto|anchor|follow|prio|lead|media|conduct|join|off]", "fleet link (WHM-LINK.md)",      cmd_sync },
     { "mem",        "mem [tasks]",                    "heap audit (+per-task stack high-water)", cmd_mem },
+    { "ssh",        "ssh [keys|addkey [sd] <t> <b64>|rmkey <n>|newkey]",
+                                                      "SSH server (pubkey-only, :22) status + keys", cmd_ssh_row },
     { "ble",        "ble [pair [secs]|off]",          "wh-link BLE (pair window/status)", cmd_ble },
     { "life",       "life [pal|next|reset]",          "game-of-life colors",           cmd_life },
     { "mp3",        "mp3 list|play|fleet|dj|diag [n|stop|off]|layout|overlay|vol",

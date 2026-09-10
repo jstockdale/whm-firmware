@@ -10,7 +10,6 @@ typedef void (*wh_out_fn)(void *ctx, const char *str);
 
 void wh_ssh_start(void);              /* arena + host key + listener task */
 void wh_ssh_cmd(wh_out_fn out, void *ctx, char **av, int n);
-void whssh_register_console(void);    /* register the `ssh` verb with esp_console */
 
 /* ESP_LOG tee: install once at boot; the SSH session activates the queue so
  * `log` output reaches the remote shell live, while USB keeps its full feed. */

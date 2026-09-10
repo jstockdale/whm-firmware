@@ -24,6 +24,11 @@ or Stonehenge, depending on where his panel believes it lives.
 | Security | Ed25519 identity + TOFU pins (type-13); signed command envelope (284B, replay-windowed); X25519 fleet keywrap (type-14); keyed-BLAKE2b tags on all state (the Seal); `secure strict` |
 | Ops | OTA (self-judging), HTTP media replicate + sidecar hash cache, console over USB-JTAG, status/keys/secure/audio diagnostics |
 
+- SSH remote console — wolfSSH, public-key only, per-device NVS host
+  key (fail-closed); the FULL fleet console over the channel plus the
+  live ESP_LOG tee. Keys: SD primary (/sdcard/.ssh/authorized_keys),
+  NVS fallback. docs/SSH.md.
+
 ## Quickstart
 
 Prereqs: ESP-IDF **v5.5.2** exported.
@@ -54,6 +59,18 @@ TSF, TOFU-pins its peers (~15s), and the anchor mints + wraps the fleet key.
     keys [forget <name>]    # identity + TOFU pin management
     secure [strict on|off]  # the Seal: state-plane enforcement
     screen next|auto        # music/oracle/home; oracle shake
+
+  ssh                     server status; addkey [sd] / rmkey / keys / newkey
+  mem [tasks]             heap pools + per-task stack high-water
+
+## SSH (headless console)
+
+Mint once over USB: `ssh addkey ssh-ed25519 <b64>` (or `addkey sd ...`
+to write the card, the primary store). Then from any LAN host, any
+username: `ssh whm@<panel-ip>` — the entire console verbatim (per-task
+stdio bridged onto the channel), live colourised logs between
+keystrokes, the watch's line editor, `exit` to leave. One session at a
+time; passwords are refused in the auth callback. Details: docs/SSH.md.
 
 ## The [W] ledger (1Hz while the pattern runs; `walk diag off` to hush)
 
@@ -138,6 +155,9 @@ accumulates; that inequality held for eight hours.
   simulated in the twin. One +-1px stride nuance pends the M2 golden lock.
 - The old fork-origin class is caged at <=1 step / ~0.3px by
   adopt-always; its next material SNAP tape names the birth step.
+
+- wolfSSH first on-device handshake pending (the bundle's own
+  [VERIFY-HW] marker) — the API paths meet real silicon at first login.
 
 ## License
 

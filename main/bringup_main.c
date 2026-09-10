@@ -110,7 +110,6 @@ void app_main(void)
     if (whm_console_start() != ESP_OK) {
         ESP_LOGE(TAG, "console failed to start - see errors above");
     }
-    whssh_register_console();    /* the `ssh` verb joins help */
 
     STAGE("1: display");
     uint8_t bright = CONFIG_WHM_TEST_BRIGHTNESS;
