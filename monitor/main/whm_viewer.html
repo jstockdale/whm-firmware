@@ -45,6 +45,7 @@ canvas{background:#05070b;border:1px solid #2a3446;display:block;margin-bottom:8
  autocapitalize="off" autocorrect="off" spellcheck="false"
  enterkeyhint="go"><button id=go>connect</button>
 <span id=cstat></span>
+<button id=scn class=on title="background art on/off">scenery</button>
 <span id=name class=pm></span></div>
 <div id=wrap><div id=left>
 <canvas id=cv width=768 height=384></canvas>
@@ -90,6 +91,7 @@ addEventListener("orientationchange",fitCanvases);
 const cv=$("cv"),cx=cv.getContext("2d");
 const S=6, GROUND=57, REACH=21;
 let ws=null,strips=2,wkPrev=null,kfT=[],lastStep=0,lastStepT=0,rate=0;
+let SCN=true,tsfOff=null;   /* scenery toggle + passive fleet clock */
 let W={x:0,y:56.5,st:5,dir:1,phase:0,timer:0,sdir:1,step:0,
        owner:0,t:0,vx:0,vy:0,spd:0,tgt:0};
 const tvx=$("tv").getContext("2d");
@@ -129,6 +131,8 @@ $("exp").onclick=()=>{
  a.href=URL.createObjectURL(blob);
  a.download=`whm-history-${Date.now()}.json`;a.click();
  tick("pm",`exported ${HIST.length} transitions`)};
+$("scn").onclick=()=>{SCN=!SCN;
+ $("scn").className=SCN?"on":""};
 $("live").onclick=()=>{
  if(!paused&&!INS){paused=true;liveBtn();return}   /* pause */
  INS=null;paused=false;                            /* resume+flush */
@@ -391,6 +395,242 @@ function drawScope(P9){
  tvx.fillText(`tgt=${P9.tgt.toFixed(1)}  ${dv2}  dir=${ar}  tm=${P9.timer}  `+
   `ph=${P9.phase}  step=${P9.step}  own=${P9.owner}`,8,H-8);
 }
+/* ============ SCENERY (verbatim ports from main/ui.c) ============
+   sky flat-fill + dusk glow + stars + living-rim moon + sun with
+   CROWN v4 + three cloud species; flora (oak/pine/medium/accents);
+   gull flock. sw=0 (no synth), idx=0, W=strips*64. Comet, wonders
+   and the NYE plaza are the noted omissions (as on the AMOLED). */
+function sceneSky(t,f,c){
+ const Wd=strips*64;
+ const sr=0+f*16|0,sg=0+f*42|0,sb=2+f*100|0;
+ cx.fillStyle=`rgb(${sr},${sg},${sb})`;
+ cx.fillRect(0,0,cv.width,cv.height);
+ let glow=f*(1-f)*4; if(glow>1)glow=1;
+ if(glow>0.05){
+  for(let y=46;y<57;y++){const g2=glow*(y-45)/12;
+   cx.fillStyle=`rgb(${sr+g2*90|0},${sg+g2*24|0},${sb>>1})`;
+   cx.fillRect(0,y*S,Wd*S,S)}}
+ const base_slow=c*0.04,base_star=c*0.10,base_cld=c*0.15;
+ if(f<0.3){const dim=1-f/0.3;
+  for(let i=0;i<18;i++){const h2=h32(0x51A2+i*747);
+   const wx=h2%512;
+   const sx=(((wx-base_star)|0)%512+512)%512;
+   if(sx>=Wd)continue;
+   const sy=2+((h2>>>12)%26);
+   const tw=0.7+0.3*Math.sin(t/3e5+(h2&63));
+   const v=dim*tw*150|0;
+   px(ox+sx,sy,v,v,(v>>1)+40*dim|0)}
+  const mxi=(((300-base_slow)|0)%900+900)%900-100;
+  if(mxi>-12&&mxi<Wd+12){
+   for(let dy2=-9;dy2<=9;dy2++)for(let dx2=-9;dx2<=9;dx2++){
+    if(dx2*dx2+dy2*dy2>81)continue;
+    if((dx2-6)*(dx2-6)+dy2*dy2<=55)continue;
+    px(ox+mxi+dx2,12+dy2,120*dim|0,120*dim|0,88*dim|0)}
+   for(let ai=0;ai<28;ai++){const ga=6.2832*ai/28;
+    const gx=Math.cos(ga)*9|0,gy=Math.sin(ga)*9|0;
+    if((gx-6)*(gx-6)+gy*gy<=55)continue;
+    const run=0.5+0.5*Math.cos(ga-t/1.6e6);
+    let lum=dim*(0.8+0.5*run); if(lum>1)lum=1;
+    px(ox+mxi+gx,12+gy,150*lum|0,150*lum|0,120*lum|0)}}}
+ {const D=new Date(),hm=D.getHours()+D.getMinutes()/60;
+  if(f>0.02&&hm>=6&&hm<20){
+   const p=(hm-6)/14,sunw=30+p*80;
+   const sxi=(((sunw-(c*0.006))|0)%900+900)%900-100;
+   const dusk=hm>17?(hm-17)/3:0,dawn=hm<8?(8-hm)/2:0;
+   const lowr=Math.max(dusk,dawn);
+   const sy=12+(Math.sin((p-0.5)*3.1416)**2*6|0)+(lowr*30|0);
+   const rr2=11+(dusk*4|0);
+   const sunr=220-dusk*30|0,sung=185-dusk*125|0,
+         sunb=70-dusk*62|0;
+   for(let dy2=-rr2;dy2<=rr2;dy2++)
+    for(let dx2=-rr2;dx2<=rr2;dx2++){
+     const q2=dx2*dx2+dy2*dy2;
+     if(q2>rr2*rr2+1)continue;
+     const py2=sy+dy2; if(py2>=57)continue;
+     if(q2>(rr2-1)*(rr2-1)){
+      const ang=Math.atan2(dy2,dx2);
+      const g1=0.5+0.5*Math.cos(ang-t/8e6);
+      const g2=0.5+0.5*Math.cos(ang+t/8e6);
+      const brth=0.86+0.14*Math.sin(t/9e6);
+      let lum=brth*(0.52+0.42*g1+0.42*g2);
+      if(lum>1.3)lum=1.3;
+      px(ox+sxi+dx2,py2,Math.min(255,sunr*lum)|0,
+         Math.min(255,sung*lum)|0,sunb*lum|0)}
+     else px(ox+sxi+dx2,py2,sunr,sung,sunb)}
+   {/* CROWN v4 - mirrors main/ui.c */
+    const gp=Math.sin(t/4.5e6),Lb=2.6+3.4*lowr;
+    for(let k9=0;k9<16;k9++){
+     const lk=Lb*(0.72+0.38*(0.5+0.5*
+       Math.sin(t/7e6+k9*0.9)));
+     let L9=lk|0; if(L9<2)L9=2;
+     let c9=(lk-2)/(Lb*1.1-1.99);
+     if(c9<0)c9=0; if(c9>1)c9=1;
+     const pers=Math.sin(t/4.5e6+k9*2.4);
+     const sway=0.10*(c9*gp+(1-c9)*pers);
+     const ang9=k9*0.3927+sway;
+     const cs=Math.cos(ang9),sn=Math.sin(ang9);
+     const tw=0.78+0.34*Math.sin(t/2.2e6+k9*1.7);
+     for(let e2=1;e2<=L9;e2++){
+      const rx2=sxi+cs*(rr2+e2)|0,ry2=sy+sn*(rr2+e2)|0;
+      if(ry2<57&&ry2>=0)
+       px(ox+rx2,ry2,Math.min(255,tw*sunr)|0,
+          Math.min(255,tw*sung)|0,
+          Math.min(40,tw*sunb)|0)}}}}}
+ if(f>0.35){const cf=(f-0.35)/0.65;
+  for(let i=0;i<4;i++){const h2=h32(0xC10D+i*991);
+   const wvar=-0.25-0.1*(h2&3)/3;
+   const wx=h2%640+(t/1e6)*wvar;
+   const bob=Math.sin(t/4e6+(h2&15))*1.2|0;
+   const sx=(((wx-base_cld)|0)%640+640)%640-60;
+   const sy=4+((h2>>>10)%12)+bob;
+   const cvv=cf*120|0;
+   const cr=cvv+45,cg=cvv+47,cb=cvv+55;
+   const kind=(h2>>>20)%3;
+   const elen=kind===0?10:(kind===1?14:22);
+   const epos=Math.floor(t/220000+i*7)%elen;
+   const bpos=elen-1-Math.floor(t/300000+i*5)%elen;
+   const EDGE=(px2,py2,ex)=>{let d2=Math.abs(ex-epos);
+    if(d2<=1)px(ox+px2,py2,cr+60-20*d2,cg+58-20*d2,
+               cb+50-18*d2)};
+   const BOT=(px2,py2,ex)=>{let d2=Math.abs(ex-bpos);
+    if(d2<=2)px(ox+px2,py2,cr+26-8*d2,cg+25-8*d2,
+               cb+22-7*d2)};
+   if(kind===0){for(let dx2=0;dx2<10;dx2++){
+     px(ox+sx+dx2,sy,cr,cg,cb);EDGE(sx+dx2,sy-1,dx2)}}
+   else if(kind===1){
+    for(let dx2=0;dx2<16;dx2++)px(ox+sx+dx2,sy+1,cr,cg,cb);
+    for(let dx2=1;dx2<7;dx2++)
+     px(ox+sx+dx2,sy,cr+20,cg+20,cb+20);
+    for(let dx2=9;dx2<15;dx2++)
+     px(ox+sx+dx2,sy,cr+20,cg+20,cb+20);
+    for(let dx2=1;dx2<15;dx2++)
+     EDGE(sx+dx2,dx2<7||dx2>8?sy-1:sy,dx2-1);
+    for(let dx2=2;dx2<14;dx2++){
+     px(ox+sx+dx2,sy+2,cr-22,cg-22,cb-18);
+     BOT(sx+dx2,sy+2,dx2-2)}}
+   else{for(let dx2=0;dx2<24;dx2++)
+     px(ox+sx+dx2,sy+2,cr,cg,cb);
+    for(let dx2=2;dx2<9;dx2++)
+     px(ox+sx+dx2,sy+1,cr+18,cg+18,cb+18);
+    for(let dx2=8;dx2<17;dx2++){
+     px(ox+sx+dx2,sy,cr+26,cg+26,cb+26);
+     px(ox+sx+dx2,sy+1,cr+18,cg+18,cb+18)}
+    for(let dx2=16;dx2<22;dx2++)
+     px(ox+sx+dx2,sy+1,cr+18,cg+18,cb+18);
+    for(let dx2=1;dx2<23;dx2++){
+     const ey=dx2>=8&&dx2<=16?sy-1:
+              (dx2>=2&&dx2<=21?sy:sy+1);
+     EDGE(sx+dx2,ey,dx2-1)}
+    for(let dx2=1;dx2<23;dx2++){
+     px(ox+sx+dx2,sy+3,cr-26,cg-26,cb-20);
+     BOT(sx+dx2,sy+3,dx2-1)}}}}
+}
+function treeOak(sx,gy,li,h){
+ const tr=96*li|0,tg=62*li|0,tb=28*li|0;
+ const l0=[22*li|0,92*li|0,26*li|0],
+       l1=[34*li|0,126*li|0,38*li|0],
+       l2=[58*li|0,160*li|0,60*li|0];
+ const th=10+h%4;
+ for(let y2=0;y2<th;y2++){
+  px(ox+sx,gy-y2,tr,tg,tb);px(ox+sx+1,gy-y2,tr,tg,tb);
+  if(y2<3)px(ox+sx+2,gy-y2,tr*0.8|0,tg*0.8|0,tb*0.8|0)}
+ const cw=15+((h>>>4)%3),ch=15+((h>>>6)%5),cy0=gy-th-ch+3;
+ for(let y2=0;y2<ch;y2++){const yr=y2/(ch-1);
+  let hw=(cw*0.5*Math.sin(yr*3.1416)+0.5)|0;
+  const jr=h32(h^(y2*131));
+  hw+=jr%3-1; if(hw<1)hw=1;
+  for(let dx2=-hw;dx2<=hw;dx2++){
+   let C9=l1;
+   if(y2<ch/3&&dx2<0)C9=l2;
+   else if(y2>2*ch/3)C9=l0;
+   if(((jr>>>(dx2&15))&7)===0)C9=l0;
+   px(ox+sx+1+dx2,cy0+y2,C9[0],C9[1],C9[2])}}}
+function treePine(sx,gy,li,h){
+ const tr=88*li|0,tg=58*li|0,tb=26*li|0;
+ const d0=[12*li|0,70*li|0,34*li|0],
+       d1=[20*li|0,104*li|0,48*li|0];
+ const tiers=4+h%2,tierh=6+((h>>>3)%2);
+ for(let y2=0;y2<3;y2++){
+  px(ox+sx,gy-y2,tr,tg,tb);px(ox+sx+1,gy-y2,tr,tg,tb)}
+ const base=gy-3;
+ for(let ti=0;ti<tiers;ti++){const ty0=base-ti*(tierh-2);
+  const maxw=3+(tiers-ti)*2;
+  for(let y2=0;y2<tierh;y2++){
+   let hw=maxw-(y2*maxw/tierh|0); if(hw<1)hw=1;
+   for(let dx2=-hw;dx2<=hw;dx2++){
+    const C9=(ti+y2)&1?d1:d0;
+    px(ox+sx+dx2,ty0-y2,C9[0],C9[1],C9[2])}}}}
+function sceneFlora(t,f,c){
+ const Wd=strips*64,li=0.35+0.65*f;
+ const base=0.7*c;
+ const c0=Math.floor(base/64);
+ for(let ci=c0-1;ci<=c0+Math.ceil(Wd/64)+1;ci++){
+  const h=h32((ci*2246822519)^0xF10FA);
+  const roll=h%100;
+  const sxbase=Math.round(ci*64-base);
+  const gy=56;
+  if(roll<30){const wx=10+((h>>>8)%40),sx=sxbase+wx;
+   if(sx>-20&&sx<Wd+20){
+    if((h>>>16)&1)treeOak(sx,gy,li,h);
+    else treePine(sx,gy,li,h)}}
+  else if(roll<55){const wx=8+((h>>>8)%46),sx=sxbase+wx;
+   if(sx>-14&&sx<Wd+14){const h2=h32(h^0xBEEF);
+    if((h>>>16)&1){
+     for(let y2=0;y2<6;y2++)
+      px(ox+sx,gy-y2,90*li|0,60*li|0,28*li|0);
+     for(let y2=0;y2<10;y2++){const yr=y2/9;
+      let hw=(4.5*Math.sin(yr*3.1416)+0.5)|0; if(hw<1)hw=1;
+      for(let dx2=-hw;dx2<=hw;dx2++)
+       px(ox+sx+dx2,gy-5-y2,
+          (30+((h2>>>(dx2&7))&1)*26)*li|0,
+          (116+((h2>>>(dx2&7))&1)*30)*li|0,36*li|0)}}
+    else{px(ox+sx,gy,88*li|0,58*li|0,26*li|0);
+     for(let ti=0;ti<3;ti++)for(let y2=0;y2<6;y2++){
+      let hw=(3+(3-ti)*2)*(6-y2)/6|0; if(hw<1)hw=1;
+      for(let dx2=-hw;dx2<=hw;dx2++)
+       px(ox+sx+dx2,gy-1-ti*4-y2,16*li|0,
+          (84+(ti&1)*24)*li|0,40*li|0)}}}}
+  else if(roll<78){const npc=1+((h>>>8)&1);
+   for(let k=0;k<npc;k++){const hk=h32(h^((k+1)*40503));
+    const sx=sxbase+6+hk%52;
+    if(sx<-8||sx>Wd+8)continue;
+    const kind=(hk>>>16)%4,dl=li*0.55;
+    if(kind===0){for(let y2=0;y2<5;y2++){
+      const hw=(5-y2)>>1;
+      for(let dx2=-hw;dx2<=hw;dx2++)
+       px(ox+sx+dx2,gy-y2,18*dl|0,88*dl|0,36*dl|0)}}
+    else if(kind===1){
+     for(let dx2=-2;dx2<=2;dx2++)
+      px(ox+sx+dx2,gy,28*li|0,112*li|0,34*li|0);
+     for(let dx2=-1;dx2<=1;dx2++)
+      px(ox+sx+dx2,gy-1,30*li|0,130*li|0,36*li|0)}
+    else if(kind===2){
+     px(ox+sx,gy,92*li|0,92*li|0,98*li|0);
+     px(ox+sx+1,gy,74*li|0,74*li|0,80*li|0);
+     px(ox+sx,gy-1,110*li|0,110*li|0,116*li|0)}
+    else{for(let fx2=0;fx2<3;fx2++){
+      const fh=h32(hk^(fx2*77));
+      let fr=180*li|0,fg2=60*li|0,fb=120*li|0;
+      if(fh&1){fr=220*li|0;fg2=190*li|0;fb=40*li|0}
+      px(ox+sx+(fh%5)-2,gy,fr,fg2,fb)}}}}}}
+function sceneBirds(t,f,c){
+ const Wd=strips*64;
+ if(!(f>0.5))return;
+ const base=c*0.10,ts9=t/1e6;
+ const F9=[[0,0],[9,1],[18,0],[330,1]];
+ const head=610-(ts9*4.5)%640;
+ for(let i=0;i<4;i++){const wx=head+F9[i][0];
+  const sx=(((wx-base)|0)%640+640)%640-20;
+  if(sx<-6||sx>Wd+6)continue;
+  const sy=9+((i*5)%11)+F9[i][1];
+  const flap=Math.floor(t/380000+i*3)&1;
+  const v=205;
+  if(flap){px(ox+sx,sy-1,v,v,210);px(ox+sx+1,sy,v,v,210);
+   px(ox+sx+2,sy+1,160,160,170);px(ox+sx+3,sy,v,v,210);
+   px(ox+sx+4,sy-1,v,v,210)}
+  else{px(ox+sx,sy,v,v,210);px(ox+sx+1,sy,v,v,210);
+   px(ox+sx+2,sy+1,160,160,170);px(ox+sx+3,sy,v,v,210);
+   px(ox+sx+4,sy,v,v,210)}}}
 function drawWorld(now){
  const f=daylight();
  let c; if(INS)c=INS.cam;
@@ -398,6 +638,8 @@ function drawWorld(now){
   if(c===null)c=(BUF.length?BUF[BUF.length-1].x:W.x)-strips*32;}
  ox=Math.round(c);
  cx.fillStyle="#05070b";cx.fillRect(0,0,cv.width,cv.height);
+ if(SCN){const tS=(now+(tsfOff===null?0:tsfOff/1000))*1000;
+  sceneSky(tS,f,c);sceneFlora(tS,f,c);sceneBirds(tS,f,c);}
  const id0=Math.floor(ox/64);
  for(let x=0;x<strips*64;x++){const wx=ox+x;
   let gap=false,bridge=false;
@@ -473,6 +715,7 @@ function onPkt(m){const u=hex2u8(m.hex);if(u.length<8)return;
      timer:d.getUint16(10,true),step:d.getUint32(12,true),
      x:d.getFloat32(16,true),tgt:d.getFloat32(44,true),
      vx:d.getFloat32(48,true),vy:d.getFloat32(52,true),
+     tsf:Number(d.getBigUint64(36,true)),
      spd:d.getFloat32(56,true),sdir:d.getInt8(60),phase:u[61],
      t:m.t};
   W=K;
@@ -481,6 +724,12 @@ function onPkt(m){const u=hex2u8(m.hex);if(u.length<8)return;
   /* step-monotonic ingest: during handoff grace BOTH units
      broadcast - interleaved twin streams zigzagged the trail
      and jittered the playhead. First frame per step wins. */
+  {  /* passive fleet clock (the monitor's law, browser
+        edition): kf carries the sender's TSF; EMA the offset
+        so scenery runs on the FLEET timeline - birds, clouds
+        and sun phases match the panels. Cam keeps local. */
+   const off=K.tsf-performance.now()*1000;
+   tsfOff=tsfOff===null?off:tsfOff+(off-tsfOff)/8;}
   if(BUF.length&&Math.abs(K.step-BUF[BUF.length-1].step)>1000){
    BUF=[];TRAIL=[];play.init=false;      /* epoch turn */
    tick("pm","epoch turn - playback reset")}
