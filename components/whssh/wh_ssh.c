@@ -663,6 +663,14 @@ static void ssh_session(int fd)
 static void ssh_task(void *arg)
 {
     (void)arg;
+    /* THE MBOX LESSON (owner's boot log): lwIP sockets before the
+       tcpip thread exists trip 'Invalid mbox' and ABORT - the retry
+       loop never ran because the first socket() call died. Wait for
+       the STA netif to exist (created during wifi init) before ever
+       touching the socket API. */
+    while (esp_netif_get_handle_from_ifkey("WIFI_STA_DEF") == NULL)
+        vTaskDelay(pdMS_TO_TICKS(500));
+    vTaskDelay(pdMS_TO_TICKS(200));      /* let tcpip settle */
     /* PANEL RESILIENCE: the watch exited on bind failure; a wall
        panel must survive any boot order and every WiFi outage, so
        the listener retries forever with a gentle backoff. */
