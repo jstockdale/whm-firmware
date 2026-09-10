@@ -12,19 +12,28 @@
 #include "mon_sky.h"
 #include "gfx5x7.h"
 #include "display_hal.h"
-#define WX0 0
-#define WY0 24
-#define WSC 3
 #define WCOLS 128
+/* viewport-parameterized plotter: every layer - sky, flora,
+   birds, terrain, sprite - draws through whichever transform
+   the page sets. FULL and WORLD share one compose pipeline. */
+static int mw_x0 = 0, mw_y0 = 24, mw_sc = 3,
+           mw_rowcrop = 0, mw_rows = 64;
+void mw_viewport(int x0, int y0, int sc, int rowcrop, int rows)
+{
+    mw_x0 = x0; mw_y0 = y0; mw_sc = sc;
+    mw_rowcrop = rowcrop; mw_rows = rows;
+}
 void mw_fill(uint8_t r, uint8_t g, uint8_t b)
 {
-    whm_display_fill_rect(WX0, WY0, WCOLS * WSC, 64 * WSC, r, g, b);
+    whm_display_fill_rect(mw_x0, mw_y0, WCOLS * mw_sc,
+                          mw_rows * mw_sc, r, g, b);
 }
 void mw_px(int sx, int sy, uint8_t r, uint8_t g, uint8_t b)
 {
-    if (sx < 0 || sx >= WCOLS || sy < 0 || sy >= 64) return;
-    whm_display_fill_rect(WX0 + sx * WSC, WY0 + sy * WSC,
-                          WSC, WSC, r, g, b);
+    int y2 = sy - mw_rowcrop;
+    if (sx < 0 || sx >= WCOLS || y2 < 0 || y2 >= mw_rows) return;
+    whm_display_fill_rect(mw_x0 + sx * mw_sc, mw_y0 + y2 * mw_sc,
+                          mw_sc, mw_sc, r, g, b);
 }
 static void sprite(int lx, int y, int64_t t)
 {
@@ -187,16 +196,11 @@ static void sprite(int lx, int y, int64_t t)
         }
     }
 }
-void mon_render(uint32_t kfs)
+static float mon_cam_est(int64_t now)
 {
-    int64_t now = esp_timer_get_time();  /* LOCAL: cam slope dt */
-    int64_t t = mon_now();               /* SHARED: all cosmetics */
-    mon_state_t M;                 /* atomic-enough pose snapshot:
-        one copy per frame, so the rx task can't tear fields
-        mid-compose across cores */
-    memcpy(&M, (const void *)&g_mon, sizeof(M));
-#define g_mon M
-    /* cam: type-10 snaps + slope EMA between them */
+    /* cam: type-10 snaps + slope EMA between them - ONE
+       estimator now serves both pages (the FULL duplicate
+       kept its own statics and could drift). */
     static float cam = 0, camv = 30.0f, lastc = -1;
     static int64_t camt = 0; static uint32_t lastn = 0;
     if (g_mon.n_wkp != lastn) {
@@ -207,18 +211,14 @@ void mon_render(uint32_t kfs)
         }
         lastc = g_mon.cam; camt = now; lastn = g_mon.n_wkp;
     }
-    if (camt) cam = lastc + camv * (float)(now - camt) / 1e6f;
-    else cam = g_mon.x - 64.0f;
-    int32_t ox = (int32_t)lroundf(cam);
-    /* top + bottom bands */
-    char ln[56];
-    snprintf(ln, sizeof ln, "step %lu  %s  kf/s %lu",
-             (unsigned long)g_mon.step, mon_st_name(g_mon.st),
-             (unsigned long)kfs);
-    gfx_text(4, 4, ln, 2, 124, 196, 255);
-    snprintf(ln, sizeof ln, "x %.0f  cam %.0f  %s",
-             g_mon.x, g_mon.cam, g_mon.from);
-    gfx_text(4, LCD_H - 20, ln, 2, 140, 150, 168);
+    if (camt) return lastc + camv * (float)(now - camt) / 1e6f;
+    return g_mon.x - 64.0f;
+}
+static void world_compose(int64_t t, float cam, int32_t ox)
+{
+    mon_state_t M;
+    memcpy(&M, (const void *)&g_mon, sizeof(M));
+#define g_mon M
     float f = mw_daylight();
     mw_sky(t, cam, f);                 /* the true sky */
     mw_flora(cam, f, t);               /* behind platforms */
@@ -338,8 +338,32 @@ void mon_render(uint32_t kfs)
         mw_px(chx + 1, wy - 1, 60, 13, 8);
     }
     if (wlx >= -6 && wlx <= WCOLS + 6) sprite(wlx, wy, t);
+#undef g_mon
+}
+void mon_render(uint32_t kfs)
+{
+    mw_viewport(0, 24, 3, 0, 64);
+    int64_t now = esp_timer_get_time();  /* LOCAL: cam slope dt */
+    int64_t t = mon_now();               /* SHARED: all cosmetics */
+    mon_state_t M;                 /* atomic-enough pose snapshot:
+        one copy per frame, so the rx task can't tear fields
+        mid-compose across cores */
+    memcpy(&M, (const void *)&g_mon, sizeof(M));
+#define g_mon M
+    float cam = mon_cam_est(now);
+    int32_t ox = (int32_t)lroundf(cam);
+    /* top + bottom bands */
+    char ln[56];
+    snprintf(ln, sizeof ln, "step %lu  %s  kf/s %lu",
+             (unsigned long)g_mon.step, mon_st_name(g_mon.st),
+             (unsigned long)kfs);
+    gfx_text(4, 4, ln, 2, 124, 196, 255);
+    snprintf(ln, sizeof ln, "x %.0f  cam %.0f  %s",
+             g_mon.x, g_mon.cam, g_mon.from);
+    gfx_text(4, LCD_H - 20, ln, 2, 140, 150, 168);
+    world_compose(t, cam, ox);
     /* telemetry column */
-    int cx0 = WX0 + WCOLS * WSC + 6;
+    int cx0 = mw_x0 + WCOLS * mw_sc + 6;
     uint8_t oc_r = g_mon.owner ? 255 : 65,
             oc_g = g_mon.owner ? 92 : 208,
             oc_b = g_mon.owner ? 200 : 255;
@@ -383,125 +407,20 @@ void mon_render(uint32_t kfs)
 
 void mon_render_full(void)
 {
-    /* FULLSCREEN world: x4, rows 2..61 (60 rows exactly fill
-       240), 512 wide with 12 px gutters - the walker huge. */
-    extern mon_state_t g_mon;
-    mon_state_t M;
-    memcpy(&M, (const void *)&g_mon, sizeof(M));
+    /* FULLSCREEN world = the SAME compose pipeline as WORLD -
+       sky, flora, birds, houses, chair, the real sprite -
+       through a bigger viewport. The duplicated terrain and
+       the minimal stick-sprite are gone. */
     int64_t now = esp_timer_get_time();
     int64_t t = mon_now();
-    static float cam = 0, camv = 30.0f, lastc = -1;
-    static int64_t camt = 0; static uint32_t lastn = 0;
-    if (M.n_wkp != lastn) {
-        if (camt) {
-            float v = (M.cam - lastc) /
-                      ((float)(now - camt) / 1e6f);
-            if (v > 0 && v < 200) camv = camv * 0.5f + v * 0.5f;
-        }
-        lastc = M.cam; camt = now; lastn = M.n_wkp;
-    }
-    if (camt) cam = lastc + camv * (float)(now - camt) / 1e6f;
-    else cam = M.x - 64.0f;
+    float cam = mon_cam_est(now);
     int32_t ox = (int32_t)lroundf(cam);
-    /* local x4 plotter with row crop */
 #if LCD_W >= 536
-    #define FX0 12
-    #define FSC 4
-    #define FY0 0
-    #define FROWCROP 2
-    #define FROWS 60
+    mw_viewport(12, 0, 4, 2, 60);      /* x4, rows 2..61 */
 #else
-    #define FX0 ((LCD_W - 128 * 3) / 2)
-    #define FSC 3
-    #define FY0 ((LCD_H - 64 * 3) / 2)
-    #define FROWCROP 0
-    #define FROWS 64
+    mw_viewport((LCD_W - 128 * 3) / 2,
+                (LCD_H - 64 * 3) / 2, 3, 0, 64);
 #endif
-    #define FPX(sx, sy, r9, g9, b9) do { \
-        int _y = (sy) - FROWCROP; \
-        if ((sx) >= 0 && (sx) < 128 && _y >= 0 && _y < FROWS) \
-            whm_display_fill_rect(FX0 + (sx) * FSC, \
-                                  FY0 + _y * FSC, \
-                                  FSC, FSC, r9, g9, b9); \
-    } while (0)
-    int32_t id0 = (int32_t)floorf((float)ox / 64.0f);
-    for (int x = 0; x < 128; x++) {
-        int32_t wx = ox + x;
-        bool gap = false, bridge = false;
-        for (int d = 0; d <= 2; d++) {
-            const wchunk_t *c = mw_chunk(id0 + d);
-            if (c->gap_w && wx >= c->gap_x &&
-                wx < c->gap_x + c->gap_w) {
-                gap = true; bridge = c->bridged;
-            }
-        }
-        if (!gap) {
-            FPX(x, 58, 11, 16, 11); FPX(x, 59, 5, 8, 5);
-            FPX(x, 60, 2, 3, 3);
-        } else if (bridge) {
-            FPX(x, 58, 79, 42, 11); FPX(x, 59, 40, 22, 6);
-            if ((wx & 3) == 0) FPX(x, 57, 96, 52, 14);
-        } else {
-            FPX(x, 60, 1, 1, 2); FPX(x, 61, 1, 1, 2);
-        }
-    }
-    for (int d = 0; d <= 2; d++) {
-        const wchunk_t *c = mw_chunk(id0 + d);
-        for (int k = 0; k < c->np; k++) {
-            uint8_t py = c->p[k].y;
-            for (int32_t px = c->p[k].x;
-                 px < c->p[k].x + c->p[k].w; px++) {
-                int lx = (int)(px - ox);
-                int32_t rel = px - c->p[k].x;
-                bool rim = rel == 0 || rel == c->p[k].w - 1;
-                if (py <= 14) {
-                    FPX(lx, py, rim ? 120 : 185,
-                        rim ? 122 : 187, rim ? 132 : 198);
-                    FPX(lx, py + 1, 95, 98, 112);
-                } else if (py <= 19) {
-                    FPX(lx, py, 34, 150, 44);
-                    FPX(lx, py + 1, 24, 92, 34);
-                    FPX(lx, py + 2, 8, 44, 14);
-                } else {
-                    FPX(lx, py, 29, 133, 36);
-                    FPX(lx, py + 1, 26, 30, 48);
-                    FPX(lx, py + 2, 10, 12, 22);
-                }
-            }
-        }
-        for (int k = 0; k < c->nl; k++) {
-            int lx = (int)(c->l[k].x - ox);
-            for (int y = c->l[k].ytop; y <= c->l[k].ybot; y++) {
-                FPX(lx - 1, y, 79, 42, 11);
-                FPX(lx + 1, y, 79, 42, 11);
-                if (((y - c->l[k].ytop) & 3) == 1)
-                    FPX(lx, y, 143, 89, 30);
-            }
-        }
-    }
-    int wlx = (int)lroundf(M.x) - ox;
-    int wy = (int)lroundf(M.y);
-    if (wlx >= -6 && wlx <= 134) {
-        /* sprite at x4 via the shared drawer against a shim:
-           reuse sprite() by temporarily... keep it simple -
-           head/torso/legs minimal at x4 keeps the page light */
-        uint8_t sr, sg, sb;
-        mw_hsv((uint16_t)((t / 90000) % 360), 230, 255,
-               &sr, &sg, &sb);
-        for (int dy2 = -11; dy2 <= -9; dy2++)
-            for (int dx2 = -1; dx2 <= 1; dx2++)
-                FPX(wlx + dx2, wy + dy2, 213, 194, 167);
-        FPX(wlx, wy - 8, sr, sg, sb);
-        FPX(wlx - M.dir, wy - 8, sr, sg, sb);
-        for (int dy2 = -7; dy2 <= -3; dy2++)
-            FPX(wlx, wy + dy2, 213, 194, 167);
-        FPX(wlx - 1, wy - 1, 213, 194, 167);
-        FPX(wlx + 1, wy - 1, 213, 194, 167);
-    }
-    #undef FPX
-    #undef FX0
-    #undef FSC
-    #undef FY0
-    #undef FROWCROP
-    #undef FROWS
+    world_compose(t, cam, ox);
+    mw_viewport(0, 24, 3, 0, 64);      /* restore hybrid */
 }
