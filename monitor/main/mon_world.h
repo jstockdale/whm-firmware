@@ -10,7 +10,9 @@
 enum { WK_WALK, WK_CLIMB, WK_LADDER, WK_SLIDE, WK_FALL, WK_IDLE,
        WK_CROUCH, WK_JUMP, WK_LAND,
        WK_GOCHAIR, WK_SETUP, WK_SIT, WK_PACK,
-       WK_SHIMMY, WK_POP, WK_BASE };
+       WK_SHIMMY, WK_POP, WK_BASE,
+       WK_GOFIRE, WK_FIREB, WK_FIRES, WK_FIRED,
+       WK_GOHAM, WK_HAMS, WK_HAMI, WK_HAMD };
 typedef struct { int32_t x; uint8_t w, y; } wplat_t;
 typedef struct { int32_t x; uint8_t ytop, ybot; } wlad_t;
 typedef struct { int32_t x; uint8_t ytop, ybot; int8_t dir; } wsli_t;

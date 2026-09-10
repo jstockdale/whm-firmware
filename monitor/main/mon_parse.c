@@ -9,7 +9,8 @@ int64_t mon_now(void)
 }
 static const char *STN[16] = {
     "WALK","CLMB","LADR","SLID","FALL","IDLE","CRCH","JUMP",
-    "LAND","GOCH","SETP","SIT","PACK","SHIM","POP","BASE" };
+    "LAND","GOCH","SETP","SIT","PACK","SHIM","POP","BASE",
+    "GOFR","FIRB","FIRS","FIRD","GOHM","HAMS","HAMI","HAMD" };
 const char *mon_st_name(uint8_t st)
 {
     return st < 16 ? STN[st] : "????";

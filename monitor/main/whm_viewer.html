@@ -168,7 +168,8 @@ $("live").onclick=()=>{
  pend=0;liveBtn();
  for(const r of $("hl").children)r.classList.remove("sel")};
 const STN=["WALK","CLMB","LADR","SLID","FALL","IDLE","CRCH","JUMP",
- "LAND","GOCH","SETP","SIT","PACK","SHIM","POP","BASE"];
+ "LAND","GOCH","SETP","SIT","PACK","SHIM","POP","BASE",
+ "GOFR","FIRB","FIRS","FIRD","GOHM","HAMS","HAMI","HAMD"];
 function stLabel(g,X,Y,st,col){const nm=STN[st]||""+st;
  g.font="bold 11px monospace";
  const w2=g.measureText(nm).width;
@@ -245,6 +246,40 @@ function daylight(){
  if(DAY&&performance.now()-DAY.t<5000)return DAY.f;const hr=new Date().getHours()+
   new Date().getMinutes()/60;
  return Math.max(0,Math.min(1,Math.sin((hr-6)/12*Math.PI)))}
+let FX=null,PST=-1;
+function fireDraw(g,S9,wlx,wy,ox,st,timer,wx,tms){
+ /* Robin's campfire, viewer layer - same formulas as the
+    panels and monitors. Latch fire x on FIREB entry. */
+ if(st===17&&PST!==17)FX=wx;
+ PST=st;
+ if(!(st===17||st===18||st===19)||FX===null)return;
+ const fx2=Math.round(FX)-ox+2, fy2=57, tb=timer;
+ const px=(x,y2,c)=>{g.fillStyle=c;
+   g.fillRect(x*S9,y2*S9,S9,S9)};
+ const ston=(st!==17)||tb<=100;
+ if(ston){px(fx2-2,fy2,"#464650");px(fx2+2,fy2,"#464650")}
+ const wood=(st!==17)||tb<=48;
+ if(wood){px(fx2-1,fy2,"#603e1a");px(fx2+1,fy2-1,"#603e1a")}
+ let fla=0;
+ if(st===17&&tb<=24)fla=((24-tb)/8)|0;
+ else if(st===18)fla=3;
+ else if(st===19)fla=tb>60?3:tb>30?(((tb-30)/10)|0):0;
+ if(fla>0){const fl=Math.floor(tms/90)&3;
+  px(fx2,fy2-1,`rgb(255,${150+fl*20},30)`);
+  if(fla>1)px(fx2+((fl&1)?1:-1),fy2-2,"rgb(255,120,20)");
+  if(fla>2)px(fx2,fy2-3,`rgb(255,${90+fl*30},10)`);
+  g.fillStyle="rgba(255,170,60,.10)";
+  g.fillRect((fx2-4)*S9,(fy2-4)*S9,9*S9,5*S9)}
+ if(st===18){const cyc=tb%240;
+  if(cyc<150){const mlx=wlx+2;
+   px(mlx+1,wy-4,"#966e3c");
+   if(cyc>=15){let mg=238,mb=230;
+    if(cyc<110){const sh=((110-cyc)*100/110)|0;
+     mg=150+sh;mb=90+sh}
+    px(mlx+2,wy-4,`rgb(240,${mg},${mb})`)}}}
+ if(st===19&&tb>30){px(wlx+2,wy-5,"#788291");
+  if(tb<=60){px(fx2,fy2-2-(((60-tb)/12)|0),"#5a8cdc");
+   if(tb<50)px(fx2,fy2-4,"#96969b")}}}
 function sprite(lx,y,t,st,dir,phase,timer,sdir){
  const a=(phase>>2)&1, br=213,bg=194,bb=167;
  let[sr,sg,sb]=hsv((t/90000)%360,230,255);
@@ -729,6 +764,7 @@ function drawWorld(now){
  /* hues run on MICROSECONDS like the panels: the bridge clock in
     ms froze the rainbow to a 9-hour cycle (scarf, sparkles, POP,
     parasol, canopy - one unit bug, five frozen hues). */
+ fireDraw(cx,S,wlx,Math.round(W.y),ox,W.st,W.timer,W.x,performance.now());
  sprite(wlx,wy,now*1000,P9.st,P9.dir,P9.phase,P9.timer,P9.sdir);
  stLabel(cx,(wlx-ox)*S+S/2,(wy-15)*S,P9.st,
   P9.owner?"#ff5cc8":"#41d0ff");

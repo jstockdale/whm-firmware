@@ -43,9 +43,11 @@ static void sprite(int lx, int y, int64_t t)
     mw_hsv((uint16_t)((t / 90000) % 360), 230, 255, &sr, &sg, &sb);
     int st = g_mon.st, dir = g_mon.dir, sdir = g_mon.sdir;
     int timer = g_mon.timer, phase = g_mon.phase;
-    int squat = (st == WK_CROUCH || st == WK_LAND) ? 2
+    int squat = (st == WK_CROUCH || st == WK_LAND ||
+                 st == WK_FIREB) ? 2
               : (st == WK_SIT || st == WK_SETUP ||
-                 st == WK_PACK) ? 3 : 0;
+                 st == WK_PACK || st == WK_FIRES ||
+                 st == WK_FIRED) ? 3 : 0;
     for (int dy2 = -11 + squat; dy2 <= -9 + squat; dy2++)
         for (int dx2 = -1; dx2 <= 1; dx2++)
             mw_px(lx + dx2, y + dy2, br, bg, bb);
@@ -336,6 +338,68 @@ static void world_compose(int64_t t, float cam, int32_t ox)
         mw_px(chx - 1, wy - 4, 90, 20, 12);
         mw_px(chx - 1, wy - 1, 60, 13, 8);
         mw_px(chx + 1, wy - 1, 60, 13, 8);
+    }
+    {   /* Robin's campfire - latch fire x on FIREB entry */
+        static float mfx; static uint8_t pst;
+        if (M.st == WK_FIREB && pst != WK_FIREB) mfx = M.x;
+        pst = M.st;
+        if (M.st == WK_FIREB || M.st == WK_FIRES ||
+            M.st == WK_FIRED) {
+            int fx2 = (int)lroundf(mfx) - ox + 2;
+            int fy2 = 57;
+            uint16_t tb = M.timer;
+            bool ston = (M.st != WK_FIREB) || tb <= 100;
+            if (ston) { mw_px(fx2 - 2, fy2, 70, 70, 78);
+                        mw_px(fx2 + 2, fy2, 70, 70, 78); }
+            bool wood = (M.st != WK_FIREB) || tb <= 48;
+            if (wood) { mw_px(fx2 - 1, fy2, 96, 62, 26);
+                        mw_px(fx2 + 1, fy2 - 1, 96, 62, 26); }
+            int flame = 0;
+            if (M.st == WK_FIREB && tb <= 24)
+                flame = (24 - tb) / 8;
+            else if (M.st == WK_FIRES) flame = 3;
+            else if (M.st == WK_FIRED)
+                flame = tb > 60 ? 3
+                      : tb > 30 ? (int)(tb - 30) / 10 : 0;
+            if (flame > 0) {
+                int fl = (int)((t / 90000) & 3);
+                mw_px(fx2, fy2 - 1, 255,
+                      (uint8_t)(150 + fl * 20), 30);
+                if (flame > 1)
+                    mw_px(fx2 + ((fl & 1) ? 1 : -1), fy2 - 2,
+                          255, 120, 20);
+                if (flame > 2)
+                    mw_px(fx2, fy2 - 3, 255,
+                          (uint8_t)(90 + fl * 30), 10);
+                mw_px(fx2 - 3, fy2, 60, 36, 10);
+                mw_px(fx2 + 3, fy2, 60, 36, 10);
+            }
+            if (M.st == WK_FIRES) {
+                int cyc = (int)(M.timer % 240);
+                if (cyc < 150) {
+                    int mlx = wlx + 2;
+                    mw_px(mlx + 1, wy - 4, 150, 110, 60);
+                    if (cyc >= 15) {
+                        uint8_t mg2 = 238, mb2 = 230;
+                        if (cyc < 110) {
+                            int sh = (110 - cyc) * 100 / 110;
+                            mg2 = (uint8_t)(150 + sh);
+                            mb2 = (uint8_t)(90 + sh);
+                        }
+                        mw_px(mlx + 2, wy - 4, 240, mg2, mb2);
+                    }
+                }
+            }
+            if (M.st == WK_FIRED && tb > 30) {
+                mw_px(wlx + 2, wy - 5, 120, 130, 145);
+                if (tb <= 60) {
+                    mw_px(fx2, fy2 - 2 - (int)((60 - tb) / 12),
+                          90, 140, 220);
+                    if (tb < 50)
+                        mw_px(fx2, fy2 - 4, 150, 150, 155);
+                }
+            }
+        }
     }
     if (wlx >= -6 && wlx <= WCOLS + 6) sprite(wlx, wy, t);
 #undef g_mon

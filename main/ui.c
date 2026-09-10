@@ -315,7 +315,11 @@ enum { WK_WALK, WK_CLIMB, WK_LADDER, WK_SLIDE, WK_FALL, WK_IDLE,
        WK_CROUCH, WK_JUMP, WK_LAND,
        WK_GOCHAIR, WK_SETUP, WK_SIT, WK_PACK,   /* the camping ritual */
        WK_SHIMMY, WK_POP,
-       WK_BASE };            /* CANOPY: the owner's sport, 64px */                      /* bezel-wrap ritual */
+       WK_BASE,
+       WK_GOFIRE, WK_FIREB, WK_FIRES, WK_FIRED,  /* Robin: campfire */
+       WK_GOHAM, WK_HAMS, WK_HAMI, WK_HAMD };    /* Robin: hammock,
+                                                    machine staged */
+static float s_fire_x; static bool s_fire_done;            /* CANOPY: the owner's sport, 64px */                      /* bezel-wrap ritual */
 
 typedef struct { int32_t x; uint8_t w, y; } wplat_t;
 typedef struct { int32_t x; uint8_t ytop, ybot; } wlad_t;
@@ -1090,6 +1094,7 @@ static void wk_step(int64_t t, uint8_t n)
             }
             break;
         }
+        if (wk_daylight() > 0.5f) s_fire_done = false;
         float off = s_wk.x - center;
         bool away = (off > 0 && s_wk.dir > 0) ||
                     (off < 0 && s_wk.dir < 0);
@@ -1102,6 +1107,17 @@ static void wk_step(int64_t t, uint8_t n)
             s_wk.dir = s_wk.x < s_wk.tgt ? 1 : -1;
             if (!s_wk_pure)
                 s_wk.st = WK_GOCHAIR;
+            s_wk.turn_cd = 90;
+        } else if (fy >= WK_GROUND && !s_wk.turn_cd &&
+                   wk_daylight() < 0.12f && !s_fire_done &&
+                   r % 2200 == 7) {        /* Robin's campfire */
+            float fx9 = s_wk.x + 14.0f;
+            for (int g9 = 0; g9 < 6 &&
+                 !wk_support(fx9, WK_GROUND); g9++) fx9 += 2.0f;
+            s_fire_x = fx9;
+            s_wk.tgt = fx9;
+            s_wk.dir = s_wk.x < fx9 ? 1 : -1;
+            if (!s_wk_pure) s_wk.st = WK_GOFIRE;
             s_wk.turn_cd = 90;
         } else if (fy >= WK_GROUND && !s_wk.turn_cd &&
                    off < -8.0f && r % 3800 == 5) {
@@ -1258,6 +1274,51 @@ static void wk_step(int64_t t, uint8_t n)
         if (s_wk.timer) s_wk.timer--;
         else { s_wk.st = WK_WALK; s_wk.turn_cd = 90;
                s_wk.phase = 0; }        /* parasol stowed */
+        break;
+    case WK_GOFIRE:
+        s_wk.x += (float)s_wk.dir * 0.65f;
+        s_wk.phase++;
+        if (!wk_support(s_wk.x, (int)lroundf(s_wk.y))) {
+            s_wk.st = WK_WALK; s_wk.dir = -s_wk.dir; break;
+        }
+        if (fabsf(s_wk.x - s_wk.tgt) < 1.0f) {
+            s_wk.st = WK_FIREB; s_wk.timer = 120;
+            s_wk.phase = 0; s_wk.dir = 1;  /* fire to his right */
+        }
+        break;
+    case WK_FIREB: {
+        /* build beats, pure f(timer): stones, two wood-fetch
+           shuffles, arrange, strike-and-catch. */
+        uint16_t tb = s_wk.timer;
+        float wob = 0.0f;
+        if (tb <= 96 && tb > 72) { int p9 = 96 - tb;
+            wob = (float)(p9 < 12 ? p9 : 24 - p9) * 0.25f; }
+        if (tb <= 72 && tb > 48) { int p9 = 72 - tb;
+            wob = -(float)(p9 < 12 ? p9 : 24 - p9) * 0.25f; }
+        s_wk.x = s_fire_x + wob;
+        if (s_wk.timer) s_wk.timer--;
+        else { s_wk.st = WK_FIRES;
+               s_wk.timer = (uint16_t)(600 +
+                   wk_rnd(0xF3u) % 1200);  /* 20-60 s */
+        }
+        break; }
+    case WK_FIRES:
+        if (s_fw_hold) break;
+        {   /* douse BEFORE the view leaves him - sacred */
+            float sx9 = s_wk.x - wk_cam(t);
+            if (sx9 < 10.0f) { s_wk.st = WK_FIRED;
+                s_wk.timer = 90; break; }
+        }
+        if (s_wk.timer) s_wk.timer--;
+        else { s_wk.st = WK_FIRED; s_wk.timer = 90; }
+        break;
+    case WK_FIRED:
+        if (s_wk.timer) s_wk.timer--;
+        else { s_wk.st = WK_WALK; s_wk.turn_cd = 90;
+               s_fire_done = true; s_wk.phase = 0; }
+        break;
+    case WK_GOHAM: case WK_HAMS: case WK_HAMI: case WK_HAMD:
+        s_wk.st = WK_WALK;                 /* staged next round */
         break;
     case WK_SHIMMY: {
         float cam2 = s_wk.x;               /* pinned via tgt below */
@@ -3230,9 +3291,11 @@ static void wk_sprite(int lx, int y, int64_t t)
     uint8_t br = 213, bg = 194, bb = 167;
     uint8_t sr, sg, sb;
     hsv_rgb((uint16_t)((t / 90000) % 360), 230, 255, &sr, &sg, &sb);
-    int squat = (s_wk.st == WK_CROUCH || s_wk.st == WK_LAND) ? 2
+    int squat = (s_wk.st == WK_CROUCH || s_wk.st == WK_LAND ||
+                 s_wk.st == WK_FIREB) ? 2
               : (s_wk.st == WK_SIT || s_wk.st == WK_SETUP ||
-                 s_wk.st == WK_PACK) ? 3 : 0;
+                 s_wk.st == WK_PACK || s_wk.st == WK_FIRES ||
+                 s_wk.st == WK_FIRED) ? 3 : 0;
     for (int dy2 = -11 + squat; dy2 <= -9 + squat; dy2++)
         for (int dx2 = -1; dx2 <= 1; dx2++)
             wk_px(lx + dx2, y + dy2, br, bg, bb);
@@ -3267,7 +3330,8 @@ static void wk_sprite(int lx, int y, int64_t t)
         wk_px(lx - 1, y - 1, br, bg, bb);
         wk_px(lx + 1, y - 1, br, bg, bb);
     } else if (s_wk.st == WK_SIT || s_wk.st == WK_SETUP ||
-               s_wk.st == WK_PACK) {
+               s_wk.st == WK_PACK || s_wk.st == WK_FIRES ||
+               s_wk.st == WK_FIRED) {
         /* seated: legs forward, hands in lap, watching the world */
         wk_px(lx - 1, y - 4, br, bg, bb);          /* lap hands */
         wk_px(lx + s_wk.dir, y - 2, br, bg, bb);   /* legs fwd */
@@ -3761,6 +3825,62 @@ static void pat_walker(int64_t t)
         wk_px(chx - 1, (int)s_wk.y - 1, 60, 13, 8);    /* legs */
         wk_px(chx + 1, (int)s_wk.y - 1, 60, 13, 8);
     }
+    if (s_wk.st == WK_FIREB || s_wk.st == WK_FIRES ||
+        s_wk.st == WK_FIRED) {              /* Robin's campfire */
+        int fx2 = (int)lroundf(s_fire_x) - ox + 2;
+        int fy2 = WK_GROUND;
+        uint16_t tb = s_wk.timer;
+        bool ston = (s_wk.st != WK_FIREB) || tb <= 100;
+        if (ston) { wk_px(fx2 - 2, fy2, 70, 70, 78);
+                    wk_px(fx2 + 2, fy2, 70, 70, 78); }
+        bool wood = (s_wk.st != WK_FIREB) || tb <= 48;
+        if (wood) { wk_px(fx2 - 1, fy2, 96, 62, 26);
+                    wk_px(fx2 + 1, fy2 - 1, 96, 62, 26); }
+        int flame = 0;
+        if (s_wk.st == WK_FIREB && tb <= 24) flame = (24 - tb) / 8;
+        else if (s_wk.st == WK_FIRES) flame = 3;
+        else if (s_wk.st == WK_FIRED)
+            flame = tb > 60 ? 3 : tb > 30 ? (int)(tb - 30) / 10 : 0;
+        if (flame > 0) {
+            int fl = (int)((t / 90000) & 3);
+            wk_px(fx2, fy2 - 1, 255, (uint8_t)(150 + fl * 20), 30);
+            if (flame > 1)
+                wk_px(fx2 + ((fl & 1) ? 1 : -1), fy2 - 2,
+                      255, 120, 20);
+            if (flame > 2)
+                wk_px(fx2, fy2 - 3, 255,
+                      (uint8_t)(90 + fl * 30), 10);
+            wk_px(fx2 - 3, fy2, 60, 36, 10);    /* night glow */
+            wk_px(fx2 + 3, fy2, 60, 36, 10);
+        }
+        if (s_wk.st == WK_FIRES) {          /* marshmallow beats */
+            int cyc = (int)(s_wk.timer % 240);
+            if (cyc < 150) {
+                int mlx = wlx + 2;
+                wk_px(mlx + 1, (int)s_wk.y - 4, 150, 110, 60);
+                if (cyc >= 15) {
+                    uint8_t mg2 = 238, mb2 = 230;
+                    if (cyc < 110) {
+                        int sh = (110 - cyc) * 100 / 110;
+                        mg2 = (uint8_t)(150 + sh);
+                        mb2 = (uint8_t)(90 + sh);
+                    }
+                    wk_px(mlx + 2, (int)s_wk.y - 4,
+                          240, mg2, mb2);
+                }
+            }
+        }
+        if (s_wk.st == WK_FIRED && tb > 30) {
+            wk_px(wlx + 2, (int)s_wk.y - 5,
+                  120, 130, 145);            /* the bucket */
+            if (tb <= 60) {
+                wk_px(fx2, fy2 - 2 - (int)((60 - tb) / 12),
+                      90, 140, 220);         /* water arc */
+                if (tb < 50)
+                    wk_px(fx2, fy2 - 4, 150, 150, 155); /* steam */
+            }
+        }
+    }
     if (wlx >= -6 && wlx <= 70)
         wk_sprite(wlx, (int)lroundf(s_wk.y), t);
     {   /* THE BATON, root C: the entire emit block lived inside
@@ -3897,8 +4017,9 @@ static void pat_walker(int64_t t)
                 static const char *stn[] = { "WALK","CLMB","LADR",
                     "SLID","FALL","IDLE","CRCH","JUMP","LAND",
                     "GOCH","SETP","SIT ","PACK","SHIM","POP ",
-                    "BASE" };
-                uint8_t sti = s_wk.st < 16 ? s_wk.st : 0;
+                    "BASE","GOFR","FIRB","FIRS","FIRD",
+                    "GOHM","HAMS","HAMI","HAMD" };
+                uint8_t sti = s_wk.st < 24 ? s_wk.st : 0;
                 whm_lts();
                 printf("[W] step=%lu lag=%ld st=%s own=%u%s "
                        "sx=%+.1f cam=%.1f kf ok=%lu or=%lu snap=%lu "
