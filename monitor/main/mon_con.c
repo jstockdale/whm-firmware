@@ -10,6 +10,7 @@
 #include "esp_system.h"
 #include "nvs.h"
 #include "mon_config.h"
+#include "mon_pins.h"
 #include "mon_wifi.h"
 #include "mon_parse.h"
 #include "mon_lcd.h"
@@ -26,6 +27,24 @@ static void redraw(void)
     for (int i = s_len; i > s_cur; i--) printf("\b");
     fflush(stdout);
 }
+static void con_write_line(const char *msg)
+{
+    if (!s_started) { printf("%s", msg); return; }
+    printf("\r\x1b[K%s", msg);
+    size_t l = strlen(msg);
+    if (!l || msg[l - 1] != '\n') printf("\n");
+    redraw();
+}
+static int mon_con_vlog(const char *fmt, va_list ap)
+{
+    /* THE SYSTEMIC CURE: every ESP-IDF log (wifi driver
+       included) now flows through the repaint-safe path, so
+       no async line can shred the half-typed command. */
+    char tmp[200];
+    int n = vsnprintf(tmp, sizeof tmp, fmt, ap);
+    con_write_line(tmp);
+    return n;
+}
 void mon_con_printf(const char *fmt, ...)
 {
     /* repaint-safe async print: clears the edit line, prints,
@@ -35,9 +54,7 @@ void mon_con_printf(const char *fmt, ...)
     va_list ap; va_start(ap, fmt);
     vsnprintf(tmp, sizeof tmp, fmt, ap);
     va_end(ap);
-    if (!s_started) { printf("%s\n", tmp); return; }
-    printf("\r\x1b[K%s\n", tmp);
-    redraw();
+    con_write_line(tmp);
 }
 static int tokenize(char *s, char **argv, int maxv)
 {
@@ -66,8 +83,11 @@ static void exec_line(char *line)
     char *argv[6];
     int argc = tokenize(line, argv, 6);
     if (!argc) return;
-    if (!strcmp(argv[0], "help")) {
-        printf("wifi join <ssid> [pw] | wifi clear | wifi status\n"
+    if (!strcmp(argv[0], "version")) {
+        printf("%s  board=%s\n", MON_VERSION, MON_BOARD_NAME);
+    } else if (!strcmp(argv[0], "help")) {
+        printf("version        which firmware is this port?\n"
+               "wifi join <ssid> [pw] | wifi clear | wifi status\n"
                "snap           framebuffer -> base64 (see tools/)\n"
                "tz <+-min>     local-time offset for daylight\n"
                "mon            live snapshot\n"
@@ -202,8 +222,10 @@ static void con_task(void *arg)
         }
     }
 }
+#include "esp_log.h"
 void mon_con_start(void)
 {
+    esp_log_set_vprintf(mon_con_vlog);
     usb_serial_jtag_driver_config_t cfg =
         USB_SERIAL_JTAG_DRIVER_CONFIG_DEFAULT();
     usb_serial_jtag_driver_install(&cfg);
