@@ -25,6 +25,6 @@ idf_component_register(
         esp_http_client esp_http_server app_update esp_app_format
         driver sdmmc fatfs vfs esp_hw_support esp_system mdns
         esp_adc esp_psram console esp_codec_dev json mbedtls lwip
-)
+ whssh )
 
 target_compile_definitions(${COMPONENT_LIB} PRIVATE WHM_VERSION_STR="${PROJECT_VER}")

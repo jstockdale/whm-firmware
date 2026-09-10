@@ -16,3 +16,7 @@ dependencies:
     version: "~1.3.1"
   espressif/mdns:
     version: "^1.4"
+  wolfssl/wolfssl:
+    version: "*"
+  wolfssl/wolfssh:
+    version: "*"

@@ -17,6 +17,7 @@
  */
 #include <stdio.h>
 #include <inttypes.h>
+#include "whssh.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_log.h"
@@ -105,9 +106,12 @@ void app_main(void)
        ~115K + wifi + feature-task stacks) and the REPL's 8K allocation
        failed rc=-1, on both units, deterministically. Front of the
        line, forever. */
+    whssh_log_hook_init();       /* ESP_LOG tee: USB untouched, SSH live */
     if (whm_console_start() != ESP_OK) {
         ESP_LOGE(TAG, "console failed to start - see errors above");
     }
+    whssh_register_console();    /* the `ssh` verb joins help */
+    wh_ssh_start();              /* arena + per-device host key + :22 */
 
     STAGE("1: display");
     uint8_t bright = CONFIG_WHM_TEST_BRIGHTNESS;
