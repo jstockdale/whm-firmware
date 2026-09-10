@@ -12,16 +12,28 @@ static void spark(int x0, int y0, int w, int h,
                   const uint8_t *ring, uint8_t idx,
                   uint8_t r, uint8_t g, uint8_t b)
 {
+    /* 120 one-pixel bars, bottom-right anchored by callers -
+       collision-free on 536 AND 480 (owner's photo: the Pro
+       drew bars over the text block; the AMOLED drew only
+       this baseline). n= beneath is the self-diagnosis: 0 =
+       sampler dead, >0 with no bars = draw bug. */
     whm_display_fill_rect(x0, y0 + h, w, 1, 60, 68, 84);
-    uint8_t mx = 1;
-    for (int i = 0; i < 120; i++)
+    uint8_t mx = 1; int n9 = 0;
+    for (int i = 0; i < 120; i++) {
         if (ring[i] > mx) mx = ring[i];
-    for (int i = 0; i < 120 && i * 4 < w; i++) {
+        if (ring[i]) n9++;
+    }
+    for (int i = 0; i < 120 && i < w; i++) {
         uint8_t v = ring[(idx + i) % 120];
         int bh = (int)v * h / mx;
         if (bh > 0)
-            whm_display_fill_rect(x0 + i * 4, y0 + h - bh,
-                                  3, bh, r, g, b);
+            whm_display_fill_rect(x0 + i, y0 + h - bh,
+                                  1, bh, r, g, b);
+    }
+    {
+        char n2[16];
+        snprintf(n2, sizeof n2, "n=%d mx=%u", n9, mx);
+        gfx_text(x0, y0 + h + 4, n2, 1, 110, 120, 138);
     }
 }
 void mon_page_stats(uint32_t kfs)
@@ -53,9 +65,10 @@ void mon_page_stats(uint32_t kfs)
              (unsigned long)kfs,
              (unsigned long long)(esp_timer_get_time() / 1000000));
     gfx_text(10, 194, ln, 2, 140, 150, 168);
-    gfx_text(LCD_W - 236, 150, "kf/s (2 min)", 1, 110, 120, 138);
-    spark(LCD_W - 236, 162, 230, 56, g_mon.kfs_ring, g_mon.ring_i,
-          oc_r, oc_g, oc_b);
+    gfx_text(LCD_W - 128, LCD_H - 80, "kf/s (2 min)", 1,
+             110, 120, 138);
+    spark(LCD_W - 128, LCD_H - 68, 120, 48,
+          g_mon.kfs_ring, g_mon.ring_i, oc_r, oc_g, oc_b);
 }
 void mon_page_wire(void)
 {
@@ -106,7 +119,7 @@ void mon_page_wire(void)
              g_mon.tsf_ok ? "(slaved)" : "(free)");
     gfx_text(10, 78, ln, 2, 124, 224, 201);
     gfx_text(10, 104, "rx/s (2 min)", 1, 110, 120, 138);
-    spark(10, 116, 230, 44, g_mon.rxs_ring, g_mon.ring_i,
+    spark(10, 116, 120, 36, g_mon.rxs_ring, g_mon.ring_i,
           65, 208, 255);
     gfx_text(LCD_W - 180, 8, "rung history", 1, 200, 180, 69);
     int shown = 0;
