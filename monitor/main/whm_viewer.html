@@ -22,7 +22,13 @@ button,input,.hr{touch-action:manipulation}
    gutter, and the HUD (with the scenery button floated right)
    inherits the same width, landing flush on the panel edge */
 #wrap{flex-wrap:wrap}
-#left{min-width:0;flex:1 1 640px}
+#left{min-width:0;flex:1 1 640px;max-width:1152px}
+/* THE RESEARCH VERDICT (owner's ask): CSS pixels scale with
+   browser zoom; viewport percentages re-derive from a viewport
+   that GROWS at zoom-out - hence the panel eating freed space.
+   Community + W3C WCAG C37/C38 answer: a fixed max-width cap on
+   the content column. 1152 = 1.5x native, integer-crisp. Zoom
+   now scales the twin like text. The JS sizing saga is over. */
 @media (pointer:coarse){
  button{padding:10px 16px;font-size:15px}
  input{padding:9px 10px;font-size:15px}
@@ -101,36 +107,15 @@ let AUTO_WS=false;
 try{if(location.protocol.indexOf("http")===0){
  $("url").value="ws://"+location.hostname+":8777";AUTO_WS=true;}}
 catch(e){}
-const AR9=CSS.supports("aspect-ratio","1 / 1");
-let winDev=innerWidth*devicePixelRatio,haveFit=false;
-function fitCanvases(force){
- /* THE GEOMETRY INVARIANT (owner's zoom-out review): the
-    350 ms quiet window was event-timing where geometry was
-    needed - zoom-out shrinks the fixed canvas below the
-    page, scrollbars toggle, late same-DPR resizes slip any
-    timer, and each refit re-inflates to the zoom-grown CSS
-    width: BIGGER exactly when smaller was wanted. The
-    zoom-blind measure is PHYSICAL window width:
-    innerWidth x devicePixelRatio. Zoom moves both factors
-    inversely (product constant to rounding); real resizes,
-    monitor moves and dock changes move it decisively. Refit
-    ONLY when it moves >40 device px (swallows scrollbar
-    toggles too), or on explicit intent (drawer, load). No
-    timers - timeless. */
- const wd=innerWidth*devicePixelRatio;
- const moved=Math.abs(wd-winDev)>40;
- if(!force&&haveFit&&!moved)return;
- winDev=wd;haveFit=true;
- for(const id of["cv","tv"]){const e=$(id);
-  const w=e.parentElement.clientWidth||768;
-  e.style.width=w+"px";
-  if(!AR9)e.style.height=(w*e.height/e.width)+"px";}}
-addEventListener("resize",fitCanvases);
-addEventListener("orientationchange",fitCanvases);
+/* fitCanvases is DELETED. Three JS sizing laws each traded
+   one wonkiness for another; pure CSS (width:100% under a
+   fixed max-width column, aspect-ratio for height) needs no
+   referee and tracks zoom natively. */
+
 $("hb").onclick=()=>{
  const off=$("hist").classList.toggle("off");
- $("hb").className=off?"":"on";   /* green = drawer open */
- requestAnimationFrame(()=>fitCanvases(true))};
+ $("hb").className=off?"":"on"};  /* green = drawer open;
+                                     CSS reflows, no JS */
 const cv=$("cv"),cx=cv.getContext("2d");
 const S=6, GROUND=57, REACH=21;
 let ws=null,strips=2,wkPrev=null,kfT=[],lastStep=0,lastStepT=0,rate=0;
@@ -858,7 +843,6 @@ $("go").onclick=()=>{
   $("go").textContent="connect";
   cstat("disconnected (by you)");$("dot").className="";return}
  MANUAL=false;connect()};
-fitCanvases();
 try{if(AUTO_WS)connect();}
 catch(e){cstat("load error: "+e.message,"err")}
 $("url").addEventListener("keydown",
