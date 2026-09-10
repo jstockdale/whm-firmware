@@ -4,6 +4,24 @@ Status: v0.62.0 - phase 0 long complete; the git era's first arcs
 (walker sync doctrines 13-17, the art suite, the OTA suite) are
 landed. Originals preserved in docs/.
 
+## Walker rituals (Robin's) - docs/walker-rituals.md
+
+- THE CAMPFIRE: night-only by the DAYCLOCK; build (stone
+  ring, wood, spark-to-flame), sit with glow halo +
+  marshmallow beats, and the sacred ordering - DOUSE with
+  the bucket (water arc, steam puff, dimming embers) before
+  he ever leaves the scene. No new wire: states/phase carry
+  it; fire anchors chair-style.
+- THE HAMMOCK: day or night when the environment allows -
+  anchors from the STRUCTURAL set only (ladders, trees,
+  houses; never platforms), pairs 8-16 px apart, height
+  wherever reachable (v1: one anchor a climbable ladder for
+  elevated slings). Rope-throw, tie-offs, unfurl; sway /
+  nap (floating z) / watch; roll-up takedown. Anchor
+  discovery deterministic from chunk data - byte-free.
+- Sequencing: after the monitor/Pro/LoRa arc; campfire
+  first. Each ships fleet+monitor+viewer together.
+
 ## Monitor: multi-board + the LoRa gateway (planned)
 
 - Second target: T-Display-S3 Pro (ST7796 SPI+DC, 49-col GRAM
