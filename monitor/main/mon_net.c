@@ -14,10 +14,13 @@
 static const char *TAG = "mon_net";
 static void wifi_evt(void *a, esp_event_base_t base, int32_t id, void *d)
 {
-    if (base == WIFI_EVENT && id == WIFI_EVENT_STA_START)
-        esp_wifi_connect();
+    extern int g_wifi_have_cfg;
+    if (base == WIFI_EVENT && id == WIFI_EVENT_STA_START) {
+        /* no unconditional connect: with no creds the radio
+           spun connecting-to-nothing and blocked set_config */
+    }
     else if (base == WIFI_EVENT && id == WIFI_EVENT_STA_DISCONNECTED) {
-        esp_wifi_connect();              /* quiet retry */
+        if (g_wifi_have_cfg) esp_wifi_connect();
     } else if (base == IP_EVENT && id == IP_EVENT_STA_GOT_IP) {
         ip_event_got_ip_t *e = (ip_event_got_ip_t *)d;
         ESP_LOGI(TAG, "got IP: " IPSTR, IP2STR(&e->ip_info.ip));
@@ -53,13 +56,16 @@ static void rx_task(void *arg)
         }
     }
 }
+volatile int g_mon_stream = 0;       /* 'mon stream' toggles */
+void mon_con_printf(const char *fmt, ...);
 static void status_task(void *arg)
 {
     uint32_t pk = 0;
     for (;;) {
         vTaskDelay(pdMS_TO_TICKS(1000));
         uint32_t k = g_mon.n_kf, dk = k - pk; pk = k;
-        printf("[M] step=%lu st=%s own=%u x=%.1f y=%.1f cam=%.1f "
+        if (!g_mon_stream) continue;
+        mon_con_printf("[M] step=%lu st=%s own=%u x=%.1f y=%.1f cam=%.1f "
                "kf/s=%lu rung@%lu drop=%lu from=%s\n",
                (unsigned long)g_mon.step, mon_st_name(g_mon.st),
                g_mon.owner, g_mon.x, g_mon.y, g_mon.cam,

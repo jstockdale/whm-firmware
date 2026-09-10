@@ -39,7 +39,9 @@ python3 -m esptool --chip esp32s3 -p "$PORT" -b "$BAUD" \
   fail "esptool failed" "check the port, cable, and dialout group"
 
 echo
-echo "== done. console (115200) with any of: =="
-echo "  screen $PORT 115200        (exit: ctrl-a k)"
-echo "  tio $PORT                  (sudo apt install tio)"
+echo "== done. console (115200): =="
+echo "  python3 -m serial.tools.miniterm $PORT 115200"
+echo "     (quit: ctrl-])  needs pyserial:"
+echo "     sudo apt install python3-serial   # or: pip install pyserial"
+echo "  alternates: screen $PORT 115200 | tio $PORT"
 echo "then:  wifi join \"<ssid>\" <password>"

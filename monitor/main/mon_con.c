@@ -15,20 +15,56 @@
 #include "mon_lcd.h"
 #include "mon_http.h"
 #include "mbedtls/base64.h"
+#include <stdarg.h>
 #define LN 96
 #define HIST 8
 static char s_hist[HIST][LN]; static int s_hn, s_hview;
-static void redraw(const char *buf, int len, int cur)
+static char s_buf[LN]; static int s_len, s_cur, s_started;
+static void redraw(void)
 {
-    printf("\r\x1b[KMon> %s", buf);
-    for (int i = len; i > cur; i--) printf("\b");
+    printf("\r\x1b[KMon> %s", s_buf);
+    for (int i = s_len; i > s_cur; i--) printf("\b");
     fflush(stdout);
+}
+void mon_con_printf(const char *fmt, ...)
+{
+    /* repaint-safe async print: clears the edit line, prints,
+       then redraws the half-typed command underneath - so the
+       [M] stream can no longer shred line editing. */
+    char tmp[160];
+    va_list ap; va_start(ap, fmt);
+    vsnprintf(tmp, sizeof tmp, fmt, ap);
+    va_end(ap);
+    if (!s_started) { printf("%s\n", tmp); return; }
+    printf("\r\x1b[K%s\n", tmp);
+    redraw();
+}
+static int tokenize(char *s, char **argv, int maxv)
+{
+    /* quotes + backslash escapes, in-place: SSIDs with spaces
+       work as "Sloth Country Manor" or Sloth\ Country\ Manor */
+    int argc = 0; char *w = s;
+    while (*s && argc < maxv) {
+        while (*s == ' ') s++;
+        if (!*s) break;
+        argv[argc++] = w;
+        int q = 0;
+        while (*s) {
+            char ch = *s;
+            if (ch == '\\' && s[1]) { s++; *w++ = *s++; continue; }
+            if (ch == '"') { q = !q; s++; continue; }
+            if (ch == ' ' && !q) break;
+            *w++ = ch; s++;
+        }
+        if (*s) s++;
+        *w++ = 0;
+    }
+    return argc;
 }
 static void exec_line(char *line)
 {
-    char *argv[6]; int argc = 0;
-    for (char *t = strtok(line, " "); t && argc < 6;
-         t = strtok(NULL, " ")) argv[argc++] = t;
+    char *argv[6];
+    int argc = tokenize(line, argv, 6);
     if (!argc) return;
     if (!strcmp(argv[0], "help")) {
         printf("wifi join <ssid> [pw] | wifi clear | wifi status\n"
@@ -38,6 +74,9 @@ static void exec_line(char *line)
                "stats          wire counters\n"
                "bright <0-255> panel brightness (saved)\n"
                "reboot\n");
+    } else if (!strcmp(argv[0], "wifi") && argc == 1) {
+        printf("wifi join <ssid> [pw]   (quote or \\-escape "
+               "spaces)\nwifi clear | wifi status\n");
     } else if (!strcmp(argv[0], "wifi") && argc >= 2) {
         if (!strcmp(argv[1], "join") && argc >= 3)
             printf(mon_wifi_join(argv[2], argc >= 4 ? argv[3] : "")
@@ -46,6 +85,11 @@ static void exec_line(char *line)
         else if (!strcmp(argv[1], "clear")) mon_wifi_clear();
         else if (!strcmp(argv[1], "status")) mon_wifi_status();
         else printf("wifi join|clear|status\n");
+    } else if (!strcmp(argv[0], "mon") && argc == 2 &&
+               !strcmp(argv[1], "stream")) {
+        extern volatile int g_mon_stream;
+        g_mon_stream = !g_mon_stream;
+        printf("[M] stream %s\n", g_mon_stream ? "on" : "off");
     } else if (!strcmp(argv[0], "mon")) {
         printf("step=%lu st=%s own=%u x=%.1f y=%.1f cam=%.1f "
                "rung@%lu from=%s\n",
@@ -102,7 +146,8 @@ static void exec_line(char *line)
 }
 static void con_task(void *arg)
 {
-    char buf[LN] = ""; int len = 0, cur = 0, esc = 0;
+    int esc = 0;
+    s_started = 1;
     printf("\n==== WHM monitor console - 'help' ====\nMon> ");
     fflush(stdout);
     for (;;) {
@@ -116,44 +161,44 @@ static void con_task(void *arg)
                 s_hview += (c == 'A') ? -1 : 1;
                 if (s_hview < 0) s_hview = 0;
                 if (s_hview > s_hn) s_hview = s_hn;
-                if (s_hview == s_hn) buf[0] = 0;
-                else strlcpy(buf, s_hist[s_hview], LN);
-                len = cur = strlen(buf);
-                redraw(buf, len, cur);
-            } else if (c == 'D' && cur > 0) { cur--;
-                redraw(buf, len, cur);
-            } else if (c == 'C' && cur < len) { cur++;
-                redraw(buf, len, cur);
+                if (s_hview == s_hn) s_buf[0] = 0;
+                else strlcpy(s_buf, s_hist[s_hview], LN);
+                s_len = s_cur = strlen(s_buf);
+                redraw();
+            } else if (c == 'D' && s_cur > 0) { s_cur--;
+                redraw();
+            } else if (c == 'C' && s_cur < s_len) { s_cur++;
+                redraw();
             }
             continue;
         }
         if (c == 0x1b) { esc = 1; continue; }
         if (c == '\r' || c == '\n') {
             printf("\n");
-            if (len) {
+            if (s_len) {
                 if (s_hn == HIST) {
                     memmove(s_hist[0], s_hist[1],
                             (HIST - 1) * LN);
                     s_hn--;
                 }
-                strlcpy(s_hist[s_hn++], buf, LN);
-                char tmp[LN]; strlcpy(tmp, buf, LN);
+                strlcpy(s_hist[s_hn++], s_buf, LN);
+                char tmp[LN]; strlcpy(tmp, s_buf, LN);
                 exec_line(tmp);
             }
-            len = cur = 0; buf[0] = 0; s_hview = s_hn;
+            s_len = s_cur = 0; s_buf[0] = 0; s_hview = s_hn;
             printf("Mon> "); fflush(stdout);
         } else if (c == 0x7f || c == 0x08) {
-            if (cur > 0) {
-                memmove(buf + cur - 1, buf + cur, len - cur + 1);
-                len--; cur--; redraw(buf, len, cur);
+            if (s_cur > 0) {
+                memmove(s_buf + s_cur - 1, s_buf + s_cur, s_len - s_cur + 1);
+                s_len--; s_cur--; redraw();
             }
         } else if (c == 0x03) {                   /* ctrl-c */
-            len = cur = 0; buf[0] = 0; s_hview = s_hn;
+            s_len = s_cur = 0; s_buf[0] = 0; s_hview = s_hn;
             printf("\nMon> "); fflush(stdout);
-        } else if (c >= 0x20 && c < 0x7f && len < LN - 1) {
-            memmove(buf + cur + 1, buf + cur, len - cur + 1);
-            buf[cur++] = (char)c; len++;
-            redraw(buf, len, cur);
+        } else if (c >= 0x20 && c < 0x7f && s_len < LN - 1) {
+            memmove(s_buf + s_cur + 1, s_buf + s_cur, s_len - s_cur + 1);
+            s_buf[s_cur++] = (char)c; s_len++;
+            redraw();
         }
     }
 }

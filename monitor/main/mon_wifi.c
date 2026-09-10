@@ -1,5 +1,7 @@
 #include <string.h>
 #include "esp_wifi.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "esp_log.h"
 #include <stdio.h>
 #include "nvs.h"
@@ -19,13 +21,19 @@ static esp_err_t load(char *ssid, size_t sn, char *pass, size_t pn)
     nvs_close(h);
     return r;
 }
+int g_wifi_have_cfg;                 /* gates auto-reconnect */
 static void apply(const char *ssid, const char *pass)
 {
+    /* order matters: a mid-connect radio rejects set_config
+       ('sta is connecting, cannot set config' on the owner's
+       capture). Disconnect, let it settle, then config. */
+    esp_wifi_disconnect();
+    vTaskDelay(pdMS_TO_TICKS(150));
     wifi_config_t wc = { 0 };
     strlcpy((char *)wc.sta.ssid, ssid, sizeof(wc.sta.ssid));
     strlcpy((char *)wc.sta.password, pass, sizeof(wc.sta.password));
     esp_wifi_set_config(WIFI_IF_STA, &wc);
-    esp_wifi_disconnect();
+    g_wifi_have_cfg = 1;
     esp_wifi_connect();
 }
 esp_err_t mon_wifi_join(const char *ssid, const char *pass)
