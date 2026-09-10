@@ -1168,10 +1168,11 @@ static int cmd_fw(int argc, char **argv)   /* hidden: fireworks test */
         return 0;
     }
     if (strcmp(argv[1], "test") == 0) {
-        whm_ui_fw_test(1, 0);
+        int fast = argc >= 3 && strcmp(argv[2], "fast") == 0;
+        whm_ui_fw_test(1, fast);
         whm_lts();
-        printf("fw: nightly show armed (walker stages in ~4s, "
-               "midnight in ~12s)\n");
+        printf("fw: nightly show armed%s (walker stages in ~4s, "
+               "midnight in ~12s)\n", fast ? " (10x)" : "");
     } else if (strcmp(argv[1], "nye") == 0) {
         int fast = argc >= 3 && strcmp(argv[2], "fast") == 0;
         whm_ui_fw_test(2, fast);
