@@ -17,4 +17,18 @@ include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 #    arena is dead code and crypto silently uses the general heap.
 idf_build_set_property(COMPILE_DEFINITIONS "WOLFSSL_WOLFSSH" APPEND)
 idf_build_set_property(COMPILE_DEFINITIONS "WOLFSSL_TRACK_MEMORY" APPEND)
+# First-handshake forensics (owner's -vvv): the server advertised
+# server-sig-algs with NO ssh-ed25519 - the managed component's
+# default user_settings leaves HAVE_ED25519 off, so the owner's
+# ed25519 key was refused before the auth callback ever ran.
+# Ed25519 (and the SHA-512 it hashes with) join globally.
+idf_build_set_property(COMPILE_DEFINITIONS "HAVE_ED25519" APPEND)
+idf_build_set_property(COMPILE_DEFINITIONS "WOLFSSL_SHA512" APPEND)
+# wolfssh/internal.h keeps ed25519 only if the sub-feature macros
+# exist too (sign/verify/import/export) - satisfy every clause.
+idf_build_set_property(COMPILE_DEFINITIONS "HAVE_ED25519_SIGN" APPEND)
+idf_build_set_property(COMPILE_DEFINITIONS "HAVE_ED25519_VERIFY" APPEND)
+idf_build_set_property(COMPILE_DEFINITIONS "HAVE_ED25519_KEY_IMPORT" APPEND)
+idf_build_set_property(COMPILE_DEFINITIONS "HAVE_ED25519_KEY_EXPORT" APPEND)
+idf_build_set_property(COMPILE_DEFINITIONS "WOLFSSL_ED25519_STREAMING_VERIFY" APPEND)
 project(whm_bringup)
