@@ -1,8 +1,24 @@
 # WHM roadmap
 
-Status: v0.62.0 - phase 0 long complete; the git era's first arcs
-(walker sync doctrines 13-17, the art suite, the OTA suite) are
-landed. Originals preserved in docs/.
+Status: v0.69.1 - phase 0 long complete. Originals in docs/.
+
+## Media pipeline status (owner's question, answered in-doc)
+
+- AUDIO computer->fleet: DONE and battle-tested. Load once (SD or
+  a peer's /media), fleet fan-out bulk-fetch (bf_cli/bf_pump)
+  pulls it everywhere; Mode A plays it TSF-locked across panels
+  (rate-servo v3), Mode B DJ-streams live. Remaining items are
+  bench VERDICTS (pristine-listen, premiere re-tests), not code.
+- LIVE VIDEO computer->fleet: BUILT and first-lit (the
+  signet/media arc). http://<panel>/live serves a browser capture
+  page - screen share, camera, or a video file - downscaled to
+  64 px and POSTed to /stream/frame; whm_media schedules each
+  frame so it hits both panels at the same TSF instant. One
+  browser visit re-verifies it on today's build.
+- RECORDED video (.whm container on SD, playback sans computer):
+  the arc's unfinished half - still open.
+- P3 DDP/ArtNet ingest: backlog - the standards route for
+  computer-driven pixels at scale.
 
 ## Flash headroom (owner's note, banked)
 
@@ -99,6 +115,30 @@ Fleet & OTA
   (zero-window deadlock), status-screen takeover (quiesces load by
   construction), self-source guard, server abort logging
 - First successful unit-to-unit OTA; first watched update
+
+## Done 2026-09-10 - rituals, anchors, SSH, RAM (0.63.0 -> 0.69.1)
+
+- Robin's rituals x3 surfaces: THE CAMPFIRE v2 (seat +5, 4-stone
+  ring, three-log build, tall flame + licks, smoke on the wind,
+  ember riders, douse law kept) and THE HAMMOCK v1 (structural
+  anchors, distance-zero pick, sway/nap/watch).
+- The sky at 3x: the worldwide four as ANCHOR features (Orion 21
+  tall, Dipper 27 wide) with 4-neighbour halos; monitor Pro board
+  DONE (multi-board half of that section complete; LoRa half
+  planned as written).
+- SSH landed (whole arc): wolfSSH server, pubkey-only, per-device
+  NVS host key fail-closed, 128K PSRAM crypto arena (all four
+  placement conditions), THE FLEET BRIDGE (per-task fopencookie
+  stdout + esp_console_run = every fleet verb over SSH verbatim),
+  live ESP_LOG tee, panel MOTD, SD-primary keystore
+  (/sdcard/.ssh/authorized_keys) with NVS fallback. Field lessons
+  banked: mbox v1/v2 (construction beats probing), the chime
+  conviction (log hooks pack nothing they cannot carry in
+  registers), the SD gaslight.
+- RAM audit wave 1 (docs/RAM-AUDIT-2026-09-10.md): statics already
+  lean; five stacks to PSRAM (~23K); wave-2 banked. Field ladder:
+  three clean boots -> ble enable -> mem tasks.
+- fw grammar complete: fw test|nye [fast], uniform.
 
 ## Bench queue
 
