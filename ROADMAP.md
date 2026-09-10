@@ -4,6 +4,18 @@ Status: v0.62.0 - phase 0 long complete; the git era's first arcs
 (walker sync doctrines 13-17, the art suite, the OTA suite) are
 landed. Originals preserved in docs/.
 
+## Monitor: multi-board + the LoRa gateway (planned)
+
+- Second target: T-Display-S3 Pro (ST7796 SPI+DC, 49-col GRAM
+  offset landmine banked, CST226SE touch, PWM backlight,
+  SY6970) - docs/monitor-hw-pro.md is the spec. boards/
+  abstraction + Kconfig MON_BOARD; per-board tarballs.
+- LoRa telemetry gateway behind MON_HAS_LORA once the
+  MVSRLora variant/pinmap is confirmed: sub-32-byte type-32
+  digests (pose + cam + rung + anchor/tsf echo) at 1-2 Hz -
+  far monitors render the twin from digests; observers free
+  at kilometer scale.
+
 ## Done 2026-09-08/09 - the convergence night (0.58.2 -> 0.62.0)
 
 - Determinism trilogy: Pure Stream (stateless keyed rnd), Whole Pose
