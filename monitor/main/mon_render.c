@@ -189,8 +189,8 @@ static void sprite(int lx, int y, int64_t t)
 }
 void mon_render(uint32_t kfs)
 {
-    int64_t now = esp_timer_get_time();
-    int64_t t = now;
+    int64_t now = esp_timer_get_time();  /* LOCAL: cam slope dt */
+    int64_t t = mon_now();               /* SHARED: all cosmetics */
     mon_state_t M;                 /* atomic-enough pose snapshot:
         one copy per frame, so the rx task can't tear fields
         mid-compose across cores */

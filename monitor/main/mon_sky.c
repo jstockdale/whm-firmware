@@ -178,15 +178,23 @@ void mw_sky(int64_t t, float cam, float f)
                             mw_px(sxi + dx2, py2, sunr, sung, sunb);
                         }
                     }
-                {
-                    float Lf = 2.6f + 3.4f * lowr + 0.7f *
-                        (0.5f + 0.5f * sinf((float)t / 7.0e6f));
-                    int L9 = (int)Lf;
-                    if (L9 < 2) L9 = 2;
+                {   /* CROWN v4 - mirrors main/ui.c verbatim */
+                    float gp = sinf((float)t / 4.5e6f);
+                    float Lb = 2.6f + 3.4f * lowr;
                     for (int k9 = 0; k9 < 16; k9++) {
+                        float lk = Lb * (0.72f + 0.38f *
+                            (0.5f + 0.5f * sinf((float)t / 7.0e6f
+                             + (float)k9 * 0.9f)));
+                        int L9 = (int)lk;
+                        if (L9 < 2) L9 = 2;
+                        float c9 = (lk - 2.0f) /
+                                   (Lb * 1.1f - 1.99f);
+                        if (c9 < 0.0f) c9 = 0.0f;
+                        if (c9 > 1.0f) c9 = 1.0f;
+                        float pers = sinf((float)t / 4.5e6f +
+                                          (float)k9 * 2.4f);
                         float sway = 0.10f *
-                            sinf((float)t / 4.5e6f +
-                                 (float)k9 * 2.4f);
+                            (c9 * gp + (1.0f - c9) * pers);
                         float ang9 = (float)k9 * 0.3927f + sway;
                         float cs = cosf(ang9), sn = sinf(ang9);
                         float tw = 0.78f + 0.34f *

@@ -33,6 +33,7 @@ typedef struct {
     /* oracle */
     uint32_t rung_step; uint64_t rung_h; uint16_t rung_hs;
     /* counters */
+    int64_t tsf_off; uint8_t tsf_ok;    /* passive fleet clock */
     uint32_t n_kf, n_wkp, n_org, n_drop;
     struct { uint32_t step; uint8_t st, owner; } tr[5];
     uint8_t tr_n, last_st;
@@ -40,4 +41,5 @@ typedef struct {
 } mon_state_t;
 extern mon_state_t g_mon;
 void mon_parse_pkt(const uint8_t *b, int n);
+int64_t mon_now(void);   /* fleet-shared time (TSF slaved via kf) */
 const char *mon_st_name(uint8_t st);

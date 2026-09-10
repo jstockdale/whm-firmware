@@ -2,6 +2,11 @@
 #include "esp_timer.h"
 #include "mon_parse.h"
 mon_state_t g_mon;
+int64_t mon_now(void)
+{
+    return esp_timer_get_time() +
+           (g_mon.tsf_ok ? g_mon.tsf_off : 0);
+}
 static const char *STN[16] = {
     "WALK","CLMB","LADR","SLID","FALL","IDLE","CRCH","JUMP",
     "LAND","GOCH","SETP","SIT","PACK","SHIM","POP","BASE" };
@@ -39,6 +44,20 @@ void mon_parse_pkt(const uint8_t *b, int n)
             g_mon.dir = k.dir; g_mon.sdir = k.sdir;
             g_mon.phase = k.phase; g_mon.timer = k.timer;
             memcpy(g_mon.from, k.from, 16); g_mon.from[15] = 0;
+            {   /* PASSIVE TSF SLAVE (owner: birds lag the
+                   panels): fleet cosmetics run on the SHARED
+                   clock; the monitor ran on boot-relative
+                   uptime, so every pure-f(t) animation - birds,
+                   cloud drift, scarf rainbow, sun breathing -
+                   was phase-shifted by the boot delta. Each kf
+                   carries the sender's tsf: EMA the offset and
+                   the monitor joins the fleet's timeline without
+                   transmitting a byte. */
+                int64_t off = k.tsf - esp_timer_get_time();
+                if (!g_mon.tsf_ok) { g_mon.tsf_off = off;
+                    g_mon.tsf_ok = 1; }
+                else g_mon.tsf_off += (off - g_mon.tsf_off) / 8;
+            }
             if (k.st != g_mon.last_st) {
                 g_mon.last_st = k.st;
                 g_mon.tr[g_mon.tr_n].step = k.step;

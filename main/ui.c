@@ -2601,23 +2601,32 @@ static void wk_sky(int64_t t, float cam, int idx, float f)
                             wk_px(sxi + dx2, py2, sunr, sung, sunb);
                         }
                     }
-                {   /* THE CROWN v3 (owner's brief): SIXTEEN rays,
-                       UNIFORM length (symmetry restored), fixed
-                       angular homes - they SWAY +-6deg on their
-                       own gentle phases and GLIMMER brighter, but
-                       never rotate. And the length is a CLOCK:
-                       short punchy crown at noon, long golden
-                       rays at dawn and dusk - the sun's character
-                       tells the hour, because golden-hour light
-                       IS long light. */
-                    float Lf = 2.6f + 3.4f * lowr + 0.7f *
-                        (0.5f + 0.5f * sinf((float)t / 7.0e6f));
-                    int L9 = (int)Lf;
-                    if (L9 < 2) L9 = 2;
+                {   /* THE CROWN v4 (owner's brief): the rays sway
+                       TOGETHER - one global phase carries the
+                       whole crown, and COUPLING FOLLOWS LENGTH:
+                       long rays lock to the ensemble, short ones
+                       may stray ("longer ones should move more in
+                       phase"). Length itself breathes per-ray, so
+                       the silhouette shimmers without the
+                       hairy-sky-ball scatter of sixteen
+                       independent phases. Golden-hour rays stay
+                       long (lowr), noon stays punchy. */
+                    float gp = sinf((float)t / 4.5e6f);
+                    float Lb = 2.6f + 3.4f * lowr;
                     for (int k9 = 0; k9 < 16; k9++) {
+                        float lk = Lb * (0.72f + 0.38f *
+                            (0.5f + 0.5f * sinf((float)t / 7.0e6f
+                             + (float)k9 * 0.9f)));
+                        int L9 = (int)lk;
+                        if (L9 < 2) L9 = 2;
+                        float c9 = (lk - 2.0f) /
+                                   (Lb * 1.1f - 1.99f);
+                        if (c9 < 0.0f) c9 = 0.0f;
+                        if (c9 > 1.0f) c9 = 1.0f;
+                        float pers = sinf((float)t / 4.5e6f +
+                                          (float)k9 * 2.4f);
                         float sway = 0.10f *
-                            sinf((float)t / 4.5e6f +
-                                 (float)k9 * 2.4f);
+                            (c9 * gp + (1.0f - c9) * pers);
                         float ang9 = (float)k9 * 0.3927f + sway;
                         float cs = cosf(ang9), sn = sinf(ang9);
                         float tw = 0.78f + 0.34f *

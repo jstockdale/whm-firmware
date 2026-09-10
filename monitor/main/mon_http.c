@@ -37,9 +37,9 @@ static esp_err_t h_root(httpd_req_t *r)
         "<body style='background:#0b0e14;color:#c8d2e0;"
         "font-family:monospace;text-align:center'>"
         "<h3>whm-monitor - the eye</h3>"
-        "<img id=i src=/fb.bmp style='width:96%;max-width:1072px;"
+        "<img id=i src=/fb.png style='width:96%;max-width:1072px;"
         "image-rendering:pixelated;border:1px solid #2a3446'>"
-        "<p><button onclick=\"i.src='/fb.bmp?'+Date.now()\" "
+        "<p><button onclick=\"i.src='/fb.png?'+Date.now()\" "
         "style='padding:10px 18px'>capture</button></body>";
     httpd_resp_set_type(r, "text/html");
     return httpd_resp_send(r, pg, HTTPD_RESP_USE_STRLEN);
@@ -90,6 +90,109 @@ static esp_err_t h_viewer(httpd_req_t *r)
     return httpd_resp_send(r, (const char *)viewer_html_start,
                            viewer_html_end - viewer_html_start - 1);
 }
+/* PNG, zero-dependency: stored-deflate blocks are a valid zlib
+ * stream, so this is a real PNG every decoder accepts - same
+ * bytes as raw, streamed. Upgrade path: espressif/zlib managed
+ * component swaps stored blocks for real compression later. */
+static uint32_t crc32b(uint32_t c, const uint8_t *b, int n)
+{
+    c = ~c;
+    for (int i = 0; i < n; i++) {
+        c ^= b[i];
+        for (int k = 0; k < 8; k++)
+            c = (c >> 1) ^ (0xEDB88320u & (-(int32_t)(c & 1)));
+    }
+    return ~c;
+}
+static void be32(uint8_t *p, uint32_t v)
+{
+    p[0] = v >> 24; p[1] = v >> 16; p[2] = v >> 8; p[3] = v;
+}
+static esp_err_t h_png(httpd_req_t *r)
+{
+    if (mon_snap_take() != 0) {
+        httpd_resp_send_err(r, HTTPD_500_INTERNAL_SERVER_ERROR,
+                            "snap timeout");
+        return ESP_FAIL;
+    }
+    const uint32_t rowb = 1 + LCD_W * 3;         /* filter + RGB */
+    const uint32_t raw = rowb * LCD_H;
+    const uint32_t nblk = (raw + 65534) / 65535;
+    const uint32_t zlen = 2 + nblk * 5 + raw + 4;
+    httpd_resp_set_type(r, "image/png");
+    static const uint8_t sig[8] =
+        { 0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A };
+    httpd_resp_send_chunk(r, (char *)sig, 8);
+    uint8_t ih[25];
+    be32(ih, 13); memcpy(ih + 4, "IHDR", 4);
+    be32(ih + 8, LCD_W); be32(ih + 12, LCD_H);
+    ih[16] = 8; ih[17] = 2; ih[18] = 0; ih[19] = 0; ih[20] = 0;
+    be32(ih + 21, crc32b(0, ih + 4, 17));
+    httpd_resp_send_chunk(r, (char *)ih, 25);
+    uint8_t ch[8];
+    be32(ch, zlen); memcpy(ch + 4, "IDAT", 4);
+    httpd_resp_send_chunk(r, (char *)ch, 8);
+    uint32_t crc = crc32b(0, (uint8_t *)"IDAT", 4);
+    uint32_t a1 = 1, a2 = 0, left = raw, srci = 0;
+    uint8_t zh[2] = { 0x78, 0x01 };
+    crc = crc32b(crc, zh, 2);
+    httpd_resp_send_chunk(r, (char *)zh, 2);
+    uint8_t *row = heap_caps_malloc(rowb, MALLOC_CAP_INTERNAL);
+    uint32_t rowoff = 0; int y = 0;
+    row[0] = 0;
+    for (int x = 0; x < LCD_W; x++) {
+        uint16_t c = mon_snap_buf()[x];
+        row[1 + x * 3] = (c >> 8) & 0xF8;
+        row[2 + x * 3] = (c >> 3) & 0xFC;
+        row[3 + x * 3] = (c << 3) & 0xF8;
+    }
+    while (left) {
+        uint32_t blk = left > 65535 ? 65535 : left;
+        uint8_t bh[5] = { left <= 65535, (uint8_t)blk,
+                          (uint8_t)(blk >> 8), (uint8_t)~blk,
+                          (uint8_t)(~blk >> 8) };
+        crc = crc32b(crc, bh, 5);
+        httpd_resp_send_chunk(r, (char *)bh, 5);
+        uint32_t done = 0;
+        while (done < blk) {
+            uint32_t take = rowb - rowoff;
+            if (take > blk - done) take = blk - done;
+            crc = crc32b(crc, row + rowoff, take);
+            for (uint32_t i = 0; i < take; i++) {
+                a1 = (a1 + row[rowoff + i]) % 65521;
+                a2 = (a2 + a1) % 65521;
+            }
+            httpd_resp_send_chunk(r, (char *)row + rowoff, take);
+            done += take; rowoff += take;
+            if (rowoff == rowb) {
+                rowoff = 0; y++;
+                if (y < LCD_H) {
+                    row[0] = 0;
+                    const uint16_t *s =
+                        mon_snap_buf() + y * LCD_W;
+                    for (int x = 0; x < LCD_W; x++) {
+                        uint16_t c = s[x];
+                        row[1 + x * 3] = (c >> 8) & 0xF8;
+                        row[2 + x * 3] = (c >> 3) & 0xFC;
+                        row[3 + x * 3] = (c << 3) & 0xF8;
+                    }
+                }
+            }
+        }
+        left -= blk; srci += blk;
+    }
+    free(row);
+    uint8_t ad[8];
+    be32(ad, (a2 << 16) | a1);
+    crc = crc32b(crc, ad, 4);
+    be32(ad + 4, crc);
+    httpd_resp_send_chunk(r, (char *)ad, 8);
+    static const uint8_t iend[12] = { 0, 0, 0, 0, 'I', 'E', 'N',
+        'D', 0xAE, 0x42, 0x60, 0x82 };
+    httpd_resp_send_chunk(r, (char *)iend, 12);
+    httpd_resp_send_chunk(r, NULL, 0);
+    return ESP_OK;
+}
 void mon_http_start(void)
 {
     s_snap = heap_caps_malloc(LCD_W * LCD_H * 2, MALLOC_CAP_SPIRAM);
@@ -104,6 +207,9 @@ void mon_http_start(void)
                            .handler = h_bmp };
         httpd_register_uri_handler(h, &u1);
         httpd_register_uri_handler(h, &u2);
+        httpd_uri_t u4 = { .uri = "/fb.png", .method = HTTP_GET,
+                           .handler = h_png };
+        httpd_register_uri_handler(h, &u4);
         httpd_uri_t u3 = { .uri = "/viewer", .method = HTTP_GET,
                            .handler = h_viewer };
         httpd_register_uri_handler(h, &u3);
