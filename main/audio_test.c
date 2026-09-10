@@ -407,7 +407,7 @@ static void chime_task(void *arg)
 
 void whm_audio_chime_async(void)
 {
-    xTaskCreatePinnedToCore(chime_task, "whm_chime", 2816, NULL, 10,
+    xTaskCreatePinnedToCore(chime_task, "whm_chime", 3584, NULL, 10,
                             NULL, 0);
 }
 
@@ -474,14 +474,14 @@ esp_err_t whm_audio_tone_async(float hz, int ms)
     if (!rq) return ESP_ERR_NO_MEM;
     rq->hz = hz;
     rq->ms = ms;
-    xTaskCreatePinnedToCore(tone_task, "whm_tone", 2816, rq, 10,
+    xTaskCreatePinnedToCore(tone_task, "whm_tone", 3584, rq, 10,
                             NULL, 0);
     return ESP_OK;
 }
 
 void whm_audio_beep_async(void)
 {
-    xTaskCreatePinnedToCore(beep_task, "whm_beep", 2816, NULL, 10, NULL, 0);
+    xTaskCreatePinnedToCore(beep_task, "whm_beep", 3584, NULL, 10, NULL, 0);
 }
 
 esp_err_t whm_audio_test(void)

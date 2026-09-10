@@ -22,28 +22,42 @@ static volatile bool s_active;
 static SemaphoreHandle_t s_lock;
 static vprintf_like_t s_orig;
 
-static int tee_vprintf(const char *fmt, va_list ap)
+/* THE CHIME CONVICTION (owner's boot log): a vprintf hook taxes
+ * EVERY logging task's stack - the 160 B line buffer hoisted into
+ * this frame's prologue blew whm_chime's tightly-tuned 2816 during
+ * its I2S init logs. The inactive path is now a bare tail-call
+ * with ZERO locals; the active path formats into a STATIC scratch
+ * under the existing mutex, so the only per-caller stack cost left
+ * is vsnprintf's own internals - and that runs only while an SSH
+ * session is live. */
+static char s_fmt[WL_LINE];              /* guarded by s_lock */
+
+static int tee_active_path(const char *fmt, va_list ap)
 {
-    if (s_active && s_lock) {
-        va_list ap2;
-        va_copy(ap2, ap);
-        char line[WL_LINE];
-        vsnprintf(line, sizeof line, fmt, ap2);
-        va_end(ap2);
-        if (xSemaphoreTake(s_lock, pdMS_TO_TICKS(20)) == pdTRUE) {
-            int nxt = (s_head + 1) % WL_N;
-            if (nxt == s_tail) {                 /* full: drop oldest */
-                s_tail = (s_tail + 1) % WL_N;
-                s_dropped++;
-            }
-            memcpy(s_ring[s_head], line, WL_LINE);
-            s_head = nxt;
-            xSemaphoreGive(s_lock);
-        } else {
+    va_list ap2;
+    va_copy(ap2, ap);
+    if (xSemaphoreTake(s_lock, pdMS_TO_TICKS(20)) == pdTRUE) {
+        vsnprintf(s_fmt, sizeof s_fmt, fmt, ap2);
+        int nxt = (s_head + 1) % WL_N;
+        if (nxt == s_tail) {                 /* full: drop oldest */
+            s_tail = (s_tail + 1) % WL_N;
             s_dropped++;
         }
+        memcpy(s_ring[s_head], s_fmt, WL_LINE);
+        s_head = nxt;
+        xSemaphoreGive(s_lock);
+    } else {
+        s_dropped++;
     }
+    va_end(ap2);
     return s_orig ? s_orig(fmt, ap) : vprintf(fmt, ap);
+}
+
+static int tee_vprintf(const char *fmt, va_list ap)
+{
+    if (!s_active || !s_lock)
+        return s_orig ? s_orig(fmt, ap) : vprintf(fmt, ap);
+    return tee_active_path(fmt, ap);
 }
 
 void whssh_log_hook_init(void)
