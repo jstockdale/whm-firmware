@@ -3,16 +3,7 @@
 <style>
 body{background:#0b0e14;color:#cfd8e3;font:13px/1.4 ui-monospace,monospace;margin:0;padding:10px;min-height:100dvh;box-sizing:border-box}
 .cwrap{width:100%}
-#hgrip{position:absolute;left:-6px;top:0;bottom:0;width:12px;
- cursor:col-resize;z-index:5;background:#141b26;
- border:1px solid #22303f;border-radius:3px;
- display:flex;align-items:center;justify-content:center;
- color:#5b6675;font:12px/1 monospace;user-select:none}
-#hgrip::after{content:"\203A"}          /* > pull tab */
-#hist.off{width:12px!important;min-width:12px;overflow:hidden}
-#hist.off #hh,#hist.off #hl{display:none}
-#hist.off #hgrip{left:0;cursor:pointer}
-#hist.off #hgrip::after{content:"\2039"} /* < */
+#hist.off{display:none}
 #bar{display:flex;gap:8px;align-items:center;margin-bottom:8px}
 input{background:#141a24;color:#cfd8e3;border:1px solid #2a3446;padding:4px 8px;width:260px}
 button{background:#1d2736;color:#cfd8e3;border:1px solid #2a3446;padding:4px 12px;cursor:pointer}
@@ -50,8 +41,14 @@ canvas{background:#05070b;border:1px solid #2a3446;display:block;margin-bottom:8
 #tick{max-height:150px;overflow-y:auto;height:130px;overflow-y:auto;background:#0d1119;border:1px solid #22303f;padding:6px;white-space:pre}
 .o0{color:#41d0ff}.o1{color:#ff5cc8}.rg{color:#c8b445}.pm{color:#8b96a8}
 #foot{font-size:11px;opacity:.85;color:#5b6675;margin-top:6px}
-#wrap{display:flex;gap:12px;align-items:flex-start}
-#hist{position:relative;width:340px;min-width:240px;max-width:60vw;flex:0 0 auto;background:#0d1119;border:1px solid #22303f}
+#wrap{display:flex;gap:12px;align-items:stretch}
+#hist{width:340px;flex:0 0 340px;display:flex;
+ flex-direction:column;background:#0d1119;
+ border:1px solid #22303f}
+/* the drawer STRETCHES to the left column's height (wrap is
+   align-items:stretch) and the row list scrolls INSIDE it -
+   shrink-wrap-to-contents was the weirdness. */
+#hl{flex:1;min-height:0;overflow-y:auto}
 #hh{position:sticky;top:0;background:#141a24;padding:6px 8px;
  border-bottom:1px solid #22303f;display:flex;gap:8px;
  align-items:center}
@@ -59,7 +56,7 @@ canvas{background:#05070b;border:1px solid #2a3446;display:block;margin-bottom:8
 .hr{padding:2px 8px;cursor:pointer;white-space:pre;font-size:11px}
 .hr:hover{background:#1a2333}
 .hr.sel{background:#22314a}
-#live.on,#scn.on{background:#1f4d3a;border-color:#46c390}
+#live.on,#scn.on,#hb.on{background:#1f4d3a;border-color:#46c390}
 #live.paused{background:#4d3a1f;border-color:#c8b445;color:#e8d84a}
 </style>
 <div id=bar><span id=dot></span>
@@ -67,7 +64,9 @@ canvas{background:#05070b;border:1px solid #2a3446;display:block;margin-bottom:8
  autocapitalize="off" autocorrect="off" spellcheck="false"
  enterkeyhint="go"><button id=go>connect</button>
 <span id=cstat></span>
-<span id=name class=pm></span></div>
+<span id=name class=pm></span><button id=hb class=on
+ style="margin-left:auto" title="show/hide history"
+>history</button></div>
 <div id=wrap><div id=left>
 <div class=cwrap><canvas id=cv width=768 height=384></canvas></div>
 <div class=cwrap><canvas id=tv width=768 height=204></canvas></div>
@@ -82,8 +81,7 @@ canvas{background:#05070b;border:1px solid #2a3446;display:block;margin-bottom:8
 <button id=scn class=on
  title="background art on/off">scenery</button></div>
 <div id=tick></div>
-</div><aside id=hist><div id=hgrip
- title="drag to resize"></div><div id=hh><b>state history</b> <span class=pm>UTC</span>
+</div><aside id=hist><div id=hh><b>state history</b> <span class=pm>UTC</span>
 <button id=live class=on>LIVE</button>
 <button id=exp>EXPORT</button><span id=hc class=pm>0</span>
 </div><div id=hl></div></aside></div>
@@ -119,26 +117,10 @@ function fitCanvases(){
   e.style.height=(w*e.height/e.width)+"px";}}
 addEventListener("resize",fitCanvases);
 addEventListener("orientationchange",fitCanvases);
-{const g=$("hgrip"),hi=$("hist");
- const tog=()=>{hi.classList.toggle("off");
-  requestAnimationFrame(fitCanvases)};
- let dr=false,x0=0,moved=false;
- g.addEventListener("pointerdown",e=>{dr=true;x0=e.clientX;
-  moved=false;g.setPointerCapture(e.pointerId);
-  e.preventDefault()});
- g.addEventListener("pointermove",e=>{
-  if(!dr)return;
-  if(Math.abs(e.clientX-x0)>4)moved=true;
-  if(!moved||hi.classList.contains("off"))return;
-  const w=Math.max(240,Math.min(window.innerWidth*.6,
-    window.innerWidth-e.clientX-12));
-  hi.style.width=w+"px";fitCanvases()});
- g.addEventListener("pointerup",e=>{dr=false;
-  g.releasePointerCapture(e.pointerId);
-  if(!moved)tog()});          /* click = toggle, drag = resize */
- hi.addEventListener("dblclick",e=>{
-  if(getSelection().toString())return;
-  tog()});}
+$("hb").onclick=()=>{
+ const off=$("hist").classList.toggle("off");
+ $("hb").className=off?"":"on";   /* green = drawer open */
+ requestAnimationFrame(fitCanvases)};
 const cv=$("cv"),cx=cv.getContext("2d");
 const S=6, GROUND=57, REACH=21;
 let ws=null,strips=2,wkPrev=null,kfT=[],lastStep=0,lastStepT=0,rate=0;
