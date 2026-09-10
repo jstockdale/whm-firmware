@@ -725,17 +725,11 @@ function onPkt(m){const u=hex2u8(m.hex);if(u.length<8)return;
      spd:d.getFloat32(56,true),sdir:d.getInt8(60),phase:u[61],
      t:m.t};
   W=K;
-  {/* TWO-LANE INGEST: shadows are +4..+6 promises with no
-      marker. Real chains at +1 (+2 tolerated); +2..+8 =
-      promise, dropped from the playhead; 40 straight ahead =
-      resync; epoch turns reset. */
-   if(lastReal&&(K.step>lastReal+1000||lastReal>K.step+1000)){
-    lastReal=0;missR=0}
-   if(!lastReal)lastReal=K.step;
-   else if(K.step<=lastReal)return;
-   else if(K.step-lastReal<=2){lastReal=K.step;missR=0}
-   else if(K.step-lastReal<=8){return}
-   else{if(++missR<40)return;lastReal=K.step;missR=0}}
+  /* inverted-model confession: every kf is a promise fan -
+     first frame per step wins; the playhead trails newest-7
+     so the browser sits ON glass time, not 0.17 s ahead. */
+  if(BUF.length&&K.step<=BUF[BUF.length-1].step&&
+     BUF[BUF.length-1].step-K.step<1000)return;
   {  /* passive fleet clock (the monitor's law, browser
         edition): kf carries the sender's TSF; EMA the offset
         so scenery runs on the FLEET timeline - birds, clouds
@@ -792,7 +786,7 @@ function loop(){requestAnimationFrame(loop);
  catch(e){if(!loop.e){loop.e=1;
   tick("pm","draw error (loop survives): "+e.message)}}}
 requestAnimationFrame(loop);
-let tryN=0;
+let tryN=0,MANUAL=false;
 function cstat(msg,cls){const s=$("cstat");
  s.textContent=msg;s.className=cls||""}
 function connect(){if(ws)try{ws.close()}catch(e){}
@@ -806,6 +800,7 @@ function connect(){if(ws)try{ws.close()}catch(e){}
  const guard=setTimeout(()=>{if(!opened){timedOut=true;
   try{ws.close()}catch(e){}}},6000);
  ws.onopen=()=>{opened=true;tryN=0;clearTimeout(guard);
+  $("go").textContent="disconnect";
   $("dot").className="on";cstat("connected","ok");
   tick("pm","bridge connected")};
  ws.onclose=()=>{clearTimeout(guard);$("dot").className="";
@@ -814,9 +809,16 @@ function connect(){if(ws)try{ws.close()}catch(e){}
    :"failed - is the bridge running at that address?";
   cstat(`${why} - retrying in 2s (#${tryN})`,"err");
   tick("pm",why+" - retrying in 2s");
-  setTimeout(()=>{if(ws&&ws.readyState===3)connect()},2000)};
+  $("go").textContent="connect";
+  if(MANUAL){cstat("disconnected (by you)");return}
+  setTimeout(()=>{if(ws&&ws.readyState===3&&!MANUAL)connect()},
+             2000)};
  ws.onmessage=e=>{try{onPkt(JSON.parse(e.data))}catch(err){}}}
-$("go").onclick=connect;
+$("go").onclick=()=>{
+ if(ws&&ws.readyState===1){MANUAL=true;ws.close();
+  $("go").textContent="connect";
+  cstat("disconnected (by you)");$("dot").className="";return}
+ MANUAL=false;connect()};
 fitCanvases();
 try{if(AUTO_WS)connect();}
 catch(e){cstat("load error: "+e.message,"err")}

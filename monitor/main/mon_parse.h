@@ -38,6 +38,7 @@ typedef struct {
     /* dayclock (type 17): fleet-authoritative sky */
     uint8_t day_fq8; uint16_t day_min; int64_t day_us;
     uint32_t n_real, n_promise;
+    mon_wkb_t ring16[16]; uint32_t ring16_step[16];
     /* oracle */
     uint32_t rung_step; uint64_t rung_h; uint16_t rung_hs;
     /* counters */

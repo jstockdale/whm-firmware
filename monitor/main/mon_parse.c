@@ -28,31 +28,31 @@ void mon_parse_pkt(const uint8_t *b, int n)
         if (!len_ok(n, (int)sizeof(mon_wkb_t))) { g_mon.n_drop++; return; }
         {
             mon_wkb_t k; memcpy(&k, b, sizeof(k));
-            /* TWO-LANE INGEST (owner's kf/s 170): shadows carry
-               NO marker - one sender serves real and promise,
-               distinguished only by step (+4..+6 ahead under the
-               Near Horizon). Classify by cadence: REAL chains at
-               +1 (a +2 skip tolerated); +2..+8 ahead = a PROMISE,
-               counted, never posed; forty straight ahead-frames =
-               resync (wifi gap or we joined late). Epoch turns
-               reset. Both units' real frames dedupe first-wins. */
-            static uint32_t last_real; static int miss9;
-            if (last_real &&
-                (k.step > last_real + 1000 ||
-                 last_real > k.step + 1000)) {
-                last_real = 0; miss9 = 0;      /* epoch turn */
+            /* THE INVERTED MODEL, confessed: there is ONE
+               type-9 send site in the fleet, and it fires AFTER
+               the sandbox restore with future-snapshot variables
+               - EVERY keyframe is a promise, fanned across the
+               horizon each tick (the honest 170/s). The
+               "two-lane" classifier hunted a +1 real chain that
+               does not exist and starved every display to the
+               resync valve. Restored law: first frame per step
+               wins (dedups the fan, kf/s ~30); a step-keyed ring
+               below serves maxstep-5 so observers render ON
+               glass time instead of ~0.17 s ahead. */
+            static uint32_t last_step;
+            if (k.step <= last_step && last_step - k.step < 1000)
+                return;
+            last_step = k.step;
+            {   /* step-keyed pose ring: bank this frame; the
+                   served pose is the banked step maxstep-5. */
+                int sl9 = (int)(k.step & 15u);
+                g_mon.ring16[sl9] = k;
+                g_mon.ring16_step[sl9] = k.step;
+                uint32_t want = k.step >= 5 ? k.step - 5 : k.step;
+                int ws = (int)(want & 15u);
+                if (g_mon.ring16_step[ws] == want)
+                    k = g_mon.ring16[ws];   /* serve aligned */
             }
-            if (!last_real) { last_real = k.step; }
-            else if (k.step <= last_real) { return; }
-            else if (k.step - last_real <= 2) {
-                last_real = k.step; miss9 = 0;
-            } else if (k.step - last_real <= 8) {
-                g_mon.n_promise++; return;     /* the shadow lane */
-            } else {
-                if (++miss9 < 40) return;
-                last_real = k.step; miss9 = 0; /* resync */
-            }
-            g_mon.n_real++;
             g_mon.step = k.step; g_mon.x = k.x;
             g_mon.y = (float)k.yq1 * 0.5f;
             g_mon.vx = k.vx; g_mon.vy = k.vy; g_mon.spd = k.spd;
