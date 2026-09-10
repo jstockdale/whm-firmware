@@ -12,6 +12,7 @@
  * are written from the docs + echoserver example and are pending first on-device
  * bring-up; expect minor API/config adjustments once it compiles against the real
  * wolfSSL/wolfSSH components. */
+#include "freertos/idf_additions.h"
 #include "whssh.h"
 #if defined(WH_HAVE_WOLFSSH)
 #include "wh_lineedit.h"
@@ -36,8 +37,14 @@ static int wh_storage_write_file(const char *p, const char *s)
 static esp_err_t wh_task_start_(const char *name, void (*fn)(void *),
                                 uint32_t stack, unsigned prio, int core)
 {
-    return xTaskCreatePinnedToCore(fn, name, stack, NULL, prio, NULL,
-                                   core) == pdPASS ? ESP_OK : ESP_FAIL;
+    /* RAM AUDIT w1: PSRAM stack for the listener+session task.
+       Safe here: S3 crypto is register-mode (no DMA touches this
+       stack), keys persist via NVS ONLY from the USB console path,
+       and the task never runs flash ops - the watch kept this
+       internal out of caution the panels cannot afford. */
+    return xTaskCreatePinnedToCoreWithCaps(fn, name, stack, NULL,
+               prio, NULL, core, MALLOC_CAP_SPIRAM)
+           == pdPASS ? ESP_OK : ESP_FAIL;
 }
 #include "esp_log.h"
 #include "esp_random.h"

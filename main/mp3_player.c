@@ -13,6 +13,7 @@
  * ASCII (the 5x7 font is ASCII anyway).
  * Speaker: single-owner API in audio_test.c; beeps yield while playing.
  */
+#include "freertos/idf_additions.h"
 #include "mp3_player.h"
 #include "http_svc.h"
 #include "wifi_tsf.h"
@@ -404,8 +405,12 @@ void whm_mp3_b_on_pkt(const char *from, uint32_t rate, uint8_t ch,
     s_bf.rate = rate ? rate : 48000;
     s_bf.widx = s_bf.ridx = 0;
     s_bf.on = true;
-    xTaskCreate(bf_client_task, "bf_cli", 4096, NULL, 6, &s_bf.cli);
-    xTaskCreate(bf_pump_task, "bf_pump", 4096, NULL, 7, &s_bf.pump);
+    /* RAM AUDIT w1: PSRAM stack - UDP client, no flash ops */
+    xTaskCreateWithCaps(bf_client_task, "bf_cli", 4096, NULL, 6,
+                        &s_bf.cli, MALLOC_CAP_SPIRAM);
+    /* RAM AUDIT w1: PSRAM stack - UDP pump, no flash ops */
+    xTaskCreateWithCaps(bf_pump_task, "bf_pump", 4096, NULL, 7,
+                        &s_bf.pump, MALLOC_CAP_SPIRAM);
 }
 
 void whm_mp3_now_title(char *out, size_t n)
@@ -431,7 +436,9 @@ esp_err_t whm_mp3_dj_start(int n)
     }
     s_dj.widx = 0;
     s_dj.on = true;
-    xTaskCreate(dj_server_task, "dj_srv", 4096, NULL, 6, &s_dj.srv);
+    /* RAM AUDIT w1: PSRAM stack - media logic, broker-mediated */
+    xTaskCreateWithCaps(dj_server_task, "dj_srv", 4096, NULL, 6,
+                        &s_dj.srv, MALLOC_CAP_SPIRAM);
     whm_mp3_play(n);
     return ESP_OK;
 }

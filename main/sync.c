@@ -16,6 +16,7 @@
  * Roles persist in NVS; the flock self-assembles on power-up (member
  * STA rejoin rides the wifi module's own saved credentials).
  */
+#include "freertos/idf_additions.h"
 #include "sync.h"
 #include "crypto_id.h"
 #include "whm_media.h"
@@ -1198,7 +1199,9 @@ esp_err_t whm_sync_init(void)
                "(internal stack, flash-safe)\n",
                (int)sizeof(whm_cmd_t));
     }
-    xTaskCreate(announce_task, "whm_sync_tx", 4096, NULL, 5, NULL);
+    /* RAM AUDIT w1: PSRAM stack - UDP announce, no flash ops */
+    xTaskCreateWithCaps(announce_task, "whm_sync_tx", 4096, NULL, 5,
+                        NULL, MALLOC_CAP_SPIRAM);
 
     if (s_smode == SM_SOFTAP && s_role == WHM_SYNC_CONDUCTOR) {
         whm_wifi_softap(NULL, NULL);       /* resume conducting the AP */
