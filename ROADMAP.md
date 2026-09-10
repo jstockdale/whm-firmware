@@ -4,6 +4,15 @@ Status: v0.62.0 - phase 0 long complete; the git era's first arcs
 (walker sync doctrines 13-17, the art suite, the OTA suite) are
 landed. Originals preserved in docs/.
 
+## The user's own sky (GPS constellations, future)
+
+- Today: the worldwide four (Orion, Big Dipper, Cassiopeia,
+  Cygnus) live in star-space, one per 512-cycle. Future:
+  a user lat/lon (console-config; the LR1121 has no GNSS)
+  plus dayclock time -> compute the ACTUAL visible
+  constellations and place them - the fleet renders the
+  owner's real night sky.
+
 ## Walker rituals (Robin's) - docs/walker-rituals.md
 
 - THE CAMPFIRE: night-only by the DAYCLOCK; build (stone

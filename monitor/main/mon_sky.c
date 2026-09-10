@@ -90,12 +90,44 @@ void mw_sky(int64_t t, float cam, float f)
     float base_cld  = cam * 0.15f;
     if (f < 0.3f) {
         float dim = 1.0f - f / 0.3f;
-        for (int i = 0; i < 18; i++) {
+        {   /* THE WORLDWIDE FOUR - constellations as citizens
+               of star-space (owner's ask): Orion, the Big
+               Dipper, Cassiopeia, Cygnus. One of each per
+               512-cycle at hashed positions, wheeling with the
+               k=0.10 drift - pure f(cam), byte-free across
+               every surface, the terrain philosophy lifted to
+               the heavens. Brighter white, faster twinkle. */
+            static const int8_t CPAT[4][7][2] = {
+                {{1,0},{6,0},{3,3},{4,3},{5,4},{2,7},{7,6}},
+                {{0,1},{2,0},{4,1},{6,1},{9,0},{9,3},{6,3}},
+                {{0,2},{2,0},{4,2},{6,0},{8,2},{8,2},{8,2}},
+                {{3,0},{3,3},{3,6},{0,3},{6,3},{2,5},{4,5}},
+            };
+            for (int ci = 0; ci < 4; ci++) {
+                uint32_t hc = mw_h(0xC057u +
+                    (uint32_t)ci * 2654435761u);
+                int cx0 = (int)(hc % 512u);
+                int cy0 = 2 + (int)((hc >> 10) % 16u);
+                for (int s9 = 0; s9 < 7; s9++) {
+                    int wx2 = (cx0 + CPAT[ci][s9][0]) % 512;
+                    int sx2 = ((int)((float)wx2 - base_star)
+                               % 512 + 512) % 512;
+                    if (sx2 >= WCOLS) continue;
+                    int sy2 = cy0 + CPAT[ci][s9][1];
+                    float tw2 = 0.55f + 0.45f *
+                        sinf((float)t / 2.2e5f +
+                             (float)((hc >> (s9 * 3)) & 31));
+                    uint8_t v2 = (uint8_t)(dim * tw2 * 235.0f);
+                    mw_px(sx2, sy2, v2, v2, v2);
+                }
+            }
+        }
+        for (int i = 0; i < 44; i++) {
             uint32_t h2 = mw_h(0x51A2u + (uint32_t)i * 747u);
             float wx = (float)(h2 % 512u);
             int sx = ((int)(wx - base_star) % 512 + 512) % 512;
             if (sx >= WCOLS) continue;
-            int sy = 2 + (int)((h2 >> 12) % 26u);
+            int sy = 1 + (int)((h2 >> 12) % 45u);
             float tw = 0.7f + 0.3f * sinf((float)t / 3.0e5f +
                                           (float)(h2 & 63));
             uint8_t v = (uint8_t)(dim * tw * 150.0f);

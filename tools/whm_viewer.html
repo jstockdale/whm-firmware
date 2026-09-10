@@ -509,11 +509,29 @@ function sceneSky(t,f,c){
    cx.fillRect(0,y*S,Wd*S,S)}}
  const base_slow=c*0.04,base_star=c*0.10,base_cld=c*0.15;
  if(f<0.3){const dim=1-f/0.3;
-  for(let i=0;i<18;i++){const h2=h32(0x51A2+i*747);
+  {/* the worldwide four - constellations in star-space */
+   const CPAT=[
+    [[1,0],[6,0],[3,3],[4,3],[5,4],[2,7],[7,6]],
+    [[0,1],[2,0],[4,1],[6,1],[9,0],[9,3],[6,3]],
+    [[0,2],[2,0],[4,2],[6,0],[8,2]],
+    [[3,0],[3,3],[3,6],[0,3],[6,3],[2,5],[4,5]]];
+   for(let ci=0;ci<4;ci++){
+    const hc=h32(0xC057+ci*2654435761>>>0);
+    const cx0=hc%512,cy0=2+((hc>>>10)%16);
+    for(let s9=0;s9<CPAT[ci].length;s9++){
+     const wx2=(cx0+CPAT[ci][s9][0])%512;
+     const sx2=(((wx2-base_star)|0)%512+512)%512;
+     if(sx2>=Wd)continue;
+     const sy2=cy0+CPAT[ci][s9][1];
+     const tw2=0.55+0.45*Math.sin(t/2.2e5+
+       ((hc>>>(s9*3))&31));
+     const v2=dim*tw2*235|0;
+     px(ox+sx2,sy2,v2,v2,v2)}}}
+  for(let i=0;i<44;i++){const h2=h32(0x51A2+i*747);
    const wx=h2%512;
    const sx=(((wx-base_star)|0)%512+512)%512;
    if(sx>=Wd)continue;
-   const sy=2+((h2>>>12)%26);
+   const sy=1+((h2>>>12)%45);
    const tw=0.7+0.3*Math.sin(t/3e5+(h2&63));
    const v=dim*tw*150|0;
    px(ox+sx,sy,v,v,(v>>1)+40*dim|0)}
