@@ -1,6 +1,7 @@
 #include <string.h>
 #include "esp_wifi.h"
 #include "esp_log.h"
+#include <stdio.h>
 #include "nvs.h"
 #include "mon_wifi.h"
 static const char *TAG = "mon_wifi";
@@ -62,6 +63,17 @@ void mon_wifi_status(void)
     } else {
         printf("not connected - 'wifi join <ssid> [pw]'\n");
     }
+}
+int mon_wifi_info(int *rssi, char *ip, int ipn)
+{
+    wifi_ap_record_t ap;
+    if (esp_wifi_sta_get_ap_info(&ap) != ESP_OK) return -1;
+    *rssi = ap.rssi;
+    esp_netif_ip_info_t inf;
+    esp_netif_t *nif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+    esp_netif_get_ip_info(nif, &inf);
+    snprintf(ip, ipn, IPSTR, IP2STR(&inf.ip));
+    return 0;
 }
 void mon_wifi_boot(void)
 {

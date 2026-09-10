@@ -373,3 +373,111 @@ void mon_render(uint32_t kfs)
     gfx_text(cx0, 182, ln, 1, 110, 120, 138);
 #undef g_mon
 }
+
+void mon_render_full(void)
+{
+    /* FULLSCREEN world: x4, rows 2..61 (60 rows exactly fill
+       240), 512 wide with 12 px gutters - the walker huge. */
+    extern mon_state_t g_mon;
+    mon_state_t M;
+    memcpy(&M, (const void *)&g_mon, sizeof(M));
+    int64_t now = esp_timer_get_time();
+    int64_t t = mon_now();
+    static float cam = 0, camv = 30.0f, lastc = -1;
+    static int64_t camt = 0; static uint32_t lastn = 0;
+    if (M.n_wkp != lastn) {
+        if (camt) {
+            float v = (M.cam - lastc) /
+                      ((float)(now - camt) / 1e6f);
+            if (v > 0 && v < 200) camv = camv * 0.5f + v * 0.5f;
+        }
+        lastc = M.cam; camt = now; lastn = M.n_wkp;
+    }
+    if (camt) cam = lastc + camv * (float)(now - camt) / 1e6f;
+    else cam = M.x - 64.0f;
+    int32_t ox = (int32_t)lroundf(cam);
+    /* local x4 plotter with row crop */
+    #define FX0 12
+    #define FSC 4
+    #define FPX(sx, sy, r9, g9, b9) do { \
+        int _y = (sy) - 2; \
+        if ((sx) >= 0 && (sx) < 128 && _y >= 0 && _y < 60) \
+            whm_display_fill_rect(FX0 + (sx) * FSC, _y * FSC, \
+                                  FSC, FSC, r9, g9, b9); \
+    } while (0)
+    int32_t id0 = (int32_t)floorf((float)ox / 64.0f);
+    for (int x = 0; x < 128; x++) {
+        int32_t wx = ox + x;
+        bool gap = false, bridge = false;
+        for (int d = 0; d <= 2; d++) {
+            const wchunk_t *c = mw_chunk(id0 + d);
+            if (c->gap_w && wx >= c->gap_x &&
+                wx < c->gap_x + c->gap_w) {
+                gap = true; bridge = c->bridged;
+            }
+        }
+        if (!gap) {
+            FPX(x, 58, 11, 16, 11); FPX(x, 59, 5, 8, 5);
+            FPX(x, 60, 2, 3, 3);
+        } else if (bridge) {
+            FPX(x, 58, 79, 42, 11); FPX(x, 59, 40, 22, 6);
+            if ((wx & 3) == 0) FPX(x, 57, 96, 52, 14);
+        } else {
+            FPX(x, 60, 1, 1, 2); FPX(x, 61, 1, 1, 2);
+        }
+    }
+    for (int d = 0; d <= 2; d++) {
+        const wchunk_t *c = mw_chunk(id0 + d);
+        for (int k = 0; k < c->np; k++) {
+            uint8_t py = c->p[k].y;
+            for (int32_t px = c->p[k].x;
+                 px < c->p[k].x + c->p[k].w; px++) {
+                int lx = (int)(px - ox);
+                int32_t rel = px - c->p[k].x;
+                bool rim = rel == 0 || rel == c->p[k].w - 1;
+                if (py <= 14) {
+                    FPX(lx, py, rim ? 120 : 185,
+                        rim ? 122 : 187, rim ? 132 : 198);
+                    FPX(lx, py + 1, 95, 98, 112);
+                } else if (py <= 19) {
+                    FPX(lx, py, 34, 150, 44);
+                    FPX(lx, py + 1, 24, 92, 34);
+                    FPX(lx, py + 2, 8, 44, 14);
+                } else {
+                    FPX(lx, py, 29, 133, 36);
+                    FPX(lx, py + 1, 26, 30, 48);
+                    FPX(lx, py + 2, 10, 12, 22);
+                }
+            }
+        }
+        for (int k = 0; k < c->nl; k++) {
+            int lx = (int)(c->l[k].x - ox);
+            for (int y = c->l[k].ytop; y <= c->l[k].ybot; y++) {
+                FPX(lx - 1, y, 79, 42, 11);
+                FPX(lx + 1, y, 79, 42, 11);
+                if (((y - c->l[k].ytop) & 3) == 1)
+                    FPX(lx, y, 143, 89, 30);
+            }
+        }
+    }
+    int wlx = (int)lroundf(M.x) - ox;
+    int wy = (int)lroundf(M.y);
+    if (wlx >= -6 && wlx <= 134) {
+        /* sprite at x4 via the shared drawer against a shim:
+           reuse sprite() by temporarily... keep it simple -
+           head/torso/legs minimal at x4 keeps the page light */
+        uint8_t sr, sg, sb;
+        mw_hsv((uint16_t)((t / 90000) % 360), 230, 255,
+               &sr, &sg, &sb);
+        for (int dy2 = -11; dy2 <= -9; dy2++)
+            for (int dx2 = -1; dx2 <= 1; dx2++)
+                FPX(wlx + dx2, wy + dy2, 213, 194, 167);
+        FPX(wlx, wy - 8, sr, sg, sb);
+        FPX(wlx - M.dir, wy - 8, sr, sg, sb);
+        for (int dy2 = -7; dy2 <= -3; dy2++)
+            FPX(wlx, wy + dy2, 213, 194, 167);
+        FPX(wlx - 1, wy - 1, 213, 194, 167);
+        FPX(wlx + 1, wy - 1, 213, 194, 167);
+    }
+    #undef FPX
+}

@@ -37,6 +37,9 @@ typedef struct {
     uint32_t n_kf, n_wkp, n_org, n_drop;
     struct { uint32_t step; uint8_t st, owner; } tr[5];
     uint8_t tr_n, last_st;
+    struct { uint32_t step; uint16_t h16; } rung[8];
+    uint8_t rung_n;
+    uint8_t kfs_ring[120], rxs_ring[120]; uint8_t ring_i;
     int64_t last_kf_us;
 } mon_state_t;
 extern mon_state_t g_mon;

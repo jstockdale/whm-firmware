@@ -82,6 +82,9 @@ void mon_parse_pkt(const uint8_t *b, int n)
             mon_org_t o; memcpy(&o, b, sizeof(o));
             g_mon.rung_step = o.step; g_mon.rung_h = o.h;
             g_mon.rung_hs = o.hs; g_mon.n_org++;
+            g_mon.rung[g_mon.rung_n].step = o.step;
+            g_mon.rung[g_mon.rung_n].h16 = (uint16_t)o.h;
+            g_mon.rung_n = (uint8_t)((g_mon.rung_n + 1) % 8);
         }
         break;
     default: break;                        /* other types: not ours */

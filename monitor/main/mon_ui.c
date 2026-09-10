@@ -8,6 +8,8 @@
 #include "mon_touch.h"
 #include "mon_parse.h"
 #include "mon_http.h"
+#include "esp_timer.h"
+#include "mon_http.h"
 #include "gfx5x7.h"
 #include "display_hal.h"
 static uint16_t *s_fb;
@@ -29,19 +31,93 @@ void whm_display_fill_rect(uint16_t x, uint16_t y,
     }
 }
 void mon_render(uint32_t kfs);
+void mon_render_full(void);
+void mon_page_stats(uint32_t kfs);
+void mon_page_wire(void);
+static const char *PGN[4] = { "WORLD", "FULL", "STATS", "WIRE" };
+static void boot_flourish(void)
+{
+    /* POP sparkle -> scarf-rainbow wipe -> version card.
+       ~2.6 s of ceremony; any tap skips. */
+    uint32_t t0seq = g_touch.seq;
+    for (int fr = 0; fr < 78; fr++) {
+        if (g_touch.seq != t0seq) break;
+        int64_t t = esp_timer_get_time();
+        memset(s_fb, 0, LCD_W * LCD_H * 2);
+        if (fr < 24) {                      /* arrival sparkle */
+            int cxp = LCD_W / 2, cyp = LCD_H / 2;
+            for (int i = 0; i < 10; i++) {
+                uint8_t r2, g2, b2;
+                extern void mw_hsv(uint16_t, uint8_t, uint8_t,
+                    uint8_t *, uint8_t *, uint8_t *);
+                mw_hsv((uint16_t)((t / 15000 + i * 36) % 360),
+                       255, 255, &r2, &g2, &b2);
+                int a = (fr + i * 7) & 15;
+                whm_display_fill_rect(
+                    cxp + ((i & 1) ? a * 5 : -a * 5),
+                    cyp + (((i >> 1) & 1) ? a * 2 : -a * 2),
+                    4, 4, r2, g2, b2);
+            }
+        } else if (fr < 54) {               /* the scarf wipe */
+            int wx = (fr - 24) * (LCD_W + 40) / 30 - 20;
+            for (int b9 = 0; b9 < 24; b9++) {
+                uint8_t r2, g2, b2;
+                extern void mw_hsv(uint16_t, uint8_t, uint8_t,
+                    uint8_t *, uint8_t *, uint8_t *);
+                mw_hsv((uint16_t)((t / 90000 + b9 * 15) % 360),
+                       230, 255, &r2, &g2, &b2);
+                int x9 = wx - b9;
+                if (x9 >= 0 && x9 < LCD_W)
+                    whm_display_fill_rect(x9, 0, 1, LCD_H,
+                                          r2, g2, b2);
+            }
+        } else {                            /* version card */
+            gfx_text_center(LCD_W / 2, 92, "WHM MONITOR", 3,
+                            232, 232, 240);
+            gfx_text_center(LCD_W / 2, 128,
+                            "second native consumer", 1,
+                            140, 150, 168);
+        }
+        mon_lcd_push_full(s_fb);
+        vTaskDelay(pdMS_TO_TICKS(33));
+    }
+}
 static void ui_task(void *arg)
 {
     uint32_t pk = 0, kfs = 0; int tick = 0;
     printf("world twin online - second native consumer\n");
+    boot_flourish();
+    uint8_t page = 0; uint32_t tseq = g_touch.seq;
+    int64_t toast_until = 0;
     for (;;) {
         vTaskDelay(pdMS_TO_TICKS(33));
         if (++tick >= 30) { tick = 0;
-            kfs = g_mon.n_kf - pk; pk = g_mon.n_kf; }
+            kfs = g_mon.n_kf - pk; pk = g_mon.n_kf;
+            static uint32_t prx;
+            uint32_t rx = g_mon.n_kf + g_mon.n_wkp + g_mon.n_org;
+            g_mon.kfs_ring[g_mon.ring_i] =
+                kfs > 255 ? 255 : (uint8_t)kfs;
+            g_mon.rxs_ring[g_mon.ring_i] =
+                (rx - prx) > 255 ? 255 : (uint8_t)(rx - prx);
+            prx = rx;
+            g_mon.ring_i = (uint8_t)((g_mon.ring_i + 1) % 120);
+        }
+        if (g_touch.seq != tseq) {          /* tap: next page */
+            tseq = g_touch.seq;
+            page = (uint8_t)((page + 1) % 4);
+            toast_until = esp_timer_get_time() + 1500000;
+        }
         memset(s_fb, 0, LCD_W * LCD_H * 2);
-        mon_render(kfs);
-        if (g_touch.pressed)
-            printf("touch: x=%u y=%u\n", g_touch.x, g_touch.y);
-        mon_snap_service(s_fb);        /* the eye, atomically */
+        if (page == 0) mon_render(kfs);
+        else if (page == 1) mon_render_full();
+        else if (page == 2) mon_page_stats(kfs);
+        else mon_page_wire();
+        if (esp_timer_get_time() < toast_until)
+            gfx_text(LCD_W - 8 -
+                     gfx_text_width(PGN[page], 2),
+                     LCD_H - 22, (char *)PGN[page], 2,
+                     124, 224, 201);
+        mon_snap_service(s_fb);
         mon_lcd_push_full(s_fb);
     }
 }
