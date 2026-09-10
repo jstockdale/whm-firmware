@@ -75,3 +75,57 @@ render scales derive from LCD_W (Pro: world x3 = 384 + 92 px
 column; FULL page = x3 full-bleed, 64 rows fit 222 with
 vertical centering, no crop needed). Releases ship one
 tarball per board from the Pro's first light onward.
+
+## ADDENDUM 2026-09-09: MVSRLora variant CONFIRMED (owner's unit)
+## Extracted from Xinyuan-LilyGO/T-Display-S3-Pro-MVSRLora (GPL-3)
+
+Radio: **Semtech LR1121** (datasheet LR1121_H2_DS_v2_0.pdf ships
+in-repo) - multi-band: sub-GHz (150-960 MHz, so 915 for us) AND
+2.4 GHz LoRa. Vendor examples run RadioLib 7.0.2 and demonstrate
+both bands (868.1 vs 2400.1 in Deep_Sleep_Wake_Up).
+
+### Pins (shared SPI with TFT/SD: SCLK 18 / MOSI 17 / MISO 8)
+| LR1121 | GPIO | note |
+|---|---|---|
+| CS   | 7  | was CAMERA_VSYNC on base Pro |
+| BUSY | 46 | was CAMERA_PWDN - **mandatory handshake pin** |
+| INT  | 40 | LR11xx DIO9 IRQ; was CAMERA_Y4 |
+| RST  | 10 | was CAMERA_Y8 |
+
+**THE CAMERA SACRIFICE**: every radio pin reuses camera wiring -
+the MVSRLora trades the camera port for the LR1121. The monitor
+never wanted the camera; we lose nothing.
+
+**CORRECTION** to the base-Pro section above: this repo's pin
+table shows **TOUCH INT = IO21** - so 21 is the touch interrupt
+on this family, not (only) the motion sensor. Poll still fine;
+IRQ available if wanted.
+
+### RF switch - DIO-controlled, table VERBATIM from vendor
+DIO5/DIO6 drive the switch (DIO7/8/10 NC):
+    STBY  LOW,LOW | RX HIGH,LOW | TX LOW,HIGH
+    TX_HP LOW,HIGH | **TX_HF LOW,LOW** | GNSS/WIFI LOW,LOW
+TX_HF (the 2.4 GHz path) at LOW,LOW routes around the sub-GHz PA
+switch entirely. This table feeds SetDioAsRfSwitch at bring-up.
+TCXO config: not seen in the example head - verify begin()
+parameters at port time before assuming crystal.
+
+### Driver plan (IDF-native, no Arduino)
+LR11xx speaks a COMMAND protocol over SPI with the BUSY law:
+assert NSS only when BUSY is low; every command waits BUSY.
+v1 = a thin ~300-line command layer (opcodes from the in-repo
+datasheet; Semtech SWDR001 as reference): GetVersion smoke,
+SetPacketType(LoRa), SetRfFrequency, SetPaConfig/SetTxParams
+per band, SetDioAsRfSwitch(table above), WriteBuffer + SetTx.
+RadioLib consulted for sequencing knowledge only.
+
+### Gateway, now concrete (MON_HAS_LORA = confirmed hardware)
+- 915 MHz: the kilometer-haul type-32 digest at 1-2 Hz (pose,
+  cam, rung, anchor/tsf echo) - duty-cycle friendly.
+- 2.4 GHz LoRa: the worldwide-ISM fat pipe - near-field option
+  for full 30 Hz keyframe relay or multi-digest bursts where
+  sub-GHz airtime rules would pinch. Same frame format, band
+  chosen per deployment; the RF-switch table makes swapping a
+  one-command affair.
+- Bring-up order stands: display first light on the Pro FIRST
+  (boards/ refactor), radio second (GetVersion -> TX digest).

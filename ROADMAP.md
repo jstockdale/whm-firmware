@@ -10,8 +10,11 @@ landed. Originals preserved in docs/.
   offset landmine banked, CST226SE touch, PWM backlight,
   SY6970) - docs/monitor-hw-pro.md is the spec. boards/
   abstraction + Kconfig MON_BOARD; per-board tarballs.
-- LoRa telemetry gateway behind MON_HAS_LORA once the
-  MVSRLora variant/pinmap is confirmed: sub-32-byte type-32
+- LoRa telemetry gateway behind MON_HAS_LORA - HARDWARE
+  CONFIRMED: owner's unit is the MVSRLora with an LR1121
+  (915 MHz + 2.4 GHz LoRa; pins CS7/BUSY46/INT40/RST10 on
+  shared SPI, DIO5/6 RF switch table banked verbatim, the
+  camera port sacrificed for the radio). Plan: sub-32-byte type-32
   digests (pose + cam + rung + anchor/tsf echo) at 1-2 Hz -
   far monitors render the twin from digests; observers free
   at kilometer scale.
