@@ -1148,7 +1148,9 @@ static void wk_step(int64_t t, uint8_t n)
                    r % 2200 == 7) {        /* Robin's campfire */
             float fx9 = s_wk.x + 14.0f;
             for (int g9 = 0; g9 < 6 &&
-                 !wk_support(fx9, WK_GROUND); g9++) fx9 += 2.0f;
+                 !(wk_support(fx9, WK_GROUND) &&
+                   wk_support(fx9 + 5.0f, WK_GROUND));
+                 g9++) fx9 += 2.0f;   /* seat AND hearth on ground */
             s_fire_x = fx9;
             s_wk.tgt = fx9;
             s_wk.dir = s_wk.x < fx9 ? 1 : -1;
@@ -2651,18 +2653,25 @@ static void wk_sky(int64_t t, float cam, int idx, float f)
                 uint32_t hc = wk_h(0xC057u +
                     (uint32_t)ci * 2654435761u);
                 int cx0 = (int)(hc % 512u);
-                int cy0 = 2 + (int)((hc >> 10) % 16u);
+                int cy0 = 1 + (int)((hc >> 10) % 22u);
                 for (int s9 = 0; s9 < 7; s9++) {
-                    int wx2 = (cx0 + CPAT[ci][s9][0]) % 512;
+                    int wx2 = (cx0 + CPAT[ci][s9][0] * 3) % 512;
                     int sx2 = ((int)((float)wx2 - base_star)
                                % 512 + 512) % 512;
                     if (sx2 >= W) continue;
-                    int sy2 = cy0 + CPAT[ci][s9][1];
+                    int sy2 = cy0 + CPAT[ci][s9][1] * 3;
                     float tw2 = 0.55f + 0.45f *
                         sinf((float)t / 2.2e5f +
                              (float)((hc >> (s9 * 3)) & 31));
                     uint8_t v2 = (uint8_t)(dim * tw2 * 235.0f);
                     wk_px(sx2, sy2, v2, v2, v2);
+                    {   /* 3x anchors: a soft 4-neighbour halo */
+                        uint8_t hv = (uint8_t)(v2 / 3);
+                        wk_px(sx2 - 1, sy2, hv, hv, hv);
+                        wk_px(sx2 + 1, sy2, hv, hv, hv);
+                        wk_px(sx2, sy2 - 1, hv, hv, hv);
+                        wk_px(sx2, sy2 + 1, hv, hv, hv);
+                    }
                 }
             }
         }
@@ -3943,38 +3952,85 @@ static void pat_walker(int64_t t)
         wk_px(chx + 1, (int)s_wk.y - 1, 60, 13, 8);
     }
     if (s_wk.st == WK_FIREB || s_wk.st == WK_FIRES ||
-        s_wk.st == WK_FIRED) {              /* Robin's campfire */
-        int fx2 = (int)lroundf(s_fire_x) - ox + 2;
+        s_wk.st == WK_FIRED) {              /* Robin's campfire v2 -
+                                               savor it: seat +5, log
+                                               build, tall warm flame,
+                                               smoke + embers on the
+                                               wind, all f(t,timer) */
+        int fx2 = (int)lroundf(s_fire_x) - ox + 5;
         int fy2 = WK_GROUND;
         uint16_t tb = s_wk.timer;
         bool ston = (s_wk.st != WK_FIREB) || tb <= 100;
-        if (ston) { wk_px(fx2 - 2, fy2, 70, 70, 78);
-                    wk_px(fx2 + 2, fy2, 70, 70, 78); }
-        bool wood = (s_wk.st != WK_FIREB) || tb <= 48;
-        if (wood) { wk_px(fx2 - 1, fy2, 96, 62, 26);
-                    wk_px(fx2 + 1, fy2 - 1, 96, 62, 26); }
-        int flame = 0;
+        if (ston) {                          /* 4-stone ring */
+            wk_px(fx2 - 3, fy2, 70, 70, 78);
+            wk_px(fx2 - 2, fy2, 82, 82, 90);
+            wk_px(fx2 + 2, fy2, 82, 82, 90);
+            wk_px(fx2 + 3, fy2, 70, 70, 78);
+        }
+        /* three logs, crisscross, accumulating with the fetches */
+        bool logA = (s_wk.st != WK_FIREB) || tb <= 88;
+        bool logB = (s_wk.st != WK_FIREB) || tb <= 64;
+        bool logC = (s_wk.st != WK_FIREB) || tb <= 40;
+        if (logA) { wk_px(fx2 - 1, fy2, 96, 62, 26);
+                    wk_px(fx2,     fy2, 104, 68, 30); }
+        if (logB) { wk_px(fx2,     fy2 - 1, 96, 62, 26);
+                    wk_px(fx2 + 1, fy2 - 1, 88, 56, 22); }
+        if (logC) { wk_px(fx2 + 1, fy2, 96, 62, 26); }
+        int flame = 0;                       /* 0..3 = out..full */
         if (s_wk.st == WK_FIREB && tb <= 24) flame = (24 - tb) / 8;
         else if (s_wk.st == WK_FIRES) flame = 3;
         else if (s_wk.st == WK_FIRED)
             flame = tb > 60 ? 3 : tb > 30 ? (int)(tb - 30) / 10 : 0;
         if (flame > 0) {
             int fl = (int)((t / 90000) & 3);
-            wk_px(fx2, fy2 - 1, 255, (uint8_t)(150 + fl * 20), 30);
-            if (flame > 1)
-                wk_px(fx2 + ((fl & 1) ? 1 : -1), fy2 - 2,
-                      255, 120, 20);
-            if (flame > 2)
-                wk_px(fx2, fy2 - 3, 255,
-                      (uint8_t)(90 + fl * 30), 10);
-            wk_px(fx2 - 3, fy2, 60, 36, 10);    /* night glow */
-            wk_px(fx2 + 3, fy2, 60, 36, 10);
+            int fl2 = (int)((t / 130000) & 7);
+            /* base: 3 wide */
+            wk_px(fx2 - 1, fy2 - 1, 255, 140, 24);
+            wk_px(fx2,     fy2 - 1, 255, (uint8_t)(160 + fl * 20), 30);
+            wk_px(fx2 + 1, fy2 - 1, 255, 132, 20);
+            if (flame > 1) {
+                wk_px(fx2, fy2 - 2, 255, 150, 26);
+                wk_px(fx2 + ((fl & 1) ? 1 : -1), fy2 - 2, 255, 110, 16);
+            }
+            if (flame > 2) {
+                wk_px(fx2, fy2 - 3, 255, (uint8_t)(96 + fl * 30), 12);
+                if (fl2 >= 5)                /* flicker lick */
+                    wk_px(fx2 + ((fl2 & 1) ? 1 : 0), fy2 - 4,
+                       255, 90, 10);
+                if (fl2 == 7)                /* rare high spark */
+                    wk_px(fx2, fy2 - 5, 255, 170, 60);
+            }
+            /* warm glow on the ground, both sides */
+            wk_px(fx2 - 4, fy2, 56, 34, 10);
+            wk_px(fx2 + 4, fy2, 56, 34, 10);
+            wk_px(fx2 - 2, fy2 + 0, 40, 24, 8);
+            /* SMOKE: four puffs rising, leaning with a slow wind */
+            for (int k9 = 0; k9 < 4; k9++) {
+                int ph = (int)((t / 140000 + k9 * 37) % 14);
+                int sy9 = fy2 - 5 - ph;
+                if (sy9 < 1) continue;
+                int wind = (int)((t / 900000) % 3) - 1;
+                int sx9 = fx2 + (ph / 5) * (wind >= 0 ? 1 : -1)
+                          + ((ph ^ k9) & 1);
+                uint8_t g9v = (uint8_t)(88 - ph * 4);
+                wk_px(sx9, sy9, g9v, g9v, (uint8_t)(g9v + 6));
+            }
+            /* EMBERS: two gentle riders on the column */
+            for (int k9 = 0; k9 < 2; k9++) {
+                int ep = (int)((t / 110000 + k9 * 53) % 34);
+                if (ep >= 20) continue;
+                int ey = fy2 - 2 - ep / 3;
+                int ex = fx2 + ((ep / 4) & 1) + (ep / 9);
+                uint8_t er = (uint8_t)(255 - ep * 7);
+                wk_px(ex, ey, er, (uint8_t)(110 - ep * 3), 12);
+            }
         }
-        if (s_wk.st == WK_FIRES) {          /* marshmallow beats */
+        if (s_wk.st == WK_FIRES) {           /* marshmallow, stick
+                                                reaching the hearth */
             int cyc = (int)(s_wk.timer % 240);
             if (cyc < 150) {
-                int mlx = wlx + 2;
-                wk_px(mlx + 1, (int)s_wk.y - 4, 150, 110, 60);
+                wk_px(wlx + 2, (int)s_wk.y - 4, 150, 110, 60);
+                wk_px(wlx + 3, (int)s_wk.y - 4, 150, 110, 60);
                 if (cyc >= 15) {
                     uint8_t mg2 = 238, mb2 = 230;
                     if (cyc < 110) {
@@ -3982,19 +4038,17 @@ static void pat_walker(int64_t t)
                         mg2 = (uint8_t)(150 + sh);
                         mb2 = (uint8_t)(90 + sh);
                     }
-                    wk_px(mlx + 2, (int)s_wk.y - 4,
-                          240, mg2, mb2);
+                    wk_px(wlx + 4, (int)s_wk.y - 4, 240, mg2, mb2);
                 }
             }
         }
         if (s_wk.st == WK_FIRED && tb > 30) {
-            wk_px(wlx + 2, (int)s_wk.y - 5,
-                  120, 130, 145);            /* the bucket */
+            wk_px(wlx + 2, (int)s_wk.y - 5, 120, 130, 145);
             if (tb <= 60) {
                 wk_px(fx2, fy2 - 2 - (int)((60 - tb) / 12),
-                      90, 140, 220);         /* water arc */
-                if (tb < 50)
-                    wk_px(fx2, fy2 - 4, 150, 150, 155); /* steam */
+                   90, 140, 220);
+                if (tb < 50) { wk_px(fx2, fy2 - 4, 150, 150, 155);
+                               wk_px(fx2 + 1, fy2 - 5, 130, 130, 138); }
             }
         }
     }

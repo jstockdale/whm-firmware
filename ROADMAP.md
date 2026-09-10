@@ -4,6 +4,13 @@ Status: v0.62.0 - phase 0 long complete; the git era's first arcs
 (walker sync doctrines 13-17, the art suite, the OTA suite) are
 landed. Originals preserved in docs/.
 
+## Flash headroom (owner's note, banked)
+
+- The S3 module carries 32 MB; today's table uses two 3 MB OTA
+  slots + 8 MB FAT with ~18 MB UNALLOCATED. When the app needs
+  room (wolfSSL took us to ~59% of a slot), grow the slots via a
+  custom partitions.csv - never diet the firmware first.
+
 ## The user's own sky (GPS constellations, future)
 
 - Today: the worldwide four (Orion, Big Dipper, Cassiopeia,

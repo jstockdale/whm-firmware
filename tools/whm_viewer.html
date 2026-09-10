@@ -248,71 +248,64 @@ function daylight(){
  return Math.max(0,Math.min(1,Math.sin((hr-6)/12*Math.PI)))}
 let FX=null,PST=-1;
 function fireDraw(g,S9,wlx,wy,ox,st,timer,wx,tms){
- /* Robin's campfire, viewer layer - same formulas as the
-    panels and monitors. Latch fire x on FIREB entry. */
+ /* Robin's campfire v2 - seat +5, log build, tall warm flame,
+    smoke + embers on the wind. Same formulas as the panels. */
  if(st===17&&PST!==17)FX=wx;
  PST=st;
  if(!(st===17||st===18||st===19)||FX===null)return;
- const fx2=Math.round(FX)-ox+2, fy2=57, tb=timer;
+ const fx2=Math.round(FX)-ox+5, fy2=57, tb=timer;
  const px=(x,y2,c)=>{g.fillStyle=c;
    g.fillRect(x*S9,y2*S9,S9,S9)};
+ const t=tms*1000;
  const ston=(st!==17)||tb<=100;
- if(ston){px(fx2-2,fy2,"#464650");px(fx2+2,fy2,"#464650")}
- const wood=(st!==17)||tb<=48;
- if(wood){px(fx2-1,fy2,"#603e1a");px(fx2+1,fy2-1,"#603e1a")}
+ if(ston){px(fx2-3,fy2,"#464650");px(fx2-2,fy2,"#52525a");
+  px(fx2+2,fy2,"#52525a");px(fx2+3,fy2,"#464650")}
+ const logA=(st!==17)||tb<=88, logB=(st!==17)||tb<=64,
+       logC=(st!==17)||tb<=40;
+ if(logA){px(fx2-1,fy2,"#603e1a");px(fx2,fy2,"#68441e")}
+ if(logB){px(fx2,fy2-1,"#603e1a");px(fx2+1,fy2-1,"#583816")}
+ if(logC){px(fx2+1,fy2,"#603e1a")}
  let fla=0;
  if(st===17&&tb<=24)fla=((24-tb)/8)|0;
  else if(st===18)fla=3;
  else if(st===19)fla=tb>60?3:tb>30?(((tb-30)/10)|0):0;
- if(fla>0){const fl=Math.floor(tms/90)&3;
-  px(fx2,fy2-1,`rgb(255,${150+fl*20},30)`);
-  if(fla>1)px(fx2+((fl&1)?1:-1),fy2-2,"rgb(255,120,20)");
-  if(fla>2)px(fx2,fy2-3,`rgb(255,${90+fl*30},10)`);
-  g.fillStyle="rgba(255,170,60,.10)";
-  g.fillRect((fx2-4)*S9,(fy2-4)*S9,9*S9,5*S9)}
+ if(fla>0){const fl=Math.floor(tms/90)&3,
+   fl2=Math.floor(tms/130)&7;
+  px(fx2-1,fy2-1,"rgb(255,140,24)");
+  px(fx2,fy2-1,`rgb(255,${160+fl*20},30)`);
+  px(fx2+1,fy2-1,"rgb(255,132,20)");
+  if(fla>1){px(fx2,fy2-2,"rgb(255,150,26)");
+   px(fx2+((fl&1)?1:-1),fy2-2,"rgb(255,110,16)")}
+  if(fla>2){px(fx2,fy2-3,`rgb(255,${96+fl*30},12)`);
+   if(fl2>=5)px(fx2+((fl2&1)?1:0),fy2-4,"rgb(255,90,10)");
+   if(fl2===7)px(fx2,fy2-5,"rgb(255,170,60)")}
+  px(fx2-4,fy2,"#38220a");px(fx2+4,fy2,"#38220a");
+  g.fillStyle="rgba(255,170,60,.12)";
+  g.fillRect((fx2-5)*S9,(fy2-6)*S9,11*S9,7*S9);
+  for(let k9=0;k9<4;k9++){                 /* smoke */
+   const ph=(Math.floor(t/140000)+k9*37)%14;
+   const sy9=fy2-5-ph; if(sy9<1)continue;
+   const wind=(Math.floor(t/900000)%3)-1;
+   const sx9=fx2+((ph/5)|0)*(wind>=0?1:-1)+((ph^k9)&1);
+   const gv=88-ph*4;
+   px(sx9,sy9,`rgb(${gv},${gv},${gv+6})`)}
+  for(let k9=0;k9<2;k9++){                 /* embers */
+   const ep=(Math.floor(t/110000)+k9*53)%34;
+   if(ep>=20)continue;
+   const ey=fy2-2-((ep/3)|0);
+   const ex=fx2+(((ep/4)|0)&1)+((ep/9)|0);
+   px(ex,ey,`rgb(${255-ep*7},${110-ep*3},12)`)}}
  if(st===18){const cyc=tb%240;
-  if(cyc<150){const mlx=wlx+2;
-   px(mlx+1,wy-4,"#966e3c");
+  if(cyc<150){
+   px(wlx+2,wy-4,"#966e3c");px(wlx+3,wy-4,"#966e3c");
    if(cyc>=15){let mg=238,mb=230;
     if(cyc<110){const sh=((110-cyc)*100/110)|0;
      mg=150+sh;mb=90+sh}
-    px(mlx+2,wy-4,`rgb(240,${mg},${mb})`)}}}
+    px(wlx+4,wy-4,`rgb(240,${mg},${mb})`)}}}
  if(st===19&&tb>30){px(wlx+2,wy-5,"#788291");
   if(tb<=60){px(fx2,fy2-2-(((60-tb)/12)|0),"#5a8cdc");
-   if(tb<50)px(fx2,fy2-4,"#96969b")}}}
-let HAX=null,HBX=null,HPS=-1;
-function hamPick(nearx){
- let ax=[];const r0=Math.floor((nearx-40)/64);
- for(let ci=r0;ci<=r0+2;ci++){const C=chunk(ci);
-  for(const L of C.l)if(L.ybot>=55)ax.push(L.x);
-  if(C.house_x>=0)ax.push(C.house_x+2)}
- let bd=1e9,pa=null,pb=null;
- for(const a of ax)for(const b of ax){const d=b-a;
-  if(d<8||d>16)continue;
-  const dd=Math.abs((a+b)/2-nearx);
-  if(dd+0.01<bd){bd=dd;pa=a;pb=b}}
- return bd<45?[pa,pb]:null}
-function hamDraw(g,S9,ox,st,timer,phase,t){
- if(st===21&&HPS!==21){const p=hamPick(W.x);
-  if(p){HAX=p[0];HBX=p[1]}else{HAX=null}}
- HPS=st;
- if(!(st===21||st===22||st===23)||HAX===null)return;
- const px=(x,y2,c)=>{g.fillStyle=c;
-   g.fillRect(x*S9,y2*S9,S9,S9)};
- const hax=Math.round(HAX)-ox,hbx=Math.round(HBX)-ox,
-       tb=timer;
- const sl9=(st===21)?(tb<=30):(st===23)?(tb>45):true;
- if(st===21&&tb>70){const rp=((90-tb)/4)|0;
-  px(hax+rp,53-(rp>2?1:0),"#b4a078")}
- if(sl9){for(let hx2=hax+1;hx2<hbx;hx2++)
-   px(hx2,54+((hx2>hax+1&&hx2<hbx-1)?1:0),"#9860aa");
-  px(hax,53,"#b4a078");px(hbx,53,"#b4a078")}
- if(st===22){const mid2=((hax+hbx)/2)|0;
-  const sc=`hsl(${Math.floor(t/90)%360} 90% 60%)`;
-  for(let b2=-1;b2<=2;b2++)px(mid2+b2,54,"#d5c2a7");
-  px(mid2-2,53,"#d5c2a7");px(mid2-3,53,sc);
-  if(phase===1){const zt=tb%90;
-   if(zt<30)px(mid2,51-((zt/12)|0),"#c8c8d2")}}}
+   if(tb<50){px(fx2,fy2-4,"#96969b");
+    px(fx2+1,fy2-5,"#82828a")}}}}
 function sprite(lx,y,t,st,dir,phase,timer,sdir){
  const a=(phase>>2)&1, br=213,bg=194,bb=167;
  let[sr,sg,sb]=hsv((t/90000)%360,230,255);
@@ -517,16 +510,19 @@ function sceneSky(t,f,c){
     [[3,0],[3,3],[3,6],[0,3],[6,3],[2,5],[4,5]]];
    for(let ci=0;ci<4;ci++){
     const hc=h32(0xC057+ci*2654435761>>>0);
-    const cx0=hc%512,cy0=2+((hc>>>10)%16);
+    const cx0=hc%512,cy0=1+((hc>>>10)%22);
     for(let s9=0;s9<CPAT[ci].length;s9++){
-     const wx2=(cx0+CPAT[ci][s9][0])%512;
+     const wx2=(cx0+CPAT[ci][s9][0]*3)%512;
      const sx2=(((wx2-base_star)|0)%512+512)%512;
      if(sx2>=Wd)continue;
-     const sy2=cy0+CPAT[ci][s9][1];
+     const sy2=cy0+CPAT[ci][s9][1]*3;
      const tw2=0.55+0.45*Math.sin(t/2.2e5+
        ((hc>>>(s9*3))&31));
      const v2=dim*tw2*235|0;
-     px(ox+sx2,sy2,v2,v2,v2)}}}
+     px(ox+sx2,sy2,v2,v2,v2);
+     const hv=(v2/3)|0;      /* 3x anchors get a soft halo */
+     px(ox+sx2-1,sy2,hv,hv,hv);px(ox+sx2+1,sy2,hv,hv,hv);
+     px(ox+sx2,sy2-1,hv,hv,hv);px(ox+sx2,sy2+1,hv,hv,hv)}}}
   for(let i=0;i<44;i++){const h2=h32(0x51A2+i*747);
    const wx=h2%512;
    const sx=(((wx-base_star)|0)%512+512)%512;

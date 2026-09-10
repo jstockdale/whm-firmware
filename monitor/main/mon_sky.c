@@ -107,18 +107,25 @@ void mw_sky(int64_t t, float cam, float f)
                 uint32_t hc = mw_h(0xC057u +
                     (uint32_t)ci * 2654435761u);
                 int cx0 = (int)(hc % 512u);
-                int cy0 = 2 + (int)((hc >> 10) % 16u);
+                int cy0 = 1 + (int)((hc >> 10) % 22u);
                 for (int s9 = 0; s9 < 7; s9++) {
-                    int wx2 = (cx0 + CPAT[ci][s9][0]) % 512;
+                    int wx2 = (cx0 + CPAT[ci][s9][0] * 3) % 512;
                     int sx2 = ((int)((float)wx2 - base_star)
                                % 512 + 512) % 512;
                     if (sx2 >= WCOLS) continue;
-                    int sy2 = cy0 + CPAT[ci][s9][1];
+                    int sy2 = cy0 + CPAT[ci][s9][1] * 3;
                     float tw2 = 0.55f + 0.45f *
                         sinf((float)t / 2.2e5f +
                              (float)((hc >> (s9 * 3)) & 31));
                     uint8_t v2 = (uint8_t)(dim * tw2 * 235.0f);
                     mw_px(sx2, sy2, v2, v2, v2);
+                    {   /* 3x anchors: a soft 4-neighbour halo */
+                        uint8_t hv = (uint8_t)(v2 / 3);
+                        mw_px(sx2 - 1, sy2, hv, hv, hv);
+                        mw_px(sx2 + 1, sy2, hv, hv, hv);
+                        mw_px(sx2, sy2 - 1, hv, hv, hv);
+                        mw_px(sx2, sy2 + 1, hv, hv, hv);
+                    }
                 }
             }
         }

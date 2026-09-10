@@ -347,41 +347,85 @@ static void world_compose(int64_t t, float cam, int32_t ox)
         if (M.st == WK_FIREB && pst != WK_FIREB) mfx = M.x;
         pst = M.st;
         if (M.st == WK_FIREB || M.st == WK_FIRES ||
-            M.st == WK_FIRED) {
-            int fx2 = (int)lroundf(mfx) - ox + 2;
+            M.st == WK_FIRED) {              /* Robin's campfire v2 -
+                                                   savor it: seat +5, log
+                                                   build, tall warm flame,
+                                                   smoke + embers on the
+                                                   wind, all f(t,timer) */
+            int fx2 = (int)lroundf(mfx) - ox + 5;
             int fy2 = 57;
             uint16_t tb = M.timer;
             bool ston = (M.st != WK_FIREB) || tb <= 100;
-            if (ston) { mw_px(fx2 - 2, fy2, 70, 70, 78);
-                        mw_px(fx2 + 2, fy2, 70, 70, 78); }
-            bool wood = (M.st != WK_FIREB) || tb <= 48;
-            if (wood) { mw_px(fx2 - 1, fy2, 96, 62, 26);
-                        mw_px(fx2 + 1, fy2 - 1, 96, 62, 26); }
-            int flame = 0;
-            if (M.st == WK_FIREB && tb <= 24)
-                flame = (24 - tb) / 8;
+            if (ston) {                          /* 4-stone ring */
+                mw_px(fx2 - 3, fy2, 70, 70, 78);
+                mw_px(fx2 - 2, fy2, 82, 82, 90);
+                mw_px(fx2 + 2, fy2, 82, 82, 90);
+                mw_px(fx2 + 3, fy2, 70, 70, 78);
+            }
+            /* three logs, crisscross, accumulating with the fetches */
+            bool logA = (M.st != WK_FIREB) || tb <= 88;
+            bool logB = (M.st != WK_FIREB) || tb <= 64;
+            bool logC = (M.st != WK_FIREB) || tb <= 40;
+            if (logA) { mw_px(fx2 - 1, fy2, 96, 62, 26);
+                        mw_px(fx2,     fy2, 104, 68, 30); }
+            if (logB) { mw_px(fx2,     fy2 - 1, 96, 62, 26);
+                        mw_px(fx2 + 1, fy2 - 1, 88, 56, 22); }
+            if (logC) { mw_px(fx2 + 1, fy2, 96, 62, 26); }
+            int flame = 0;                       /* 0..3 = out..full */
+            if (M.st == WK_FIREB && tb <= 24) flame = (24 - tb) / 8;
             else if (M.st == WK_FIRES) flame = 3;
             else if (M.st == WK_FIRED)
-                flame = tb > 60 ? 3
-                      : tb > 30 ? (int)(tb - 30) / 10 : 0;
+                flame = tb > 60 ? 3 : tb > 30 ? (int)(tb - 30) / 10 : 0;
             if (flame > 0) {
                 int fl = (int)((t / 90000) & 3);
-                mw_px(fx2, fy2 - 1, 255,
-                      (uint8_t)(150 + fl * 20), 30);
-                if (flame > 1)
-                    mw_px(fx2 + ((fl & 1) ? 1 : -1), fy2 - 2,
-                          255, 120, 20);
-                if (flame > 2)
-                    mw_px(fx2, fy2 - 3, 255,
-                          (uint8_t)(90 + fl * 30), 10);
-                mw_px(fx2 - 3, fy2, 60, 36, 10);
-                mw_px(fx2 + 3, fy2, 60, 36, 10);
+                int fl2 = (int)((t / 130000) & 7);
+                /* base: 3 wide */
+                mw_px(fx2 - 1, fy2 - 1, 255, 140, 24);
+                mw_px(fx2,     fy2 - 1, 255, (uint8_t)(160 + fl * 20), 30);
+                mw_px(fx2 + 1, fy2 - 1, 255, 132, 20);
+                if (flame > 1) {
+                    mw_px(fx2, fy2 - 2, 255, 150, 26);
+                    mw_px(fx2 + ((fl & 1) ? 1 : -1), fy2 - 2, 255, 110, 16);
+                }
+                if (flame > 2) {
+                    mw_px(fx2, fy2 - 3, 255, (uint8_t)(96 + fl * 30), 12);
+                    if (fl2 >= 5)                /* flicker lick */
+                        mw_px(fx2 + ((fl2 & 1) ? 1 : 0), fy2 - 4,
+                           255, 90, 10);
+                    if (fl2 == 7)                /* rare high spark */
+                        mw_px(fx2, fy2 - 5, 255, 170, 60);
+                }
+                /* warm glow on the ground, both sides */
+                mw_px(fx2 - 4, fy2, 56, 34, 10);
+                mw_px(fx2 + 4, fy2, 56, 34, 10);
+                mw_px(fx2 - 2, fy2 + 0, 40, 24, 8);
+                /* SMOKE: four puffs rising, leaning with a slow wind */
+                for (int k9 = 0; k9 < 4; k9++) {
+                    int ph = (int)((t / 140000 + k9 * 37) % 14);
+                    int sy9 = fy2 - 5 - ph;
+                    if (sy9 < 1) continue;
+                    int wind = (int)((t / 900000) % 3) - 1;
+                    int sx9 = fx2 + (ph / 5) * (wind >= 0 ? 1 : -1)
+                              + ((ph ^ k9) & 1);
+                    uint8_t g9v = (uint8_t)(88 - ph * 4);
+                    mw_px(sx9, sy9, g9v, g9v, (uint8_t)(g9v + 6));
+                }
+                /* EMBERS: two gentle riders on the column */
+                for (int k9 = 0; k9 < 2; k9++) {
+                    int ep = (int)((t / 110000 + k9 * 53) % 34);
+                    if (ep >= 20) continue;
+                    int ey = fy2 - 2 - ep / 3;
+                    int ex = fx2 + ((ep / 4) & 1) + (ep / 9);
+                    uint8_t er = (uint8_t)(255 - ep * 7);
+                    mw_px(ex, ey, er, (uint8_t)(110 - ep * 3), 12);
+                }
             }
-            if (M.st == WK_FIRES) {
+            if (M.st == WK_FIRES) {           /* marshmallow, stick
+                                                    reaching the hearth */
                 int cyc = (int)(M.timer % 240);
                 if (cyc < 150) {
-                    int mlx = wlx + 2;
-                    mw_px(mlx + 1, wy - 4, 150, 110, 60);
+                    mw_px(wlx + 2, wy - 4, 150, 110, 60);
+                    mw_px(wlx + 3, wy - 4, 150, 110, 60);
                     if (cyc >= 15) {
                         uint8_t mg2 = 238, mb2 = 230;
                         if (cyc < 110) {
@@ -389,7 +433,7 @@ static void world_compose(int64_t t, float cam, int32_t ox)
                             mg2 = (uint8_t)(150 + sh);
                             mb2 = (uint8_t)(90 + sh);
                         }
-                        mw_px(mlx + 2, wy - 4, 240, mg2, mb2);
+                        mw_px(wlx + 4, wy - 4, 240, mg2, mb2);
                     }
                 }
             }
@@ -397,9 +441,9 @@ static void world_compose(int64_t t, float cam, int32_t ox)
                 mw_px(wlx + 2, wy - 5, 120, 130, 145);
                 if (tb <= 60) {
                     mw_px(fx2, fy2 - 2 - (int)((60 - tb) / 12),
-                          90, 140, 220);
-                    if (tb < 50)
-                        mw_px(fx2, fy2 - 4, 150, 150, 155);
+                       90, 140, 220);
+                    if (tb < 50) { mw_px(fx2, fy2 - 4, 150, 150, 155);
+                                   mw_px(fx2 + 1, fy2 - 5, 130, 130, 138); }
                 }
             }
         }
