@@ -10,6 +10,7 @@
 #include "mon_config.h"
 #include "mon_wifi.h"
 #include "mon_parse.h"
+#include "mon_ws.h"
 static const char *TAG = "mon_net";
 static void wifi_evt(void *a, esp_event_base_t base, int32_t id, void *d)
 {
@@ -41,9 +42,15 @@ static void rx_task(void *arg)
     bind(s, (struct sockaddr *)&a, sizeof(a));
     ESP_LOGI(TAG, "listening on UDP :%d (passive)", MON_UDP_PORT);
     static uint8_t buf[160];
+    struct sockaddr_in src; socklen_t sl;
     for (;;) {
-        int n = recvfrom(s, buf, sizeof(buf), 0, NULL, NULL);
-        if (n > 0) mon_parse_pkt(buf, n);
+        sl = sizeof(src);
+        int n = recvfrom(s, buf, sizeof(buf), 0,
+                         (struct sockaddr *)&src, &sl);
+        if (n > 0) {
+            mon_parse_pkt(buf, n);
+            mon_ws_feed(buf, n, src.sin_addr.s_addr);
+        }
     }
 }
 static void status_task(void *arg)

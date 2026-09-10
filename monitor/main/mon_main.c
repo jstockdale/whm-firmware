@@ -7,6 +7,8 @@ void mon_touch_init(void);
 void mon_ui_start(void);
 void mon_con_start(void);
 void mon_http_start(void);
+void mon_ws_start(void);
+void mon_http_start(void);
 void mon_sky_init(void);
 void app_main(void)
 {
@@ -24,5 +26,7 @@ void app_main(void)
     mon_ui_start();
     mon_net_start();
     mon_con_start();
+    mon_http_start();
+    mon_ws_start();
     mon_http_start();
 }

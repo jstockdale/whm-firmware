@@ -11,8 +11,17 @@
 #include "rm67162_init.h"
 #include "mon_lcd.h"
 static const char *TAG = "mon_lcd";
+#include "freertos/semphr.h"
 static esp_lcd_panel_io_handle_t s_io;
 static uint16_t *s_bounce;                 /* internal DMA chunk */
+static SemaphoreHandle_t s_txdone;
+static bool tx_done_cb(esp_lcd_panel_io_handle_t io,
+                       esp_lcd_panel_io_event_data_t *e, void *u)
+{
+    BaseType_t hp = pdFALSE;
+    xSemaphoreGiveFromISR(s_txdone, &hp);
+    return hp == pdTRUE;
+}
 #define CHUNK_LINES 12
 #define OP_CMD   0x02
 #define OP_COLOR 0x32
@@ -68,8 +77,10 @@ void mon_lcd_init(void)
         .lcd_param_bits = 8,
         .spi_mode = 0,
         .trans_queue_depth = 10,
+        .on_color_trans_done = tx_done_cb,
         .flags = { .quad_mode = 1 },
     };
+    s_txdone = xSemaphoreCreateBinary();
     ESP_ERROR_CHECK(esp_lcd_new_panel_io_spi(
         (esp_lcd_spi_bus_handle_t)SPI2_HOST, &io, &s_io));
     for (int i = 0; i < (int)(sizeof(rm67162_cmd) /
@@ -104,5 +115,11 @@ void mon_lcd_push_full(const uint16_t *fb)
         esp_lcd_panel_io_tx_color(s_io,
             ((uint32_t)OP_COLOR << 24) | ((uint32_t)0x2C << 8),
             s_bounce, n * 2);
+        /* THE BOUNCE RACE (owner's glass, 0.4.0): tx_color QUEUES
+           the DMA and returns; the loop then overwrote s_bounce
+           while the controller was still reading it - bands landed
+           with mixed rows, intermittently, worse under load. Wait
+           for the transfer before touching the buffer again. */
+        xSemaphoreTake(s_txdone, pdMS_TO_TICKS(100));
     }
 }

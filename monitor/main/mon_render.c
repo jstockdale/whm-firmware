@@ -191,6 +191,11 @@ void mon_render(uint32_t kfs)
 {
     int64_t now = esp_timer_get_time();
     int64_t t = now;
+    mon_state_t M;                 /* atomic-enough pose snapshot:
+        one copy per frame, so the rx task can't tear fields
+        mid-compose across cores */
+    memcpy(&M, (const void *)&g_mon, sizeof(M));
+#define g_mon M
     /* cam: type-10 snaps + slope EMA between them */
     static float cam = 0, camv = 30.0f, lastc = -1;
     static int64_t camt = 0; static uint32_t lastn = 0;
@@ -366,4 +371,5 @@ void mon_render(uint32_t kfs)
     snprintf(ln, sizeof ln, "drop %lu",
              (unsigned long)g_mon.n_drop);
     gfx_text(cx0, 182, ln, 1, 110, 120, 138);
+#undef g_mon
 }

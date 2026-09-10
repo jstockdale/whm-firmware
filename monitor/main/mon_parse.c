@@ -23,6 +23,15 @@ void mon_parse_pkt(const uint8_t *b, int n)
         if (!len_ok(n, (int)sizeof(mon_wkb_t))) { g_mon.n_drop++; return; }
         {
             mon_wkb_t k; memcpy(&k, b, sizeof(k));
+            /* step-monotonic ingest (owner's kf/s 55-65 on glass):
+               BOTH panels broadcast pose each step; without dedupe
+               the state fluttered between two senders' sub-pixel
+               poses at 60 Hz and the sprite ghosted. First frame
+               per step wins - same law as the browser viewer. */
+            static uint32_t last_step;
+            if (k.step <= last_step && last_step - k.step < 1000)
+                return;
+            last_step = k.step;
             g_mon.step = k.step; g_mon.x = k.x;
             g_mon.y = (float)k.yq1 * 0.5f;
             g_mon.vx = k.vx; g_mon.vy = k.vy; g_mon.spd = k.spd;

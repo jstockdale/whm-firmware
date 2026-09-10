@@ -80,6 +80,16 @@ static esp_err_t h_bmp(httpd_req_t *r)
     httpd_resp_send_chunk(r, NULL, 0);
     return ESP_OK;
 }
+extern const uint8_t viewer_html_start[]
+    asm("_binary_whm_viewer_html_start");
+extern const uint8_t viewer_html_end[]
+    asm("_binary_whm_viewer_html_end");
+static esp_err_t h_viewer(httpd_req_t *r)
+{
+    httpd_resp_set_type(r, "text/html");
+    return httpd_resp_send(r, (const char *)viewer_html_start,
+                           viewer_html_end - viewer_html_start - 1);
+}
 void mon_http_start(void)
 {
     s_snap = heap_caps_malloc(LCD_W * LCD_H * 2, MALLOC_CAP_SPIRAM);
@@ -94,6 +104,9 @@ void mon_http_start(void)
                            .handler = h_bmp };
         httpd_register_uri_handler(h, &u1);
         httpd_register_uri_handler(h, &u2);
+        httpd_uri_t u3 = { .uri = "/viewer", .method = HTTP_GET,
+                           .handler = h_viewer };
+        httpd_register_uri_handler(h, &u3);
         ESP_LOGI(TAG, "the eye: http://<ip>/  (/fb.bmp raw)");
     }
 }
