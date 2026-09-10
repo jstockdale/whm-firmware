@@ -41,7 +41,8 @@ typedef struct {
     mon_wkb_t ring16[16]; uint32_t ring16_step[16];
     uint32_t n_rx9; uint32_t raw8[8]; uint8_t raw8_i;
     uint32_t dh[4];   /* accept deltas: 1,2,3,>3 */
-    uint32_t drawn8[8]; uint8_t drawn8_i;  /* ui-side: steps
+    uint32_t drawn8[8]; uint8_t drawn8_i;
+    uint32_t play_cursor, max_banked;   /* the ordered player */  /* ui-side: steps
                                               actually rendered */
     /* oracle */
     uint32_t rung_step; uint64_t rung_h; uint16_t rung_hs;

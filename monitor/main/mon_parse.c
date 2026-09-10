@@ -42,56 +42,46 @@ void mon_parse_pkt(const uint8_t *b, int n)
             g_mon.n_rx9++;
             g_mon.raw8[g_mon.raw8_i] = k.step;
             g_mon.raw8_i = (uint8_t)((g_mon.raw8_i + 1) % 8);
-            static uint32_t last_step;
-            if (k.step <= last_step && last_step - k.step < 1000)
-                return;
-            last_step = k.step;
-            {   /* bank only - the 0.8.5 serve-aligned swap is
-                   RETIRED: under the real wobbling-delta accept
-                   stream it served a MIXTURE of newest and
-                   five-back poses. Browser-law parity: serve
-                   newest; the ring stays banked for future use.
-                   Diagnostics below put the truth on the WIRE
-                   page: seen vs accepted, raw steps, deltas. */
+            /* THE ORDERED BANK (owner's UDP directive): never
+               discard a frame for arrival order. The old
+               monotonic gate rode the LEADING EDGE of
+               step-space - under UDP reordering of the fan
+               bursts a late lower step was thrown away
+               forever, so accepted steps advanced in jumps
+               of ~3 and the figure strobed at a third of its
+               poses (upd/s 23, eyes 3-5). Now: every valid
+               frame BANKS into its step slot, first-wins per
+               exact step (dual-sender dedupe preserved
+               without ordering loss); the ui-side player
+               adopts steps IN ORDER. */
+            if (g_mon.max_banked &&
+                (k.step > g_mon.max_banked + 1000 ||
+                 g_mon.max_banked > k.step + 1000)) {
+                memset(g_mon.ring16_step, 0,
+                       sizeof(g_mon.ring16_step));
+                g_mon.max_banked = 0;
+                g_mon.play_cursor = 0;      /* epoch turn */
+            }
+            {
                 int sl9 = (int)(k.step & 15u);
+                if (g_mon.ring16_step[sl9] == k.step)
+                    return;                  /* dup: first wins */
                 g_mon.ring16[sl9] = k;
                 g_mon.ring16_step[sl9] = k.step;
-            }
-            {   /* accept-delta histogram (1 / 2 / 3 / >3) */
-                static uint32_t prev_acc;
-                if (prev_acc && k.step > prev_acc) {
-                    uint32_t d9 = k.step - prev_acc;
+                static uint32_t prev_b;
+                if (prev_b && k.step > prev_b) {
+                    uint32_t d9 = k.step - prev_b;
                     g_mon.dh[d9 >= 4 ? 3 : d9 - 1]++;
                 }
-                prev_acc = k.step;
+                if (k.step > prev_b) prev_b = k.step;
+                if (k.step > g_mon.max_banked)
+                    g_mon.max_banked = k.step;
             }
-            g_mon.step = k.step; g_mon.x = k.x;
-            g_mon.y = (float)k.yq1 * 0.5f;
-            g_mon.vx = k.vx; g_mon.vy = k.vy; g_mon.spd = k.spd;
-            g_mon.tgt = k.tgt; g_mon.st = k.st; g_mon.owner = k.owner;
-            g_mon.dir = k.dir; g_mon.sdir = k.sdir;
-            g_mon.phase = k.phase; g_mon.timer = k.timer;
-            memcpy(g_mon.from, k.from, 16); g_mon.from[15] = 0;
-            {   /* PASSIVE TSF SLAVE (owner: birds lag the
-                   panels): fleet cosmetics run on the SHARED
-                   clock; the monitor ran on boot-relative
-                   uptime, so every pure-f(t) animation - birds,
-                   cloud drift, scarf rainbow, sun breathing -
-                   was phase-shifted by the boot delta. Each kf
-                   carries the sender's tsf: EMA the offset and
-                   the monitor joins the fleet's timeline without
-                   transmitting a byte. */
+            {   /* TSF slave rides every banked frame */
                 int64_t off = k.tsf - esp_timer_get_time();
                 if (!g_mon.tsf_ok) { g_mon.tsf_off = off;
                     g_mon.tsf_ok = 1; }
                 else g_mon.tsf_off += (off - g_mon.tsf_off) / 8;
-            }
-            if (k.st != g_mon.last_st) {
-                g_mon.last_st = k.st;
-                g_mon.tr[g_mon.tr_n].step = k.step;
-                g_mon.tr[g_mon.tr_n].st = k.st;
-                g_mon.tr[g_mon.tr_n].owner = k.owner;
-                g_mon.tr_n = (uint8_t)((g_mon.tr_n + 1) % 5);
             }
             g_mon.n_kf++; g_mon.last_kf_us = esp_timer_get_time();
         }

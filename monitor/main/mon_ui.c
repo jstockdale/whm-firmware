@@ -41,7 +41,28 @@ void mon_render_full(void);
 void mon_page_stats(uint32_t kfs);
 void mon_page_wire(void);
 static const char *PGN[4] = { "WORLD", "FULL", "STATS", "WIRE" };
-uint32_t s_upds;                    /* distinct steps drawn /s */
+uint32_t s_upds;
+static void player_adopt(int sl)
+{
+    /* the renderer is the SOLE pose writer now - ordered
+       adoption from the bank; every drawn pose is a real
+       received pose, in order, once. */
+    mon_wkb_t *k = &g_mon.ring16[sl];
+    g_mon.step = k->step; g_mon.x = k->x;
+    g_mon.y = (float)k->yq1 * 0.5f;
+    g_mon.vx = k->vx; g_mon.vy = k->vy; g_mon.spd = k->spd;
+    g_mon.tgt = k->tgt; g_mon.st = k->st; g_mon.owner = k->owner;
+    g_mon.dir = k->dir; g_mon.sdir = k->sdir;
+    g_mon.phase = k->phase; g_mon.timer = k->timer;
+    memcpy(g_mon.from, k->from, 16); g_mon.from[15] = 0;
+    if (k->st != g_mon.last_st) {
+        g_mon.last_st = k->st;
+        g_mon.tr[g_mon.tr_n].step = k->step;
+        g_mon.tr[g_mon.tr_n].st = k->st;
+        g_mon.tr[g_mon.tr_n].owner = k->owner;
+        g_mon.tr_n = (uint8_t)((g_mon.tr_n + 1) % 5);
+    }
+}                    /* distinct steps drawn /s */
 static void boot_flourish(void)
 {
     /* POP sparkle -> scarf-rainbow wipe -> version card.
@@ -113,6 +134,38 @@ static void ui_task(void *arg)
             tseq = g_touch.seq;
             page = (uint8_t)((page + 1) % 4);
             toast_until = esp_timer_get_time() + 1500000;
+        }
+        {   /* THE ORDERED PLAYER: adopt cursor+1 when banked
+               (late UDP arrivals land in their slot and still
+               get played); on genuine loss (>6 ahead banked,
+               next missing) skip to the smallest banked step
+               beyond the cursor; drain max 2/frame when
+               behind. */
+            if (!g_mon.play_cursor && g_mon.max_banked)
+                g_mon.play_cursor = g_mon.max_banked - 1;
+            int adv = (g_mon.max_banked >
+                       g_mon.play_cursor + 4) ? 2 : 1;
+            while (adv-- > 0 &&
+                   g_mon.play_cursor < g_mon.max_banked) {
+                uint32_t nxt = g_mon.play_cursor + 1;
+                int sl = (int)(nxt & 15u);
+                if (g_mon.ring16_step[sl] == nxt) {
+                    player_adopt(sl);
+                    g_mon.play_cursor = nxt;
+                } else if (g_mon.max_banked >
+                           g_mon.play_cursor + 6) {
+                    uint32_t best = 0;
+                    for (int i = 0; i < 16; i++) {
+                        uint32_t s9 = g_mon.ring16_step[i];
+                        if (s9 > g_mon.play_cursor &&
+                            (!best || s9 < best)) best = s9;
+                    }
+                    if (!best) break;
+                    player_adopt((int)(best & 15u));
+                    g_mon.play_cursor = best;
+                    break;
+                } else break;
+            }
         }
         {   /* RENDER-SIDE truth (owner: counters watch the
                door, not the stage): count DISTINCT steps the
