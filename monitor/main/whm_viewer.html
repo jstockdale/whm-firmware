@@ -3,8 +3,16 @@
 <style>
 body{background:#0b0e14;color:#cfd8e3;font:13px/1.4 ui-monospace,monospace;margin:0;padding:10px;min-height:100dvh;box-sizing:border-box}
 .cwrap{width:100%}
-#hgrip{position:absolute;left:-4px;top:0;bottom:0;width:9px;cursor:col-resize;z-index:5}
-#hist.off{display:none}
+#hgrip{position:absolute;left:-6px;top:0;bottom:0;width:12px;
+ cursor:col-resize;z-index:5;background:#141b26;
+ border:1px solid #22303f;border-radius:3px;
+ display:flex;align-items:center;justify-content:center;
+ color:#5b6675;font:12px/1 monospace;user-select:none}
+#hgrip::after{content:"\203A"}          /* > pull tab */
+#hist.off{width:12px!important;min-width:12px;overflow:hidden}
+#hist.off #hh,#hist.off #hl{display:none}
+#hist.off #hgrip{left:0;cursor:pointer}
+#hist.off #hgrip::after{content:"\2039"} /* < */
 #bar{display:flex;gap:8px;align-items:center;margin-bottom:8px}
 input{background:#141a24;color:#cfd8e3;border:1px solid #2a3446;padding:4px 8px;width:260px}
 button{background:#1d2736;color:#cfd8e3;border:1px solid #2a3446;padding:4px 12px;cursor:pointer}
@@ -29,7 +37,13 @@ button,input,.hr{touch-action:manipulation}
  #hl{max-height:45vh}
  #hist{flex:1 1 100%;width:auto}}
 canvas{background:#05070b;border:1px solid #2a3446;display:block;margin-bottom:8px;image-rendering:pixelated}
-#hud{display:flex;gap:24px;flex-wrap:wrap;margin-bottom:6px}
+#hud{display:flex;gap:24px;flex-wrap:wrap;margin-bottom:6px;align-items:center}
+#hud b{display:inline-block;font-variant-numeric:tabular-nums;text-align:left}
+#st{min-width:6ch}#rt{min-width:5ch}#kf{min-width:3ch}
+#ow{min-width:2ch}#cm{min-width:10ch}#rg{min-width:7ch}
+#lg{min-width:4ch}
+#scn{margin-left:auto} /* pinned to the panel edge - float is
+                          ignored inside flex, hence the drift */
 .g b{color:#7cc4ff}.g i{color:#8b96a8;font-style:normal}
 #tick{max-height:150px;overflow-y:auto;height:130px;overflow-y:auto;background:#0d1119;border:1px solid #22303f;padding:6px;white-space:pre}
 .o0{color:#41d0ff}.o1{color:#ff5cc8}.rg{color:#c8b445}.pm{color:#8b96a8}
@@ -51,9 +65,7 @@ canvas{background:#05070b;border:1px solid #2a3446;display:block;margin-bottom:8
  autocapitalize="off" autocorrect="off" spellcheck="false"
  enterkeyhint="go"><button id=go>connect</button>
 <span id=cstat></span>
-<span id=name class=pm></span><button id=hb
- style="margin-left:auto" title="show/hide the history drawer"
->history</button></div>
+<span id=name class=pm></span></div>
 <div id=wrap><div id=left>
 <div class=cwrap><canvas id=cv width=768 height=384></canvas></div>
 <div class=cwrap><canvas id=tv width=768 height=204></canvas></div>
@@ -65,7 +77,7 @@ canvas{background:#05070b;border:1px solid #2a3446;display:block;margin-bottom:8
 <span class=g>cam <b id=cm>-</b></span>
 <span class=g>rung <b id=rg>-</b></span>
 <span class=g>lag <b id=lg>-</b><i>ms</i></span>
-<button id=scn class=on style="float:right"
+<button id=scn class=on
  title="background art on/off">scenery</button></div>
 <div id=tick></div>
 </div><aside id=hist><div id=hgrip
@@ -101,17 +113,26 @@ function fitCanvases(){
   e.style.height=(e.height*s)+"px";}}
 addEventListener("resize",fitCanvases);
 addEventListener("orientationchange",fitCanvases);
-$("hb").onclick=()=>{$("hist").classList.toggle("off");
- requestAnimationFrame(fitCanvases)};
-{const g=$("hgrip"),hi=$("hist");let dr=false;
- g.addEventListener("pointerdown",e=>{dr=true;
-  g.setPointerCapture(e.pointerId);e.preventDefault()});
- g.addEventListener("pointermove",e=>{if(!dr)return;
+{const g=$("hgrip"),hi=$("hist");
+ const tog=()=>{hi.classList.toggle("off");
+  requestAnimationFrame(fitCanvases)};
+ let dr=false,x0=0,moved=false;
+ g.addEventListener("pointerdown",e=>{dr=true;x0=e.clientX;
+  moved=false;g.setPointerCapture(e.pointerId);
+  e.preventDefault()});
+ g.addEventListener("pointermove",e=>{
+  if(!dr)return;
+  if(Math.abs(e.clientX-x0)>4)moved=true;
+  if(!moved||hi.classList.contains("off"))return;
   const w=Math.max(240,Math.min(window.innerWidth*.6,
     window.innerWidth-e.clientX-12));
   hi.style.width=w+"px";fitCanvases()});
  g.addEventListener("pointerup",e=>{dr=false;
-  g.releasePointerCapture(e.pointerId)});}
+  g.releasePointerCapture(e.pointerId);
+  if(!moved)tog()});          /* click = toggle, drag = resize */
+ hi.addEventListener("dblclick",e=>{
+  if(getSelection().toString())return;
+  tog()});}
 const cv=$("cv"),cx=cv.getContext("2d");
 const S=6, GROUND=57, REACH=21;
 let ws=null,strips=2,wkPrev=null,kfT=[],lastStep=0,lastStepT=0,rate=0;
