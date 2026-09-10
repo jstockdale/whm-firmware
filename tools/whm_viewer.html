@@ -23,8 +23,10 @@ button{background:#1d2736;color:#cfd8e3;border:1px solid #2a3446;padding:4px 12p
 #cstat.err{color:#e5484d}
 #cstat.ok{color:#46c390}
 button,input,.hr{touch-action:manipulation}
-/* canvases are sized by fitCanvases from their PARENT
-   wrappers - parent-driven fitting cannot ratchet. */
+/* NATIVE sizing: pure CSS, no JS referee - browser zoom
+   controls the page the way zoom is supposed to. */
+#cv{width:100%;height:auto;aspect-ratio:768/384}
+#tv{width:100%;height:auto;aspect-ratio:768/204}
 /* the canvases claim the width the history doesn't - no dead
    gutter, and the HUD (with the scenery button floated right)
    inherits the same width, landing flush on the panel edge */
@@ -101,16 +103,20 @@ let AUTO_WS=false;
 try{if(location.protocol.indexOf("http")===0){
  $("url").value="ws://"+location.hostname+":8777";AUTO_WS=true;}}
 catch(e){}
+const AR9=CSS.supports("aspect-ratio","1 / 1");
 function fitCanvases(){
- /* WIDTH-driven, parent-based (ratchet-proof: the parent's
-    width comes from the flex row, never from the canvas).
-    Height follows aspect; the page scrolls vertically like a
-    normal document, so browser zoom behaves as hands expect
-    - fit-to-viewport had neutralized it entirely. */
- for(const id of["cv","tv"]){const e=$(id),p=e.parentElement;
-  const s=Math.max(.05,p.clientWidth/e.width);
-  e.style.width=(e.width*s)+"px";
-  e.style.height=(e.height*s)+"px";}}
+ /* Zoom truth: any JS writing pixel sizes off zoom-fired
+    resize events reads mid-reflow widths and fights the
+    browser - the owner's "larger in BOTH directions". Where
+    aspect-ratio exists (everything modern) we CLEAR inline
+    sizes so pure CSS rules and zoom is native. The width-
+    based setter survives only behind the feature-detect for
+    the old-WebKit zero-height belt. */
+ for(const id of["cv","tv"]){const e=$(id);
+  if(AR9){e.style.width="";e.style.height="";continue;}
+  const w=e.parentElement.clientWidth||768;
+  e.style.width=w+"px";
+  e.style.height=(w*e.height/e.width)+"px";}}
 addEventListener("resize",fitCanvases);
 addEventListener("orientationchange",fitCanvases);
 {const g=$("hgrip"),hi=$("hist");
