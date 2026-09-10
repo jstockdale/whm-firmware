@@ -103,7 +103,7 @@ static void boot_flourish(void)
             gfx_text_center(LCD_W / 2, 92, "WHM MONITOR", 3,
                             232, 232, 240);
             gfx_text_center(LCD_W / 2, 128,
-                            "second native consumer", 1,
+                            "passive realtime telemetry", 1,
                             140, 150, 168);
         }
         mon_lcd_push_full(s_fb);
@@ -113,7 +113,7 @@ static void boot_flourish(void)
 static void ui_task(void *arg)
 {
     uint32_t pk = 0, kfs = 0; int tick = 0;
-    printf("world twin online - second native consumer\n");
+    printf("world twin online - passive realtime telemetry\n");
     boot_flourish();
     uint8_t page = 0; uint32_t tseq = g_touch.seq;
     int64_t toast_until = 0;
