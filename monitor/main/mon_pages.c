@@ -61,6 +61,22 @@ void mon_page_wire(void)
 {
     char ln[56];
     gfx_text(10, 8, "WIRE", 2, 110, 120, 138);
+    snprintf(ln, sizeof ln,
+             "rx9 %lu  acc %lu  d:%lu/%lu/%lu/%lu",
+             (unsigned long)g_mon.n_rx9,
+             (unsigned long)g_mon.n_kf,
+             (unsigned long)g_mon.dh[0], (unsigned long)g_mon.dh[1],
+             (unsigned long)g_mon.dh[2], (unsigned long)g_mon.dh[3]);
+    gfx_text(10, 148, ln, 1, 232, 180, 100);
+    {
+        char r2[52]; int o2 = 0;
+        o2 += snprintf(r2 + o2, sizeof r2 - o2, "raw ");
+        for (int i = 0; i < 8; i++)
+            o2 += snprintf(r2 + o2, (size_t)(sizeof r2 - o2),
+                "%lu ", (unsigned long)
+                (g_mon.raw8[(g_mon.raw8_i + i) % 8] % 1000));
+        gfx_text(10, 160, r2, 1, 232, 180, 100);
+    }
     snprintf(ln, sizeof ln, "kf %lu   wkp %lu",
              (unsigned long)g_mon.n_kf,
              (unsigned long)g_mon.n_wkp);

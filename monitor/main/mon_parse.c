@@ -39,19 +39,31 @@ void mon_parse_pkt(const uint8_t *b, int n)
                wins (dedups the fan, kf/s ~30); a step-keyed ring
                below serves maxstep-5 so observers render ON
                glass time instead of ~0.17 s ahead. */
+            g_mon.n_rx9++;
+            g_mon.raw8[g_mon.raw8_i] = k.step;
+            g_mon.raw8_i = (uint8_t)((g_mon.raw8_i + 1) % 8);
             static uint32_t last_step;
             if (k.step <= last_step && last_step - k.step < 1000)
                 return;
             last_step = k.step;
-            {   /* step-keyed pose ring: bank this frame; the
-                   served pose is the banked step maxstep-5. */
+            {   /* bank only - the 0.8.5 serve-aligned swap is
+                   RETIRED: under the real wobbling-delta accept
+                   stream it served a MIXTURE of newest and
+                   five-back poses. Browser-law parity: serve
+                   newest; the ring stays banked for future use.
+                   Diagnostics below put the truth on the WIRE
+                   page: seen vs accepted, raw steps, deltas. */
                 int sl9 = (int)(k.step & 15u);
                 g_mon.ring16[sl9] = k;
                 g_mon.ring16_step[sl9] = k.step;
-                uint32_t want = k.step >= 5 ? k.step - 5 : k.step;
-                int ws = (int)(want & 15u);
-                if (g_mon.ring16_step[ws] == want)
-                    k = g_mon.ring16[ws];   /* serve aligned */
+            }
+            {   /* accept-delta histogram (1 / 2 / 3 / >3) */
+                static uint32_t prev_acc;
+                if (prev_acc && k.step > prev_acc) {
+                    uint32_t d9 = k.step - prev_acc;
+                    g_mon.dh[d9 >= 4 ? 3 : d9 - 1]++;
+                }
+                prev_acc = k.step;
             }
             g_mon.step = k.step; g_mon.x = k.x;
             g_mon.y = (float)k.yq1 * 0.5f;
