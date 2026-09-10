@@ -102,19 +102,30 @@ try{if(location.protocol.indexOf("http")===0){
  $("url").value="ws://"+location.hostname+":8777";AUTO_WS=true;}}
 catch(e){}
 const AR9=CSS.supports("aspect-ratio","1 / 1");
+let DPR0=devicePixelRatio,zAt=0;
 function fitCanvases(){
- /* Zoom truth: any JS writing pixel sizes off zoom-fired
-    resize events reads mid-reflow widths and fights the
-    browser - the owner's "larger in BOTH directions". Where
-    aspect-ratio exists (everything modern) we CLEAR inline
-    sizes so pure CSS rules and zoom is native. The width-
-    based setter survives only behind the feature-detect for
-    the old-WebKit zero-height belt. */
+ /* THE OWNER'S TEST NAMED THE FLAW: width:100% elements are
+    ZOOM-INVARIANT in device size - zoom shrinks the CSS
+    viewport by exactly the factor it then magnifies, so a
+    percentage canvas lands on the same physical pixels while
+    fixed-CSS text grows around it. Discriminator: zoom
+    changes devicePixelRatio, real resizes do not. So: fix
+    the canvas at a CSS width captured from the available
+    space; refit on true resizes and drawer toggles; on a
+    DPR-delta event, TOUCH NOTHING - the browser then scales
+    the fixed box exactly like text. Larger at zoom-in
+    (scroll for the rest), smaller at zoom-out, accurately. */
+ const zoomed=Math.abs(devicePixelRatio-DPR0)>0.001;
+ DPR0=devicePixelRatio;
+ if(zoomed){zAt=performance.now();return}
+ /* some browsers fire a SECOND same-DPR resize per zoom
+    step - a straggler that would slip the gate and
+    re-neutralize the zoom. Quiet window catches it. */
+ if(performance.now()-zAt<350)return;
  for(const id of["cv","tv"]){const e=$(id);
-  if(AR9){e.style.width="";e.style.height="";continue;}
   const w=e.parentElement.clientWidth||768;
   e.style.width=w+"px";
-  e.style.height=(w*e.height/e.width)+"px";}}
+  if(!AR9)e.style.height=(w*e.height/e.width)+"px";}}
 addEventListener("resize",fitCanvases);
 addEventListener("orientationchange",fitCanvases);
 $("hb").onclick=()=>{
