@@ -358,8 +358,16 @@ void mon_render(uint32_t kfs)
              (unsigned long)g_mon.step, mon_st_name(g_mon.st),
              (unsigned long)kfs);
     gfx_text(4, 4, ln, 2, 124, 196, 255);
-    snprintf(ln, sizeof ln, "x %.0f  cam %.0f  %s",
-             g_mon.x, g_mon.cam, g_mon.from);
+    {   /* AGE: ms since the last ACCEPTED keyframe - the
+           tree-splitter. Sawtooth to 300-800 ms = acceptance
+           gaps (raw8 shows why); steady ~33 ms with a frozen
+           walker = the freeze lives downstream of g_mon. */
+        int64_t age9 = g_mon.last_kf_us
+            ? (esp_timer_get_time() - g_mon.last_kf_us) / 1000
+            : -1;
+        snprintf(ln, sizeof ln, "x %.0f  cam %.0f  age %lld  %s",
+                 g_mon.x, g_mon.cam, (long long)age9, g_mon.from);
+    }
     gfx_text(4, LCD_H - 20, ln, 2, 140, 150, 168);
     world_compose(t, cam, ox);
     /* telemetry column */

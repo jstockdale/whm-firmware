@@ -61,6 +61,13 @@ void mon_page_wire(void)
 {
     char ln[56];
     gfx_text(10, 8, "WIRE", 2, 110, 120, 138);
+    {
+        int64_t age9 = g_mon.last_kf_us
+            ? (esp_timer_get_time() - g_mon.last_kf_us) / 1000
+            : -1;
+        snprintf(ln, sizeof ln, "age %lld ms", (long long)age9);
+        gfx_text(160, 8, ln, 2, 232, 180, 100);
+    }
     snprintf(ln, sizeof ln,
              "rx9 %lu  acc %lu  d:%lu/%lu/%lu/%lu",
              (unsigned long)g_mon.n_rx9,
