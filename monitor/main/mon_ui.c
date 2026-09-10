@@ -7,6 +7,7 @@
 #include "mon_lcd.h"
 #include "mon_touch.h"
 #include "mon_parse.h"
+#include "mon_http.h"
 #include "gfx5x7.h"
 #include "display_hal.h"
 static uint16_t *s_fb;
@@ -40,6 +41,7 @@ static void ui_task(void *arg)
         mon_render(kfs);
         if (g_touch.pressed)
             printf("touch: x=%u y=%u\n", g_touch.x, g_touch.y);
+        mon_snap_service(s_fb);        /* the eye, atomically */
         mon_lcd_push_full(s_fb);
     }
 }

@@ -4,6 +4,7 @@
 #include "esp_wifi.h"
 #include "esp_event.h"
 #include "esp_netif.h"
+#include "esp_netif_sntp.h"
 #include "esp_log.h"
 #include "lwip/sockets.h"
 #include "mon_config.h"
@@ -19,6 +20,13 @@ static void wifi_evt(void *a, esp_event_base_t base, int32_t id, void *d)
     } else if (base == IP_EVENT && id == IP_EVENT_STA_GOT_IP) {
         ip_event_got_ip_t *e = (ip_event_got_ip_t *)d;
         ESP_LOGI(TAG, "got IP: " IPSTR, IP2STR(&e->ip_info.ip));
+        static bool sntp_up;
+        if (!sntp_up) {
+            sntp_up = true;
+            esp_sntp_config_t sc =
+                ESP_NETIF_SNTP_DEFAULT_CONFIG("pool.ntp.org");
+            esp_netif_sntp_init(&sc);
+        }
     }
 }
 static void rx_task(void *arg)

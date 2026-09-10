@@ -8,13 +8,19 @@
 #include "mon_pins.h"
 #include "mon_parse.h"
 #include "mon_world.h"
+#include "mon_draw.h"
+#include "mon_sky.h"
 #include "gfx5x7.h"
 #include "display_hal.h"
 #define WX0 0
 #define WY0 24
 #define WSC 3
 #define WCOLS 128
-static void mw_px(int sx, int sy, uint8_t r, uint8_t g, uint8_t b)
+void mw_fill(uint8_t r, uint8_t g, uint8_t b)
+{
+    whm_display_fill_rect(WX0, WY0, WCOLS * WSC, 64 * WSC, r, g, b);
+}
+void mw_px(int sx, int sy, uint8_t r, uint8_t g, uint8_t b)
 {
     if (sx < 0 || sx >= WCOLS || sy < 0 || sy >= 64) return;
     whm_display_fill_rect(WX0 + sx * WSC, WY0 + sy * WSC,
@@ -208,6 +214,10 @@ void mon_render(uint32_t kfs)
     snprintf(ln, sizeof ln, "x %.0f  cam %.0f  %s",
              g_mon.x, g_mon.cam, g_mon.from);
     gfx_text(4, LCD_H - 20, ln, 2, 140, 150, 168);
+    float f = mw_daylight();
+    mw_sky(t, cam, f);                 /* the true sky */
+    mw_flora(cam, f, t);               /* behind platforms */
+    mw_birds(t, cam, f);
     /* ground - carved by gaps, planked by bridges (verbatim) */
     int32_t id0 = (int32_t)floorf((float)ox / 64.0f);
     for (int x = 0; x < WCOLS; x++) {
@@ -234,7 +244,6 @@ void mon_render(uint32_t kfs)
             mw_px(x, 61, 1, 1, 2);
         }
     }
-    float f = 0.5f;                       /* fixed dusk for now */
     for (int d = 0; d <= 2; d++) {
         const wchunk_t *c = mw_chunk(id0 + d);
         if (c->house_x >= 0) {

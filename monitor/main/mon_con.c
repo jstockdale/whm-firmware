@@ -13,6 +13,8 @@
 #include "mon_wifi.h"
 #include "mon_parse.h"
 #include "mon_lcd.h"
+#include "mon_http.h"
+#include "mbedtls/base64.h"
 #define LN 96
 #define HIST 8
 static char s_hist[HIST][LN]; static int s_hn, s_hview;
@@ -30,6 +32,8 @@ static void exec_line(char *line)
     if (!argc) return;
     if (!strcmp(argv[0], "help")) {
         printf("wifi join <ssid> [pw] | wifi clear | wifi status\n"
+               "snap           framebuffer -> base64 (see tools/)\n"
+               "tz <+-min>     local-time offset for daylight\n"
                "mon            live snapshot\n"
                "stats          wire counters\n"
                "bright <0-255> panel brightness (saved)\n"
@@ -64,6 +68,32 @@ static void exec_line(char *line)
             nvs_commit(h); nvs_close(h);
         }
         printf("brightness %d (saved)\n", v);
+    } else if (!strcmp(argv[0], "snap")) {
+        if (mon_snap_take() != 0) { printf("snap timeout\n"); }
+        else {
+            const uint8_t *p = (const uint8_t *)mon_snap_buf();
+            size_t total = 536 * 240 * 2, done = 0;
+            printf("-----SNAP BEGIN 536x240 RGB565-----\n");
+            unsigned char line[97]; size_t ol;
+            while (done < total) {
+                size_t take = total - done;
+                if (take > 72) take = 72;   /* 72B -> 96 b64 chars */
+                mbedtls_base64_encode(line, sizeof line, &ol,
+                                      p + done, take);
+                line[ol] = 0; printf("%s\n", line);
+                done += take;
+            }
+            printf("-----SNAP END-----\n");
+        }
+    } else if (!strcmp(argv[0], "tz") && argc == 2) {
+        int mins = atoi(argv[1]);
+        nvs_handle_t h;
+        if (nvs_open("mon", NVS_READWRITE, &h) == ESP_OK) {
+            nvs_set_i32(h, "tz_min", mins);
+            nvs_commit(h); nvs_close(h);
+        }
+        printf("tz offset %+d min (saved; takes effect now)\n",
+               mins);
     } else if (!strcmp(argv[0], "reboot")) {
         esp_restart();
     } else {
