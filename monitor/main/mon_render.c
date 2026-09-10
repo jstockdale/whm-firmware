@@ -362,16 +362,8 @@ void mon_render(uint32_t kfs)
                  (unsigned long)kfs, (unsigned long)s_upds);
     }
     gfx_text(4, 4, ln, 2, 124, 196, 255);
-    {   /* AGE: ms since the last ACCEPTED keyframe - the
-           tree-splitter. Sawtooth to 300-800 ms = acceptance
-           gaps (raw8 shows why); steady ~33 ms with a frozen
-           walker = the freeze lives downstream of g_mon. */
-        int64_t age9 = g_mon.last_kf_us
-            ? (esp_timer_get_time() - g_mon.last_kf_us) / 1000
-            : -1;
-        snprintf(ln, sizeof ln, "x %.0f  cam %.0f  age %lld  %s",
-                 g_mon.x, g_mon.cam, (long long)age9, g_mon.from);
-    }
+    snprintf(ln, sizeof ln, "x %.0f  cam %.0f  %s",
+             g_mon.x, g_mon.cam, g_mon.from);
     gfx_text(4, LCD_H - 20, ln, 2, 140, 150, 168);
     world_compose(t, cam, ox);
     /* telemetry column */
@@ -414,6 +406,14 @@ void mon_render(uint32_t kfs)
     snprintf(ln, sizeof ln, "drop %lu",
              (unsigned long)g_mon.n_drop);
     gfx_text(cx0, 182, ln, 1, 110, 120, 138);
+    {   /* age under drop, per the owner - diagnostics grouped
+           with counters, the sender name stands still. */
+        int64_t age9 = g_mon.last_kf_us
+            ? (esp_timer_get_time() - g_mon.last_kf_us) / 1000
+            : -1;
+        snprintf(ln, sizeof ln, "age %lld ms", (long long)age9);
+        gfx_text(cx0, 194, ln, 1, 232, 180, 100);
+    }
 #undef g_mon
 }
 
