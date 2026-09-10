@@ -37,7 +37,7 @@ canvas{background:#05070b;border:1px solid #2a3446;display:block;margin-bottom:8
 .hr{padding:2px 8px;cursor:pointer;white-space:pre;font-size:11px}
 .hr:hover{background:#1a2333}
 .hr.sel{background:#22314a}
-#live.on{background:#1f4d3a;border-color:#46c390}
+#live.on,#scn.on{background:#1f4d3a;border-color:#46c390}
 #live.paused{background:#4d3a1f;border-color:#c8b445;color:#e8d84a}
 </style>
 <div id=bar><span id=dot></span>
@@ -45,7 +45,6 @@ canvas{background:#05070b;border:1px solid #2a3446;display:block;margin-bottom:8
  autocapitalize="off" autocorrect="off" spellcheck="false"
  enterkeyhint="go"><button id=go>connect</button>
 <span id=cstat></span>
-<button id=scn class=on title="background art on/off">scenery</button>
 <span id=name class=pm></span></div>
 <div id=wrap><div id=left>
 <canvas id=cv width=768 height=384></canvas>
@@ -57,9 +56,11 @@ canvas{background:#05070b;border:1px solid #2a3446;display:block;margin-bottom:8
 <span class=g>owner <b id=ow>-</b></span>
 <span class=g>cam <b id=cm>-</b></span>
 <span class=g>rung <b id=rg>-</b></span>
-<span class=g>lag <b id=lg>-</b><i>ms</i></span></div>
+<span class=g>lag <b id=lg>-</b><i>ms</i></span>
+<button id=scn class=on style="float:right"
+ title="background art on/off">scenery</button></div>
 <div id=tick></div>
-</div><aside id=hist><div id=hh><b>state history</b>
+</div><aside id=hist><div id=hh><b>state history</b> <span class=pm>UTC</span>
 <button id=live class=on>LIVE</button>
 <button id=exp>EXPORT</button><span id=hc class=pm>0</span>
 </div><div id=hl></div></aside></div>
