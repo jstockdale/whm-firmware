@@ -1541,7 +1541,7 @@ static float wk_daylight(void)
  * cross-fade to solid text with the incoming year. Choreography is
  * seeded by that year: palettes, petal counts, rhythms - a different
  * show every year, forever. Hidden 'fw' command tests it all. */
-#define FW_MAX   110
+#define FW_MAX   220   /* midnight is a celebration (owner) */
 #define FWD_MAX  240
 typedef struct { float x, y, vx, vy; uint8_t r, g, b;
                  uint16_t age, life; uint8_t kind; } fwp_t;
@@ -1775,17 +1775,41 @@ static void fw_pal(uint32_t *st, uint8_t *r, uint8_t *g, uint8_t *b)
 static void fw_burst(float x, float y, int n, int style, uint8_t r,
                      uint8_t g, uint8_t b)
 {
-    for (int i = 0; i < n && s_fwn < FW_MAX; i++) {
-        float a = 6.2832f * (float)i / (float)n;
-        float sp = style == 2 ? 6.0f : 11.0f + (float)(i % 3) * 2.0f;
+    /* THE BURST LIBRARY (owner: fun, flower, full pop):
+       0 PEONY  two rings, two tones      1 CHRYS  trailing sparks
+       2 RING   crisp circle              3 WILLOW gold droop
+       4 CROSSETTE splits mid-flight      5 PALM   thick rising arms */
+    (void)n;
+    uint8_t r2 = (uint8_t)(255 - r / 3), g2 = (uint8_t)(g / 2 + 90),
+            b2 = (uint8_t)(255 - b / 2);   /* companion tone */
+    int cnt = style == 0 ? 26 : style == 1 ? 20 : style == 2 ? 20
+            : style == 3 ? 16 : style == 4 ? 8  : 7;
+    for (int i = 0; i < cnt && s_fwn < FW_MAX; i++) {
+        float a = 6.2832f * (float)i / (float)cnt;
+        float sp;
+        uint8_t kk = 0;
+        switch (style) {
+        default:
+        case 0: sp = (i & 1) ? 12.5f : 7.0f; break;      /* peony  */
+        case 1: sp = 10.5f; kk = 2; break;               /* chrys  */
+        case 2: sp = 9.5f;  break;                        /* ring   */
+        case 3: sp = 8.0f;  kk = 3; break;                /* willow */
+        case 4: sp = 10.0f; kk = 4; break;                /* xsette */
+        case 5: sp = 13.5f; kk = 2;                       /* palm   */
+                a = -1.5708f + 0.55f * ((float)i - 3.0f); break;
+        }
         fwp_t *p = &s_fw[s_fwn++];
         p->x = x; p->y = y;
         p->vx = cosf(a) * sp;
         p->vy = sinf(a) * sp - 2.0f;
-        p->r = r; p->g = g; p->b = b;
+        if (style == 3) { p->r = 255; p->g = 196; p->b = 90; }
+        else if (style == 0 && (i & 1)) { p->r = r2; p->g = g2;
+                                          p->b = b2; }
+        else { p->r = r; p->g = g; p->b = b; }
         p->age = 0;
-        p->life = style == 2 ? 1500 : 800 + (uint16_t)(i % 4) * 90;
-        p->kind = 0;
+        p->life = style == 3 ? 1900 : style == 2 ? 1200
+                : 900 + (uint16_t)(i % 4) * 90;
+        p->kind = kk;
     }
 }
 
@@ -1809,8 +1833,26 @@ static void fw_step(int dt_ms)
         p->age += (uint16_t)dt_ms;
         p->x += p->vx * dt;
         p->y += p->vy * dt;
-        p->vy += ((p->kind & 15) == 1 ? 2.0f : 9.5f) * dt;
-        p->vx *= 0.985f;
+        {
+            int kk = p->kind & 15;
+            p->vy += (kk == 1 ? 2.0f : kk == 3 ? 14.0f : 9.5f) * dt;
+            p->vx *= (kk == 3 ? 0.962f : 0.985f);
+            if (kk == 4 && p->age > p->life * 2 / 5) {
+                /* crossette: split into a small cross of four */
+                p->kind = 0;
+                float bx = p->x, by = p->y;
+                uint8_t r = p->r, g = p->g, b = p->b;
+                for (int q = 0; q < 4 && s_fwn < FW_MAX; q++) {
+                    float qa = 1.5708f * (float)q + 0.7854f;
+                    fwp_t *m = &s_fw[s_fwn++];
+                    m->x = bx; m->y = by;
+                    m->vx = cosf(qa) * 7.5f;
+                    m->vy = sinf(qa) * 7.5f;
+                    m->r = r; m->g = g; m->b = b;
+                    m->age = 0; m->life = 520; m->kind = 0;
+                }
+            }
+        }
         if ((p->kind & 15) == 1 &&
             (p->vy > -3.0f || p->age >= p->life)) {
             int style = p->kind >> 4;
@@ -1841,6 +1883,16 @@ static void fw_render(void)
         int x = (int)p->x - ox9, y = (int)p->y;
         wk_px(x, y, (uint8_t)(p->r * k), (uint8_t)(p->g * k),
               (uint8_t)(p->b * k));
+        {   /* chrys/willow/palm carry a fading tail */
+            int kk = p->kind & 15;
+            if (kk == 2 || kk == 3) {
+                int tx = (int)(p->x - p->vx * 0.05f) - ox9;
+                int ty = (int)(p->y - p->vy * 0.05f);
+                wk_px(tx, ty, (uint8_t)(p->r * k * 0.45f),
+                      (uint8_t)(p->g * k * 0.45f),
+                      (uint8_t)(p->b * k * 0.45f));
+            }
+        }
         if ((p->kind & 15) == 1) {
             wk_px(x, y + 1, (uint8_t)(120 * k), (uint8_t)(90 * k),
                   (uint8_t)(30 * k));
@@ -2042,8 +2094,8 @@ static void fw_tick(int64_t t)
             uint32_t st2 = s_show.seed + (uint32_t)(ms / 1400);
             if (ms >= 8000 && ms < 8000 + 30000 &&
                 ms - s_show.last_launch_ms >
-                    (int32_t)((ms < 9500 ? 350 : 550) +
-                              fw_rnd(&st2) % 450)) {
+                    (int32_t)((ms < 9500 ? 190 : 300) +
+                              fw_rnd(&st2) % 240)) {
                 s_show.last_launch_ms = ms;
                 uint8_t r, g, b;
                 fw_pal(&st2, &r, &g, &b);
@@ -2055,7 +2107,7 @@ static void fw_tick(int64_t t)
                               (float)(fw_rnd(&st2) %
                                   (uint32_t)(64u *
                                       (s_w_n ? s_w_n : 1))),
-                          (int)(fw_rnd(&st2) % 3u), r, g, b,
+                          (int)(fw_rnd(&st2) % 6u), r, g, b,
                           (float)(fw_rnd(&st2) % 8u));
             }
             if (s_show.initiator && !s_show.test &&
@@ -2136,71 +2188,31 @@ static void fw_tick(int64_t t)
 
 static void fw_choreo_nye(int32_t ms)
 {
-    /* t=0 at 23:55:00; midnight 300000; last shell 900000 */
+    /* THE OWNER'S TIMELINE: staging keeps its whole arc - chair,
+       freeze, countdown, banner, friend - but SHELLS fly ONLY from
+       midnight to midnight+30 s, dense, a celebration. No warmup
+       singles; silence after :30 while the lights carry the night. */
     uint32_t st = s_show.seed + (uint32_t)(ms / 250);
-    int32_t gap;
-    int act = ms < 300000 ? 0
-            : ms < 480000 ? 1 : ms < 780000 ? 2 : ms < 900000 ? 3 : 4;
-    if (act == 0) {                            /* buildup: teasers */
-        if (ms > 60000 && ms - s_show.last_launch_ms >
-                              22000 + (int32_t)(fw_rnd(&st) % 9000u)) {
-            s_show.last_launch_ms = ms;
-            uint8_t r, g, b;
-            fw_pal(&st, &r, &g, &b);
-            fw_launch(s_show.scene_x0 - 8.0f +
-                          (float)(fw_rnd(&st) % (64u * (s_w_n ? s_w_n : 1))),
-                      0, r, g, b, 2.0f);
+    if (ms < 300000 || ms >= 330000) return;
+    int32_t in9 = ms - 300000;
+    int32_t gap = 300 - in9 / 220;             /* 300 -> ~165 ms */
+    if (in9 > 25000) gap = 120;                /* the last-5s wall */
+    if (gap < 110) gap = 110;
+    if (ms - s_show.last_launch_ms > gap) {
+        s_show.last_launch_ms = ms;
+        uint8_t r, g, b;
+        fw_pal(&st, &r, &g, &b);
+        int style = (int)(fw_rnd(&st) % 6u);
+        float x9 = s_show.scene_x0 - 8.0f +
+                   (float)(fw_rnd(&st) % 136u);
+        fw_launch(x9, style, r, g, b,
+                  (float)(fw_rnd(&st) % 9u));
+        if (in9 > 25000 || (fw_rnd(&st) % 5u) == 0) {
+            fw_pal(&st, &r, &g, &b);            /* pair shell */
+            fw_launch(x9 + (float)((int)(fw_rnd(&st) % 25u) - 12),
+                      (int)(fw_rnd(&st) % 6u), r, g, b,
+                      (float)(fw_rnd(&st) % 9u));
         }
-        return;
-    }
-    if (act == 1) gap = 1400 - (ms - 300000) / 300;
-    else if (act == 2) gap = 800 - (ms - 480000) / 700;
-    else if (act == 3) gap = 420 - (ms - 780000) / 600;
-    else gap = 99999;
-    if (gap < 200) gap = 200;
-    if (act <= 3 && ms - s_show.last_launch_ms > gap) {
-        s_show.last_launch_ms = ms;
-        uint8_t r, g, b;
-        fw_pal(&st, &r, &g, &b);
-        int n = act == 2 ? 1 + (int)(fw_rnd(&st) % 2u) : 1;
-        for (int i = 0; i < n; i++) {
-            fw_pal(&st, &r, &g, &b);
-            fw_launch(s_show.scene_x0 - 8.0f +
-                          (float)(fw_rnd(&st) % (64u * (s_w_n ? s_w_n : 1))),
-                      (int)(fw_rnd(&st) % 3u), r, g, b,
-                      (float)(fw_rnd(&st) % 10u));
-        }
-    }
-    if (ms >= 300000 && ms < 330000 &&
-        ms - s_show.last_launch_ms > 300 +
-            (int32_t)(fw_rnd(&st) % 200)) {    /* midnight: 30 s */
-        s_show.last_launch_ms = ms;
-        uint8_t r, g, b;
-        fw_pal(&st, &r, &g, &b);
-        fw_launch(s_show.scene_x0 - 8.0f +
-                      (float)(fw_rnd(&st) % (64u * (s_w_n ? s_w_n : 1))),
-                  2, r, g, b, 8.0f);
-    }
-    if (ms >= 312000 && s_fwdn == 0 &&
-        s_show.cd_last == 0) {                 /* opening statement */
-        fw_text_dots("HAPPY", 4, 312600, 260);
-        fw_text_dots("NEW YEAR", 12, 314200, 200);
-        char yr[6];
-        snprintf(yr, sizeof(yr), "%d", s_show.year);
-        fw_text_dots(yr, 22, 317400, 400);
-    }
-    if (ms > 430000 && s_fwdn && ms < 900000) {
-        /* constellation has faded (fw_render_all); free the dots */
-        if (ms > 460000) s_fwdn = 0;
-    }
-    if (act == 3 && ms > 880000 &&
-        ms - s_show.last_launch_ms > 300) {    /* finale wall */
-        s_show.last_launch_ms = ms;
-        uint8_t r, g, b;
-        fw_pal(&st, &r, &g, &b);
-        fw_launch(s_show.scene_x0 - 8.0f +
-                      (float)(fw_rnd(&st) % (64u * (s_w_n ? s_w_n : 1))),
-                  2, r, g, b, 7.0f);
     }
 }
 
@@ -2281,17 +2293,28 @@ static void wk_nye_scene(float cam, int64_t t)
         wk_px(p1, y, 96, 66, 30);
         wk_px(p2, y, 96, 66, 30);
     }
-    for (int i = 0; i <= 12; i++) {                  /* string lights */
-        float f2 = (float)i / 12.0f;
-        int lx = p1 + (int)(f2 * (float)(p2 - p1));
-        int ly = 18 + (int)(sinf(f2 * 3.1416f) * 4.0f);
-        uint32_t st = s_show.seed + (uint32_t)i * 71u;
-        uint8_t r, g, b;
-        fw_pal(&st, &r, &g, &b);
-        float tw = 0.6f + 0.4f * sinf((float)t / 2.6e5f + (float)i);
-        wk_px(lx, ly, (uint8_t)(r * tw), (uint8_t)(g * tw),
-              (uint8_t)(b * tw));
+    /* THE GARLAND (owner's read: the strand must READ) - the wire
+       itself is drawn, warm and dim, sagging 8 deep pole to pole
+       ACROSS THE SEAM; bulbs every 3 px, brighter, sparkling
+       faster, their colours slowly rotating through the palette. */
+    for (int lx = p1; lx <= p2; lx++) {
+        float f2 = (float)(lx - p1) / (float)(p2 - p1);
+        int ly = 18 + (int)(sinf(f2 * 3.1416f) * 8.0f);
+        wk_px(lx, ly, 46, 34, 18);                   /* the wire */
+        if (((lx - p1) % 3) == 0) {
+            uint32_t st = s_show.seed +
+                (uint32_t)(lx - p1) * 71u +
+                (uint32_t)(t / 900000000LL);          /* slow hue walk */
+            uint8_t r, g, b;
+            fw_pal(&st, &r, &g, &b);
+            float tw = 0.55f + 0.45f *
+                sinf((float)t / 1.4e5f + (float)lx);
+            wk_px(lx, ly, (uint8_t)(r * tw), (uint8_t)(g * tw),
+                  (uint8_t)(b * tw));
+        }
     }
+    wk_px(p1, 17, 255, 214, 140);                    /* lamp caps */
+    wk_px(p2, 17, 255, 214, 140);
     if (s_show.banner > 0.01f) {                     /* the banner */
         int ytop = 18 - (int)(s_show.banner * 12.0f);
         for (int y = ytop; y < ytop + 8; y++)
