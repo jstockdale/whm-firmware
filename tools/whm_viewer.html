@@ -102,26 +102,25 @@ try{if(location.protocol.indexOf("http")===0){
  $("url").value="ws://"+location.hostname+":8777";AUTO_WS=true;}}
 catch(e){}
 const AR9=CSS.supports("aspect-ratio","1 / 1");
-let DPR0=devicePixelRatio,zAt=0;
-function fitCanvases(){
- /* THE OWNER'S TEST NAMED THE FLAW: width:100% elements are
-    ZOOM-INVARIANT in device size - zoom shrinks the CSS
-    viewport by exactly the factor it then magnifies, so a
-    percentage canvas lands on the same physical pixels while
-    fixed-CSS text grows around it. Discriminator: zoom
-    changes devicePixelRatio, real resizes do not. So: fix
-    the canvas at a CSS width captured from the available
-    space; refit on true resizes and drawer toggles; on a
-    DPR-delta event, TOUCH NOTHING - the browser then scales
-    the fixed box exactly like text. Larger at zoom-in
-    (scroll for the rest), smaller at zoom-out, accurately. */
- const zoomed=Math.abs(devicePixelRatio-DPR0)>0.001;
- DPR0=devicePixelRatio;
- if(zoomed){zAt=performance.now();return}
- /* some browsers fire a SECOND same-DPR resize per zoom
-    step - a straggler that would slip the gate and
-    re-neutralize the zoom. Quiet window catches it. */
- if(performance.now()-zAt<350)return;
+let winDev=innerWidth*devicePixelRatio,haveFit=false;
+function fitCanvases(force){
+ /* THE GEOMETRY INVARIANT (owner's zoom-out review): the
+    350 ms quiet window was event-timing where geometry was
+    needed - zoom-out shrinks the fixed canvas below the
+    page, scrollbars toggle, late same-DPR resizes slip any
+    timer, and each refit re-inflates to the zoom-grown CSS
+    width: BIGGER exactly when smaller was wanted. The
+    zoom-blind measure is PHYSICAL window width:
+    innerWidth x devicePixelRatio. Zoom moves both factors
+    inversely (product constant to rounding); real resizes,
+    monitor moves and dock changes move it decisively. Refit
+    ONLY when it moves >40 device px (swallows scrollbar
+    toggles too), or on explicit intent (drawer, load). No
+    timers - timeless. */
+ const wd=innerWidth*devicePixelRatio;
+ const moved=Math.abs(wd-winDev)>40;
+ if(!force&&haveFit&&!moved)return;
+ winDev=wd;haveFit=true;
  for(const id of["cv","tv"]){const e=$(id);
   const w=e.parentElement.clientWidth||768;
   e.style.width=w+"px";
@@ -131,7 +130,7 @@ addEventListener("orientationchange",fitCanvases);
 $("hb").onclick=()=>{
  const off=$("hist").classList.toggle("off");
  $("hb").className=off?"":"on";   /* green = drawer open */
- requestAnimationFrame(fitCanvases)};
+ requestAnimationFrame(()=>fitCanvases(true))};
 const cv=$("cv"),cx=cv.getContext("2d");
 const S=6, GROUND=57, REACH=21;
 let ws=null,strips=2,wkPrev=null,kfT=[],lastStep=0,lastStepT=0,rate=0;
