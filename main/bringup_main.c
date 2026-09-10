@@ -111,7 +111,6 @@ void app_main(void)
         ESP_LOGE(TAG, "console failed to start - see errors above");
     }
     whssh_register_console();    /* the `ssh` verb joins help */
-    wh_ssh_start();              /* arena + per-device host key + :22 */
 
     STAGE("1: display");
     uint8_t bright = CONFIG_WHM_TEST_BRIGHTNESS;
@@ -144,6 +143,12 @@ void app_main(void)
            (unsigned)(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL) / 1024));
 
     whm_wifi_start();
+    wh_ssh_start();   /* MBOX LESSON v2: the netif PROBE lied
+                         pre-init (garbage non-NULL before
+                         esp_netif_init), so ordering is now by
+                         CONSTRUCTION - ssh starts only after the
+                         wifi stage brings lwIP + netif alive; the
+                         in-task wait remains as a truthful belt. */
     printf("audit: post-wifi internal free=%u KB largest=%u KB "
            "min-ever=%u KB\n",
            (unsigned)(heap_caps_get_free_size(
