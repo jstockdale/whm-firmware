@@ -24,14 +24,47 @@
 #include <sys/socket.h>
 
 /* ---- panel glue: the watch services this file expects ---- */
-/* storage_*: the panels mount no SD - NVS is the sole key store, so the
- * SD paths fail cleanly and every caller's NVS fallback takes over. */
-static int wh_storage_read_file(const char *p, char *b, int n)
-{ (void)p; (void)b; (void)n; return -1; }
-static int wh_storage_append_file(const char *p, const char *s)
-{ (void)p; (void)s; return -1; }
-static int wh_storage_write_file(const char *p, const char *s)
-{ (void)p; (void)s; return -1; }
+/* storage_*: REAL now. The port shipped these as always-fail stubs
+ * behind a comment claiming 'the panels mount no SD' - while the
+ * owner's boot log listed a 30 GB card at /sdcard. The stub made the
+ * honest error message a gaslight ('no card mounted' with a card
+ * mounted). SD is hereby the PRIMARY key store again, exactly the
+ * watch's design: survives an NVS erase, readable off-device. */
+#include <sys/stat.h>
+#include <errno.h>
+#define WHSSH_SD_ROOT "/sdcard/"
+static void wh_storage_path(const char *rel, char *out, size_t cap)
+{ snprintf(out, cap, WHSSH_SD_ROOT "%s", rel); }
+static int wh_storage_read_file(const char *rel, char *b, int n)
+{
+    char p[96]; wh_storage_path(rel, p, sizeof p);
+    FILE *f = fopen(p, "r");
+    if (!f) return -1;
+    int r = (int)fread(b, 1, (size_t)(n - 1), f);
+    fclose(f);
+    if (r >= 0) b[r] = '\0';
+    return r;
+}
+static int wh_storage_append_file(const char *rel, const char *txt)
+{
+    char p[96]; wh_storage_path(rel, p, sizeof p);
+    mkdir(WHSSH_SD_ROOT ".ssh", 0775);      /* EEXIST is fine */
+    FILE *f = fopen(p, "a");
+    if (!f) return -1;
+    int ok = fputs(txt, f) >= 0;
+    fclose(f);
+    return ok ? 0 : -1;
+}
+static int wh_storage_write_file(const char *rel, const char *txt)
+{
+    char p[96]; wh_storage_path(rel, p, sizeof p);
+    mkdir(WHSSH_SD_ROOT ".ssh", 0775);
+    FILE *f = fopen(p, "w");
+    if (!f) return -1;
+    int ok = fputs(txt, f) >= 0;
+    fclose(f);
+    return ok ? 0 : -1;
+}
 /* wh_task_start: plain pinned task; SSH lives on core 0 beside WiFi,
  * far from the core-1 HUB75/UI path. */
 static esp_err_t wh_task_start_(const char *name, void (*fn)(void *),

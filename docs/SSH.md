@@ -10,8 +10,10 @@ in NVS - fail-closed: no shared-key fallback, ever.
 Then from your machine (any username):
     ssh whm@<panel-ip>
 `ssh keys` lists, `ssh rmkey <n>` removes, `ssh newkey` remints the host
-key (reboot applies). The panels mount no SD, so NVS is the sole store -
-the watch's SD paths fail cleanly into the NVS fallback by design.
+key (reboot applies). With a card mounted, SD is the PRIMARY store
+(/sdcard/.ssh/authorized_keys - survives NVS erase, readable
+off-device): `ssh addkey sd ssh-ed25519 <b64>`. Card-less panels fall
+back to NVS exactly as the watch designed.
 
 ## What you get on connect
 The ENTIRE fleet console, verbatim: help, fleet, version, wifi, show,
