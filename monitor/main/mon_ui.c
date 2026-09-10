@@ -15,7 +15,13 @@
 static uint16_t *s_fb;
 static inline uint16_t rgb(uint8_t r, uint8_t g, uint8_t b)
 {
-    return ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3);
+    /* THE FAST PATH: the framebuffer stores RGB565 already
+       byte-swapped (panel byte order), so the push loop is
+       pure DMA - no bounce buffer, no quarter-million-swap
+       loop per frame. One choke point: every producer comes
+       through here. The Eye's encoders unswap on read. */
+    uint16_t v = ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3);
+    return (uint16_t)((v >> 8) | (v << 8));
 }
 void whm_display_fill_rect(uint16_t x, uint16_t y,
                            uint16_t w, uint16_t h,
@@ -90,8 +96,8 @@ static void ui_task(void *arg)
     uint8_t page = 0; uint32_t tseq = g_touch.seq;
     int64_t toast_until = 0;
     for (;;) {
-        vTaskDelay(pdMS_TO_TICKS(33));
-        if (++tick >= 30) { tick = 0;
+        vTaskDelay(pdMS_TO_TICKS(MP_UI_MS));
+        if (++tick >= MP_UI_FPS) { tick = 0;
             kfs = g_mon.n_kf - pk; pk = g_mon.n_kf;
             static uint32_t prx;
             uint32_t rx = g_mon.n_kf + g_mon.n_wkp + g_mon.n_org;

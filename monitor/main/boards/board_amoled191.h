@@ -18,3 +18,6 @@
 #define MP_BTN_BOOT   0
 #define LCD_W       536
 #define LCD_H       240
+
+#define MP_UI_MS  16
+#define MP_UI_FPS 60

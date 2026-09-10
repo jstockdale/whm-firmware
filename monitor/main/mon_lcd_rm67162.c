@@ -72,7 +72,7 @@ void mon_lcd_init(void)
     esp_lcd_panel_io_spi_config_t io = {
         .cs_gpio_num = MP_QSPI_CS,
         .dc_gpio_num = -1,
-        .pclk_hz = 40 * 1000 * 1000,       /* conservative first light */
+        .pclk_hz = 75 * 1000 * 1000  /* backlog cashed: 40 proved it, 75 is vendor-proven */,       /* conservative first light */
         .lcd_cmd_bits = 32,
         .lcd_param_bits = 8,
         .spi_mode = 0,
@@ -88,8 +88,6 @@ void mon_lcd_init(void)
         rm_cmd(rm67162_cmd[i].cmd, rm67162_cmd[i].data,
                rm67162_cmd[i].len & 0x7F,
                rm67162_cmd[i].len & 0x80);
-    s_bounce = heap_caps_malloc(LCD_W * CHUNK_LINES * 2,
-                                MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
     {   /* saved brightness, if any */
         nvs_handle_t h; uint8_t bv;
         if (nvs_open("mon", NVS_READONLY, &h) == ESP_OK) {
@@ -107,14 +105,13 @@ void mon_lcd_push_full(const uint16_t *fb)
         int lines = LCD_H - y;
         if (lines > CHUNK_LINES) lines = CHUNK_LINES;
         int n = LCD_W * lines;
-        /* RGB565 big-endian on the wire */
+        /* fb is pre-swapped (see rgb() in mon_ui) - DMA
+           streams straight out of the framebuffer. */
         const uint16_t *src = fb + y * LCD_W;
-        for (int i = 0; i < n; i++)
-            s_bounce[i] = __builtin_bswap16(src[i]);
         rm_window(0, y, LCD_W - 1, y + lines - 1);
         esp_lcd_panel_io_tx_color(s_io,
             ((uint32_t)OP_COLOR << 24) | ((uint32_t)0x2C << 8),
-            s_bounce, n * 2);
+            (const void *)src, n * 2);
         /* THE BOUNCE RACE (owner's glass, 0.4.0): tx_color QUEUES
            the DMA and returns; the loop then overwrote s_bounce
            while the controller was still reading it - bands landed

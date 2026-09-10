@@ -30,3 +30,6 @@
 #define MP_LORA_RST  10
 #define LCD_W       480
 #define LCD_H       222
+
+#define MP_UI_MS  33
+#define MP_UI_FPS 30

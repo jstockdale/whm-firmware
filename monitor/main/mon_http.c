@@ -69,7 +69,7 @@ static esp_err_t h_bmp(httpd_req_t *r)
     for (int y = 0; y < LCD_H; y++) {
         const uint16_t *s = s_snap + y * LCD_W;
         for (int x = 0; x < LCD_W; x++) {
-            uint16_t c = s[x];
+            uint16_t c = __builtin_bswap16(s[x]); /* fb pre-swapped */
             row[x * 3 + 2] = (uint8_t)((c >> 8) & 0xF8);  /* R */
             row[x * 3 + 1] = (uint8_t)((c >> 3) & 0xFC);  /* G */
             row[x * 3 + 0] = (uint8_t)((c << 3) & 0xF8);  /* B */
@@ -171,7 +171,7 @@ static esp_err_t h_png(httpd_req_t *r)
                     const uint16_t *s =
                         mon_snap_buf() + y * LCD_W;
                     for (int x = 0; x < LCD_W; x++) {
-                        uint16_t c = s[x];
+                        uint16_t c = __builtin_bswap16(s[x]); /* fb pre-swapped */
                         row[1 + x * 3] = (c >> 8) & 0xF8;
                         row[2 + x * 3] = (c >> 3) & 0xFC;
                         row[3 + x * 3] = (c << 3) & 0xF8;

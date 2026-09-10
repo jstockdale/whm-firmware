@@ -11,6 +11,7 @@
 #include "nvs.h"
 #include "mon_config.h"
 #include "mon_pins.h"
+#include "esp_heap_caps.h"
 #include "mon_wifi.h"
 #include "mon_parse.h"
 #include "mon_lcd.h"
@@ -135,8 +136,19 @@ static void exec_line(char *line)
     } else if (!strcmp(argv[0], "snap")) {
         if (mon_snap_take() != 0) { printf("snap timeout\n"); }
         else {
-            const uint8_t *p = (const uint8_t *)mon_snap_buf();
-            size_t total = 536 * 240 * 2, done = 0;
+            /* unswap to LE for the decoder (fb is
+               pre-swapped since 0.9.0) - and the hardcoded
+               536x240 was a latent multi-board bug. */
+            static uint16_t *s_le;
+            if (!s_le) s_le = heap_caps_malloc(
+                LCD_W * LCD_H * 2, MALLOC_CAP_SPIRAM);
+            {
+                const uint16_t *q = mon_snap_buf();
+                for (int i = 0; i < LCD_W * LCD_H; i++)
+                    s_le[i] = __builtin_bswap16(q[i]);
+            }
+            const uint8_t *p = (const uint8_t *)s_le;
+            size_t total = (size_t)LCD_W * LCD_H * 2, done = 0;
             printf("-----SNAP BEGIN 536x240 RGB565-----\n");
             unsigned char line[97]; size_t ol;
             while (done < total) {

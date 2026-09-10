@@ -18,7 +18,6 @@
  * sends it separately). Colors inverted on glass => drop 0x21. */
 static const char *TAG = "mon_lcd(st7796)";
 static esp_lcd_panel_io_handle_t s_io;
-static uint16_t *s_bounce;
 static SemaphoreHandle_t s_txdone;
 #define CHUNK_LINES 12
 typedef struct { uint8_t cmd, len, delay_ms;
@@ -110,7 +109,7 @@ void mon_lcd_init(void)
     esp_lcd_panel_io_spi_config_t io = {
         .cs_gpio_num = MP_TFT_CS,
         .dc_gpio_num = MP_TFT_DC,
-        .pclk_hz = 40 * 1000 * 1000,
+        .pclk_hz = 80 * 1000 * 1000  /* ST7796 fast write; drop to 40 if glass disagrees */,
         .lcd_cmd_bits = 8,
         .lcd_param_bits = 8,
         .spi_mode = 0,
@@ -126,8 +125,6 @@ void mon_lcd_init(void)
         if (st_init[i].delay_ms)
             vTaskDelay(pdMS_TO_TICKS(st_init[i].delay_ms));
     }
-    s_bounce = heap_caps_malloc(LCD_W * CHUNK_LINES * 2,
-                                MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
     {
         nvs_handle_t h; uint8_t bv;
         if (nvs_open("mon", NVS_READONLY, &h) == ESP_OK) {
@@ -145,11 +142,11 @@ void mon_lcd_push_full(const uint16_t *fb)
         int lines = LCD_H - y;
         if (lines > CHUNK_LINES) lines = CHUNK_LINES;
         int n = LCD_W * lines;
+        /* fb pre-swapped - pure DMA, no bounce. */
         const uint16_t *src = fb + y * LCD_W;
-        for (int i = 0; i < n; i++)
-            s_bounce[i] = __builtin_bswap16(src[i]);
         st_window(0, y, LCD_W - 1, y + lines - 1);
-        esp_lcd_panel_io_tx_color(s_io, 0x2C, s_bounce, n * 2);
+        esp_lcd_panel_io_tx_color(s_io, 0x2C,
+                                  (const void *)src, n * 2);
         xSemaphoreTake(s_txdone, pdMS_TO_TICKS(100));
     }
 }
