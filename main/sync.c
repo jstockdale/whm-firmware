@@ -1563,6 +1563,39 @@ esp_err_t whm_sync_wkparams_send(int64_t anchor, float cam_speed,
     return ESP_OK;
 }
 
+typedef struct __attribute__((packed)) {
+    char magic[4]; uint8_t ver; uint8_t type;      /* 17 */
+    uint8_t f_q8;                 /* daylight, 0..255 */
+    uint8_t rsv;
+    uint16_t minod;               /* conductor local minutes-of-day */
+    uint16_t rsv2;
+} whm_wkday_t;
+_Static_assert(sizeof(whm_wkday_t) == 12, "wkday wire");
+esp_err_t whm_sync_dayclock_send(uint8_t f_q8, uint16_t minod)
+{
+    /* TYPE 17 - THE DAYCLOCK (owner: 'the web view has it dark
+       already'). Observers were computing daylight from their
+       HOST clocks - the browser inherited whatever timezone the
+       laptop ran and drifted a whole day-phase from the glass.
+       One Clock, extended: the conductor publishes f AND its
+       local minutes-of-day at 1 Hz; every observer renders the
+       conductor's sky - sun position, stars, moon and all. */
+    if (s_sock < 0) return ESP_ERR_INVALID_STATE;
+    whm_wkday_t d = { .magic = { 'W', 'H', 'M', 'L' }, .ver = 2,
+                      .type = 17, .f_q8 = f_q8, .minod = minod };
+    struct sockaddr_in dst = { 0 };
+    dst.sin_family = AF_INET;
+    dst.sin_port = htons(7777);
+    dst.sin_addr.s_addr = htonl(INADDR_BROADCAST);
+    uint8_t sb[sizeof(d) + 16];
+    memcpy(sb, &d, sizeof(d));
+    int sl = seal_tx(sb, (int)sizeof(d));
+    sendto(s_sock, sb, (size_t)sl, 0, (struct sockaddr *)&dst,
+           sizeof(dst));
+    sync_tap((const uint8_t *)&d, (int)sizeof(d));
+    return ESP_OK;
+}
+
 esp_err_t whm_sync_wkb_send(uint8_t owner, float x, int8_t y,
                             uint8_t st, int8_t dir, uint16_t timer,
                             uint32_t step, float tgt, float vx,

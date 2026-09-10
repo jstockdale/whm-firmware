@@ -36,11 +36,20 @@ static bool mon_wall(struct tm *lt)
     gmtime_r(&now, lt);
     return true;
 }
+#include "mon_parse.h"
+#include "esp_timer.h"
 float mw_daylight(void)
 {
+    if (g_mon.day_us &&
+        esp_timer_get_time() - g_mon.day_us < 5000000)
+        return (float)g_mon.day_fq8 / 255.0f;   /* wire truth */
+
     struct tm lt;
     if (!mon_wall(&lt)) return 1.0f;
-    float hm = (float)lt.tm_hour + (float)lt.tm_min / 60.0f;
+    float hm = (g_mon.day_us && esp_timer_get_time() -
+              g_mon.day_us < 5000000)
+             ? (float)g_mon.day_min / 60.0f
+             : (float)lt.tm_hour + (float)lt.tm_min / 60.0f;
     if (hm < 6.0f || hm >= 20.0f) return 0.0f;
     if (hm < 8.0f)  return (hm - 6.0f) / 2.0f;
     if (hm < 17.0f) return 1.0f;

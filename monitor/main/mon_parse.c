@@ -28,15 +28,31 @@ void mon_parse_pkt(const uint8_t *b, int n)
         if (!len_ok(n, (int)sizeof(mon_wkb_t))) { g_mon.n_drop++; return; }
         {
             mon_wkb_t k; memcpy(&k, b, sizeof(k));
-            /* step-monotonic ingest (owner's kf/s 55-65 on glass):
-               BOTH panels broadcast pose each step; without dedupe
-               the state fluttered between two senders' sub-pixel
-               poses at 60 Hz and the sprite ghosted. First frame
-               per step wins - same law as the browser viewer. */
-            static uint32_t last_step;
-            if (k.step <= last_step && last_step - k.step < 1000)
-                return;
-            last_step = k.step;
+            /* TWO-LANE INGEST (owner's kf/s 170): shadows carry
+               NO marker - one sender serves real and promise,
+               distinguished only by step (+4..+6 ahead under the
+               Near Horizon). Classify by cadence: REAL chains at
+               +1 (a +2 skip tolerated); +2..+8 ahead = a PROMISE,
+               counted, never posed; forty straight ahead-frames =
+               resync (wifi gap or we joined late). Epoch turns
+               reset. Both units' real frames dedupe first-wins. */
+            static uint32_t last_real; static int miss9;
+            if (last_real &&
+                (k.step > last_real + 1000 ||
+                 last_real > k.step + 1000)) {
+                last_real = 0; miss9 = 0;      /* epoch turn */
+            }
+            if (!last_real) { last_real = k.step; }
+            else if (k.step <= last_real) { return; }
+            else if (k.step - last_real <= 2) {
+                last_real = k.step; miss9 = 0;
+            } else if (k.step - last_real <= 8) {
+                g_mon.n_promise++; return;     /* the shadow lane */
+            } else {
+                if (++miss9 < 40) return;
+                last_real = k.step; miss9 = 0; /* resync */
+            }
+            g_mon.n_real++;
             g_mon.step = k.step; g_mon.x = k.x;
             g_mon.y = (float)k.yq1 * 0.5f;
             g_mon.vx = k.vx; g_mon.vy = k.vy; g_mon.spd = k.spd;
@@ -74,6 +90,15 @@ void mon_parse_pkt(const uint8_t *b, int n)
             mon_wkp_t p; memcpy(&p, b, sizeof(p));
             g_mon.cam = p.cam; g_mon.strips = p.strips;
             g_mon.anchor = p.anchor; g_mon.n_wkp++;
+        }
+        break;
+    case 17:
+        if (!len_ok(n, (int)sizeof(mon_day_t))) { g_mon.n_drop++;
+            return; }
+        {
+            mon_day_t d; memcpy(&d, b, sizeof(d));
+            g_mon.day_fq8 = d.f_q8; g_mon.day_min = d.minod;
+            g_mon.day_us = esp_timer_get_time();
         }
         break;
     case 16:

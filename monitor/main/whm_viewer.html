@@ -95,7 +95,7 @@ addEventListener("orientationchange",fitCanvases);
 const cv=$("cv"),cx=cv.getContext("2d");
 const S=6, GROUND=57, REACH=21;
 let ws=null,strips=2,wkPrev=null,kfT=[],lastStep=0,lastStepT=0,rate=0;
-let SCN=true,tsfOff=null;   /* scenery toggle + passive fleet clock */
+let SCN=true,tsfOff=null,DAY=null,lastReal=0,missR=0;   /* scenery toggle + passive fleet clock */
 let W={x:0,y:56.5,st:5,dir:1,phase:0,timer:0,sdir:1,step:0,
        owner:0,t:0,vx:0,vy:0,spd:0,tgt:0};
 const tvx=$("tv").getContext("2d");
@@ -217,7 +217,8 @@ function hsv(hh,s,v){hh=((hh%360)+360)%360;
  else if(hh<180){g=c;b=x}else if(hh<240){g=x;b=c}
  else if(hh<300){r=x;b=c}else{r=c;b=x}
  return[(r+m)|0,(g+m)|0,(b+m)|0]}
-function daylight(){const hr=new Date().getHours()+
+function daylight(){
+ if(DAY&&performance.now()-DAY.t<5000)return DAY.f;const hr=new Date().getHours()+
   new Date().getMinutes()/60;
  return Math.max(0,Math.min(1,Math.sin((hr-6)/12*Math.PI)))}
 function sprite(lx,y,t,st,dir,phase,timer,sdir){
@@ -436,7 +437,8 @@ function sceneSky(t,f,c){
     const run=0.5+0.5*Math.cos(ga-t/1.6e6);
     let lum=dim*(0.8+0.5*run); if(lum>1)lum=1;
     px(ox+mxi+gx,12+gy,150*lum|0,150*lum|0,120*lum|0)}}}
- {const D=new Date(),hm=D.getHours()+D.getMinutes()/60;
+ {const hm=(DAY&&performance.now()-DAY.t<5000)?DAY.hm
+   :(new Date().getHours()+new Date().getMinutes()/60);
   if(f>0.02&&hm>=6&&hm<20){
    const p=(hm-6)/14,sunw=30+p*80;
    const sxi=(((sunw-(c*0.006))|0)%900+900)%900-100;
@@ -713,7 +715,7 @@ function drawWorld(now){
  drawScope(P9)}
 function onPkt(m){const u=hex2u8(m.hex);if(u.length<8)return;
  if(u[0]!==0x57||u[1]!==0x48||u[2]!==0x4d||u[3]!==0x4c)return;
- const ty=u[5],d=dv(u); if(u[4]!==2&&(ty===9||ty===10||ty===16))return;
+ const ty=u[5],d=dv(u); if(u[4]!==2&&(ty===9||ty===10||ty===16||ty===17))return;
  if(ty===9&&u.length>=64){
   const K={owner:u[6],st:u[7],dir:d.getInt8(8),y:d.getInt8(9)*0.5,
      timer:d.getUint16(10,true),step:d.getUint32(12,true),
@@ -723,11 +725,17 @@ function onPkt(m){const u=hex2u8(m.hex);if(u.length<8)return;
      spd:d.getFloat32(56,true),sdir:d.getInt8(60),phase:u[61],
      t:m.t};
   W=K;
-  if(BUF.length&&K.step<=BUF[BUF.length-1].step&&
-     BUF[BUF.length-1].step-K.step<1000)return;
-  /* step-monotonic ingest: during handoff grace BOTH units
-     broadcast - interleaved twin streams zigzagged the trail
-     and jittered the playhead. First frame per step wins. */
+  {/* TWO-LANE INGEST: shadows are +4..+6 promises with no
+      marker. Real chains at +1 (+2 tolerated); +2..+8 =
+      promise, dropped from the playhead; 40 straight ahead =
+      resync; epoch turns reset. */
+   if(lastReal&&(K.step>lastReal+1000||lastReal>K.step+1000)){
+    lastReal=0;missR=0}
+   if(!lastReal)lastReal=K.step;
+   else if(K.step<=lastReal)return;
+   else if(K.step-lastReal<=2){lastReal=K.step;missR=0}
+   else if(K.step-lastReal<=8){return}
+   else{if(++missR<40)return;lastReal=K.step;missR=0}}
   {  /* passive fleet clock (the monitor's law, browser
         edition): kf carries the sender's TSF; EMA the offset
         so scenery runs on the FLEET timeline - birds, clouds
@@ -769,6 +777,8 @@ function onPkt(m){const u=hex2u8(m.hex);if(u.length<8)return;
    if(isFinite(v)&&Math.abs(v)<20)CAM.v=CAM.v*0.5+v*0.5}
   CAM.p=c;CAM.t=now;strips=u[21]||strips;
   $("cm").textContent=c.toFixed(1);
+ }else if(ty===17&&u.length>=12){
+  DAY={f:u[6]/255,hm:(u[8]|(u[9]<<8))/60,t:performance.now()};
  }else if(ty===16&&u.length>=24){
   const step=d.getUint32(8,true);
   const hh=d.getBigUint64(12,true).toString(16).padStart(16,"0");

@@ -40,6 +40,7 @@ esp_err_t whm_sync_walk_input_send(uint8_t act, uint32_t exec_step,
                                    float arg);
 esp_err_t whm_sync_wkparams_send(int64_t anchor, float cam_speed,
                                  uint8_t strips);
+esp_err_t whm_sync_dayclock_send(uint8_t f_q8, uint16_t minod);
 bool whm_sync_is_conductor(void);
 esp_err_t whm_sync_oracle_send(uint8_t a8, uint32_t step,
                                uint64_t h, uint16_t hs);

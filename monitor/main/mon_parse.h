@@ -16,6 +16,11 @@ typedef struct __attribute__((packed)) {
     uint8_t wver; uint8_t strips; uint16_t scroll_q8;
 } mon_wkp_t;
 typedef struct __attribute__((packed)) {
+    char magic[4]; uint8_t ver; uint8_t type;      /* 17 */
+    uint8_t f_q8; uint8_t rsv; uint16_t minod; uint16_t rsv2;
+} mon_day_t;
+_Static_assert(sizeof(mon_day_t) == 12, "wkday wire");
+typedef struct __attribute__((packed)) {
     char magic[4]; uint8_t ver; uint8_t type;      /* 16 */
     uint8_t a8; uint8_t rsv; uint32_t step;
     uint64_t h; uint16_t hs; uint16_t rsv2;
@@ -30,6 +35,9 @@ typedef struct {
     char from[16];
     /* cam + fleet */
     float cam; uint8_t strips; int64_t anchor;
+    /* dayclock (type 17): fleet-authoritative sky */
+    uint8_t day_fq8; uint16_t day_min; int64_t day_us;
+    uint32_t n_real, n_promise;
     /* oracle */
     uint32_t rung_step; uint64_t rung_h; uint16_t rung_hs;
     /* counters */

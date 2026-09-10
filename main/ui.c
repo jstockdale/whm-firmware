@@ -3612,6 +3612,20 @@ static void pat_walker(int64_t t)
     float cam = wk_cam(t);
     int ox = (int)lroundf(cam) + (int)s_w_idx * 64;
     float f = wk_daylight();
+    {   /* DAYCLOCK tx: 1 Hz from the conductor - observers
+           render THIS sky, whatever their host clocks think. */
+        static int64_t s_day_tx;
+        int64_t nw9 = esp_timer_get_time();
+        if (whm_sync_is_conductor() && nw9 - s_day_tx > 1000000) {
+            s_day_tx = nw9;
+            struct tm lt9;
+            uint16_t mo = 0;
+            if (wall_now(&lt9, NULL))
+                mo = (uint16_t)(lt9.tm_hour * 60 + lt9.tm_min);
+            whm_sync_dayclock_send(
+                (uint8_t)(f * 255.0f + 0.5f), mo);
+        }
+    }
     wk_sky(t, cam, (int)s_w_idx, f);
     wk_wonders(t, cam, (int)s_w_idx, f); /* home, occasionally */
     wk_flora(cam, (int)s_w_idx, f, t);   /* behind platforms */
