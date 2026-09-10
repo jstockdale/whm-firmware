@@ -319,7 +319,8 @@ enum { WK_WALK, WK_CLIMB, WK_LADDER, WK_SLIDE, WK_FALL, WK_IDLE,
        WK_GOFIRE, WK_FIREB, WK_FIRES, WK_FIRED,  /* Robin: campfire */
        WK_GOHAM, WK_HAMS, WK_HAMI, WK_HAMD };    /* Robin: hammock,
                                                     machine staged */
-static float s_fire_x; static bool s_fire_done;            /* CANOPY: the owner's sport, 64px */                      /* bezel-wrap ritual */
+static float s_fire_x; static bool s_fire_done;
+static float s_ham_ax, s_ham_bx;            /* CANOPY: the owner's sport, 64px */                      /* bezel-wrap ritual */
 
 typedef struct { int32_t x; uint8_t w, y; } wplat_t;
 typedef struct { int32_t x; uint8_t ytop, ybot; } wlad_t;
@@ -334,6 +335,40 @@ typedef struct {
     int32_t house_x;                     /* <0 = none */
 } wchunk_t;
 static wchunk_t s_wch[6];
+static const wchunk_t *wk_chunk(int32_t id);
+static int wk_ham_pick(float near_x, float *pax, float *pbx)
+{
+    /* Robin's hammock, v1 anchors: LADDERS (ground-reaching)
+       and HOUSES - both k=1.0 world-fixed chunk structures.
+       Trees are parallax (k=0.7) and would slide off their
+       sling; deferred with elevated slings. Pair 8-16 apart,
+       midpoint nearest, leftmost tie-break - the sim walks
+       to the midpoint, so every consumer's nearest-pick has
+       distance zero to the same pair. */
+    float ax[24]; int n = 0;
+    int32_t r0 = (int32_t)floorf((near_x - 40.0f) / 64.0f);
+    for (int ci = r0; ci <= r0 + 2 && n < 24; ci++) {
+        const wchunk_t *c = wk_chunk(ci);
+        for (int k = 0; k < c->nl && n < 24; k++)
+            if (c->l[k].ybot >= WK_GROUND - 2)
+                ax[n++] = (float)c->l[k].x;
+        if (c->house_x >= 0 && n < 24)
+            ax[n++] = (float)c->house_x + 2.0f;
+    }
+    float bd = 1e9f; int found = 0;
+    for (int i = 0; i < n; i++)
+        for (int j = 0; j < n; j++) {
+            float d = ax[j] - ax[i];
+            if (d < 8.0f || d > 16.0f) continue;
+            float mid = (ax[i] + ax[j]) * 0.5f;
+            float dd = fabsf(mid - near_x);
+            if (dd + 0.01f < bd) {
+                bd = dd; *pax = ax[i]; *pbx = ax[j];
+                found = 1;
+            }
+        }
+    return found && bd < 45.0f;
+}
 
 static struct {
     float x, y, vy, vx;
@@ -1120,6 +1155,14 @@ static void wk_step(int64_t t, uint8_t n)
             if (!s_wk_pure) s_wk.st = WK_GOFIRE;
             s_wk.turn_cd = 90;
         } else if (fy >= WK_GROUND && !s_wk.turn_cd &&
+                   r % 3400 == 11 &&
+                   wk_ham_pick(s_wk.x, &s_ham_ax,
+                               &s_ham_bx)) {   /* Robin's hammock */
+            s_wk.tgt = (s_ham_ax + s_ham_bx) * 0.5f;
+            s_wk.dir = s_wk.x < s_wk.tgt ? 1 : -1;
+            if (!s_wk_pure) s_wk.st = WK_GOHAM;
+            s_wk.turn_cd = 90;
+        } else if (fy >= WK_GROUND && !s_wk.turn_cd &&
                    off < -8.0f && r % 3800 == 5) {
             s_wk.st = WK_SHIMMY;           /* bezel-wrap ritual */
             s_wk.dir = -1;
@@ -1317,8 +1360,50 @@ static void wk_step(int64_t t, uint8_t n)
         else { s_wk.st = WK_WALK; s_wk.turn_cd = 90;
                s_fire_done = true; s_wk.phase = 0; }
         break;
-    case WK_GOHAM: case WK_HAMS: case WK_HAMI: case WK_HAMD:
-        s_wk.st = WK_WALK;                 /* staged next round */
+    case WK_GOHAM:
+        s_wk.x += (float)s_wk.dir * 0.65f;
+        s_wk.phase++;
+        if (!wk_support(s_wk.x, (int)lroundf(s_wk.y))) {
+            s_wk.st = WK_WALK; s_wk.dir = -s_wk.dir; break;
+        }
+        if (fabsf(s_wk.x - s_wk.tgt) < 1.0f) {
+            s_wk.st = WK_HAMS; s_wk.timer = 90;
+            s_wk.phase = 0; s_wk.dir = 1;
+        }
+        break;
+    case WK_HAMS: {
+        /* rope-throw, tie A, tie B, back to mid - f(timer) */
+        float mid9 = (s_ham_ax + s_ham_bx) * 0.5f;
+        uint16_t tb = s_wk.timer;
+        if (tb > 70)      s_wk.x = mid9;
+        else if (tb > 50) s_wk.x = s_ham_ax + 1.0f;
+        else if (tb > 30) s_wk.x = s_ham_bx - 1.0f;
+        else              s_wk.x = mid9;
+        if (s_wk.timer) s_wk.timer--;
+        else { s_wk.st = WK_HAMI;
+               s_wk.timer = (uint16_t)(900 +
+                   wk_rnd(0xE9u) % 1800);   /* 30-90 s */
+               s_wk.phase = (uint8_t)(wk_rnd(0xEBu) % 3);
+               s_wk.y = (float)(WK_GROUND - 2);
+        }
+        break; }
+    case WK_HAMI:
+        if (s_fw_hold) break;
+        {   float sx9 = s_wk.x - wk_cam(t);
+            if (sx9 < 12.0f) { s_wk.st = WK_HAMD;
+                s_wk.timer = 75; s_wk.y = (float)WK_GROUND;
+                break; }
+        }
+        if (s_wk.phase == 2)                /* watch mode */
+            s_wk.dir = ((s_wk.timer / 150) & 1) ? 1 : -1;
+        if (s_wk.timer) s_wk.timer--;
+        else { s_wk.st = WK_HAMD; s_wk.timer = 75;
+               s_wk.y = (float)WK_GROUND; }
+        break;
+    case WK_HAMD:
+        if (s_wk.timer) s_wk.timer--;
+        else { s_wk.st = WK_WALK; s_wk.turn_cd = 90;
+               s_wk.phase = 0; }
         break;
     case WK_SHIMMY: {
         float cam2 = s_wk.x;               /* pinned via tgt below */
@@ -3881,7 +3966,47 @@ static void pat_walker(int64_t t)
             }
         }
     }
-    if (wlx >= -6 && wlx <= 70)
+    if (s_wk.st == WK_HAMS || s_wk.st == WK_HAMI ||
+        s_wk.st == WK_HAMD) {               /* Robin's hammock */
+        int hax = (int)lroundf(s_ham_ax) - ox;
+        int hbx = (int)lroundf(s_ham_bx) - ox;
+        uint16_t tb = s_wk.timer;
+        bool sl9 = (s_wk.st == WK_HAMS) ? (tb <= 30)
+                 : (s_wk.st == WK_HAMD) ? (tb > 45) : true;
+        if (s_wk.st == WK_HAMS && tb > 70) {
+            int rp = (int)((90 - tb) / 4);
+            wk_px(hax + rp,
+                  WK_GROUND - 4 - (rp > 2 ? 1 : 0),
+                  180, 160, 120);            /* rope arc */
+        }
+        if (sl9) {
+            for (int hx2 = hax + 1; hx2 < hbx; hx2++)
+                wk_px(hx2, WK_GROUND - 3 +
+                      ((hx2 > hax + 1 && hx2 < hbx - 1)
+                       ? 1 : 0),
+                      152, 96, 170);          /* the sling */
+            wk_px(hax, WK_GROUND - 4, 180, 160, 120);
+            wk_px(hbx, WK_GROUND - 4, 180, 160, 120);
+        }
+        if (s_wk.st == WK_HAMI) {
+            int mid2 = (hax + hbx) / 2;
+            uint8_t sr2, sg2, sb2;
+            hsv_rgb((uint16_t)((t / 90000) % 360), 230, 255,
+                    &sr2, &sg2, &sb2);
+            for (int b2 = -1; b2 <= 2; b2++)
+                wk_px(mid2 + b2, WK_GROUND - 3,
+                      213, 194, 167);         /* lying */
+            wk_px(mid2 - 2, WK_GROUND - 4, 213, 194, 167);
+            wk_px(mid2 - 3, WK_GROUND - 4, sr2, sg2, sb2);
+            if (s_wk.phase == 1) {          /* nap z */
+                int zt = (int)(s_wk.timer % 90);
+                if (zt < 30)
+                    wk_px(mid2, WK_GROUND - 6 - zt / 12,
+                          200, 200, 210);
+            }
+        }
+    }
+    if (s_wk.st != WK_HAMI && wlx >= -6 && wlx <= 70)
         wk_sprite(wlx, (int)lroundf(s_wk.y), t);
     {   /* THE BATON, root C: the entire emit block lived inside
            the sprite's on-screen check - an owner whose LOCAL sim

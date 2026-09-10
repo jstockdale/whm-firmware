@@ -280,6 +280,39 @@ function fireDraw(g,S9,wlx,wy,ox,st,timer,wx,tms){
  if(st===19&&tb>30){px(wlx+2,wy-5,"#788291");
   if(tb<=60){px(fx2,fy2-2-(((60-tb)/12)|0),"#5a8cdc");
    if(tb<50)px(fx2,fy2-4,"#96969b")}}}
+let HAX=null,HBX=null,HPS=-1;
+function hamPick(nearx){
+ let ax=[];const r0=Math.floor((nearx-40)/64);
+ for(let ci=r0;ci<=r0+2;ci++){const C=chunk(ci);
+  for(const L of C.l)if(L.ybot>=55)ax.push(L.x);
+  if(C.house_x>=0)ax.push(C.house_x+2)}
+ let bd=1e9,pa=null,pb=null;
+ for(const a of ax)for(const b of ax){const d=b-a;
+  if(d<8||d>16)continue;
+  const dd=Math.abs((a+b)/2-nearx);
+  if(dd+0.01<bd){bd=dd;pa=a;pb=b}}
+ return bd<45?[pa,pb]:null}
+function hamDraw(g,S9,ox,st,timer,phase,t){
+ if(st===21&&HPS!==21){const p=hamPick(W.x);
+  if(p){HAX=p[0];HBX=p[1]}else{HAX=null}}
+ HPS=st;
+ if(!(st===21||st===22||st===23)||HAX===null)return;
+ const px=(x,y2,c)=>{g.fillStyle=c;
+   g.fillRect(x*S9,y2*S9,S9,S9)};
+ const hax=Math.round(HAX)-ox,hbx=Math.round(HBX)-ox,
+       tb=timer;
+ const sl9=(st===21)?(tb<=30):(st===23)?(tb>45):true;
+ if(st===21&&tb>70){const rp=((90-tb)/4)|0;
+  px(hax+rp,53-(rp>2?1:0),"#b4a078")}
+ if(sl9){for(let hx2=hax+1;hx2<hbx;hx2++)
+   px(hx2,54+((hx2>hax+1&&hx2<hbx-1)?1:0),"#9860aa");
+  px(hax,53,"#b4a078");px(hbx,53,"#b4a078")}
+ if(st===22){const mid2=((hax+hbx)/2)|0;
+  const sc=`hsl(${Math.floor(t/90)%360} 90% 60%)`;
+  for(let b2=-1;b2<=2;b2++)px(mid2+b2,54,"#d5c2a7");
+  px(mid2-2,53,"#d5c2a7");px(mid2-3,53,sc);
+  if(phase===1){const zt=tb%90;
+   if(zt<30)px(mid2,51-((zt/12)|0),"#c8c8d2")}}}
 function sprite(lx,y,t,st,dir,phase,timer,sdir){
  const a=(phase>>2)&1, br=213,bg=194,bb=167;
  let[sr,sg,sb]=hsv((t/90000)%360,230,255);
@@ -765,7 +798,9 @@ function drawWorld(now){
     ms froze the rainbow to a 9-hour cycle (scarf, sparkles, POP,
     parasol, canopy - one unit bug, five frozen hues). */
  fireDraw(cx,S,wlx,Math.round(W.y),ox,W.st,W.timer,W.x,performance.now());
- sprite(wlx,wy,now*1000,P9.st,P9.dir,P9.phase,P9.timer,P9.sdir);
+ hamDraw(cx,S,ox,P9.st,P9.timer,P9.phase,performance.now());
+ if(P9.st!==22)
+  sprite(wlx,wy,now*1000,P9.st,P9.dir,P9.phase,P9.timer,P9.sdir);
  stLabel(cx,(wlx-ox)*S+S/2,(wy-15)*S,P9.st,
   P9.owner?"#ff5cc8":"#41d0ff");
  if(INS){cx.fillStyle="rgba(200,180,69,0.92)";

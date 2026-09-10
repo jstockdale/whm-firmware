@@ -339,6 +339,9 @@ static void world_compose(int64_t t, float cam, int32_t ox)
         mw_px(chx - 1, wy - 1, 60, 13, 8);
         mw_px(chx + 1, wy - 1, 60, 13, 8);
     }
+    /* Robin's hammock, monitor pick (same formulas) */
+    #define HAM_MAXA 24
+    ;
     {   /* Robin's campfire - latch fire x on FIREB entry */
         static float mfx; static uint8_t pst;
         if (M.st == WK_FIREB && pst != WK_FIREB) mfx = M.x;
@@ -401,7 +404,75 @@ static void world_compose(int64_t t, float cam, int32_t ox)
             }
         }
     }
-    if (wlx >= -6 && wlx <= WCOLS + 6) sprite(wlx, wy, t);
+    {   /* Robin's hammock - latch anchors on HAMS entry via
+           the shared pick (nearest-mid == distance zero). */
+        static float hax9 = 0, hbx9 = 0; static uint8_t hps;
+        if (M.st == WK_HAMS && hps != WK_HAMS) {
+            float ax[HAM_MAXA]; int n = 0;
+            int32_t r0 = (int32_t)floorf((M.x - 40.0f) / 64.0f);
+            for (int ci = r0; ci <= r0 + 2 && n < HAM_MAXA;
+                 ci++) {
+                const wchunk_t *c9 = mw_chunk(ci);
+                for (int k = 0; k < c9->nl && n < HAM_MAXA; k++)
+                    if (c9->l[k].ybot >= 55)
+                        ax[n++] = (float)c9->l[k].x;
+                if (c9->house_x >= 0 && n < HAM_MAXA)
+                    ax[n++] = (float)c9->house_x + 2.0f;
+            }
+            float bd = 1e9f;
+            for (int i = 0; i < n; i++)
+                for (int j = 0; j < n; j++) {
+                    float d = ax[j] - ax[i];
+                    if (d < 8.0f || d > 16.0f) continue;
+                    float mid = (ax[i] + ax[j]) * 0.5f;
+                    float dd = fabsf(mid - M.x);
+                    if (dd + 0.01f < bd) {
+                        bd = dd; hax9 = ax[i]; hbx9 = ax[j];
+                    }
+                }
+        }
+        hps = M.st;
+        if (M.st == WK_HAMS || M.st == WK_HAMI ||
+            M.st == WK_HAMD) {
+            int hax = (int)lroundf(hax9) - ox;
+            int hbx = (int)lroundf(hbx9) - ox;
+            uint16_t tb = M.timer;
+            bool sl9 = (M.st == WK_HAMS) ? (tb <= 30)
+                     : (M.st == WK_HAMD) ? (tb > 45) : true;
+            if (M.st == WK_HAMS && tb > 70) {
+                int rp = (int)((90 - tb) / 4);
+                mw_px(hax + rp, 53 - (rp > 2 ? 1 : 0),
+                      180, 160, 120);
+            }
+            if (sl9) {
+                for (int hx2 = hax + 1; hx2 < hbx; hx2++)
+                    mw_px(hx2, 54 +
+                          ((hx2 > hax + 1 && hx2 < hbx - 1)
+                           ? 1 : 0),
+                          152, 96, 170);
+                mw_px(hax, 53, 180, 160, 120);
+                mw_px(hbx, 53, 180, 160, 120);
+            }
+            if (M.st == WK_HAMI) {
+                int mid2 = (hax + hbx) / 2;
+                uint8_t sr2, sg2, sb2;
+                mw_hsv((uint16_t)((t / 90000) % 360), 230, 255,
+                       &sr2, &sg2, &sb2);
+                for (int b2 = -1; b2 <= 2; b2++)
+                    mw_px(mid2 + b2, 54, 213, 194, 167);
+                mw_px(mid2 - 2, 53, 213, 194, 167);
+                mw_px(mid2 - 3, 53, sr2, sg2, sb2);
+                if (M.phase == 1) {
+                    int zt = (int)(M.timer % 90);
+                    if (zt < 30)
+                        mw_px(mid2, 51 - zt / 12,
+                              200, 200, 210);
+                }
+            }
+        }
+    }
+    if (M.st != WK_HAMI && wlx >= -6 && wlx <= WCOLS + 6)
+        sprite(wlx, wy, t);
 #undef g_mon
 }
 void mon_render(uint32_t kfs)
